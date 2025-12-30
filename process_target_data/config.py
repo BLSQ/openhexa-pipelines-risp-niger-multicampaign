@@ -12,6 +12,7 @@ iaso_connector_slug = {
 
 iaso_form_id = 1186
 
+# polio data
 dict_districts_cibles_iaso = {
     "Abala": "Abala",
     "Abalak": "Abalak",
@@ -90,4 +91,75 @@ dict_districts_cibles_iaso = {
 }
 dict_districts_cibles_iaso = {
     key: f"DS {item}" for key, item in dict_districts_cibles_iaso.items()
+}
+
+target_polio_2025_r3_columns_dict = {
+    "Régions": "LVL_2_NAME",
+    "Districts": "LVL_3_NAME",
+    "CSI": "LVL_6_NAME",
+    "Enfants           0 - 59 mois ": "cible",
+}
+
+# yellow fever data
+non_district_labels = [
+    0,
+    "Cible total CAR 2025",
+    "Niger (Total)",
+    "Refugie Tahoua",
+    "Refugie Tillabéri",
+    "Refugies Diffa",
+    "Refugies Maradi",
+    "Région Agadez",
+    "Région Diffa",
+    "Région Dosso",
+    "Région Maradi",
+    "Région Niamey",
+    "Région Tahoua",
+    "Région Tillabéri",
+    "Région Zinder",
+    "TOTAL Plus Refugies",
+    "Total",
+    "Total réfugies",
+]
+
+target_yellow_fever_2025_columns = [
+    "LVL_3_NAME",
+    "LVL_6_NAME",
+    "9-11 mois_urban",
+    "12-59 mois_urban",
+    "5-14 ans_urban",
+    "15-60 ans_urban",
+    "9-11 mois_avancee",
+    "12-59 mois_avancee",
+    "5-14 ans_avancee",
+    "15-60 ans_avancee",
+    "9-11 mois_mobile",
+    "12-59 mois_mobile",
+    "5-14 ans_mobile",
+    "15-60 ans_mobile",
+]
+
+# men5 / tcv data
+target_men5_tcv_2025_columns_dict = {
+    "Districts sanitaire": "LVL_3_NAME",
+    "CSI": "LVL_6_NAME",
+    "1-4ans": "1-4 ans",
+    "5-14ans": "5-14 ans",
+    "15-19ans": "15-19 ans",
+}
+
+
+# CSI matching
+csi_matching_failed = {
+    "boboye birni ii": "boboye birni 2",  # 3759990
+    "boboye birni i": "boboye birni ngaoure",  # 3759984
+    "dosso bella 1": "dosso bella i",  # 3759392
+    "dosso bella ii": "dosso bella ii",  # 3759394
+    "magaria magaria urbain i": "magaria magaria",  # 3764089
+    "magaria magaria urbain ii": "magaria magaria ii",  # 3764072
+    "niamey ii nord lazaret": "niamey ii cabinet de soin nord lazaret cloturer",  # 3761891
+    "niamey iv camp fan": "niamey iv camp bano",  # 3762220
+    "tibiri tibiri urbain": "tibiri tibiri doutchi",  # 3759790
+    "tchintabaraden bagare": "",
+    "dogon doutchi 2361": "",
 }

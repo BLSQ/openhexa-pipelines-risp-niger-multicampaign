@@ -902,7 +902,6 @@ def org_unit_matching(
     """
     # 1. Preparation
     rename_map = {
-        "LVL_2_NAME": "LVL_2_NAME_original",
         "LVL_3_NAME": "LVL_3_NAME_original",
         "LVL_6_NAME": "LVL_6_NAME_original",
     }
@@ -979,7 +978,6 @@ def org_unit_matching(
 
     cols_to_pull = [
         "org_unit_id",
-        "LVL_2_NAME",
         "LVL_3_NAME",
         "LVL_6_NAME",
         "cleansed_spatial",
