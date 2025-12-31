@@ -12,8 +12,18 @@ iaso_connector_slug = {
 
 iaso_form_id = 1186
 
-# polio data
-dict_districts_cibles_iaso = {
+# polio 2024
+target_polio_2024_cols = [
+    "LVL_3_NAME",
+    "VPO_0-11 mois",
+    "VPO_12-59 mois",
+    "VA_6-11 mois",
+    "VA_12-59 mois",
+    "AL_12-23 mois",
+    "AL_24-59 mois",
+]
+
+polio_2024_dict_districts_cibles_iaso = {
     "Abala": "Abala",
     "Abalak": "Abalak",
     "Aderbissanat": "Aderbissinat",
@@ -89,39 +99,18 @@ dict_districts_cibles_iaso = {
     "Torodi": "Torodi",
     "Zinder Ville": "Zinder Ville",
 }
-dict_districts_cibles_iaso = {
-    key: f"DS {item}" for key, item in dict_districts_cibles_iaso.items()
+polio_2024_dict_districts_cibles_iaso = {
+    key: f"DS {item}" for key, item in polio_2024_dict_districts_cibles_iaso.items()
 }
 
-target_polio_2025_r3_columns_dict = {
-    "Régions": "LVL_2_NAME",
-    "Districts": "LVL_3_NAME",
-    "CSI": "LVL_6_NAME",
-    "Enfants           0 - 59 mois ": "cible",
-}
-
-# yellow fever data
-non_district_labels = [
-    0,
-    "Cible total CAR 2025",
-    "Niger (Total)",
-    "Refugie Tahoua",
-    "Refugie Tillabéri",
-    "Refugies Diffa",
-    "Refugies Maradi",
-    "Région Agadez",
-    "Région Diffa",
-    "Région Dosso",
-    "Région Maradi",
-    "Région Niamey",
-    "Région Tahoua",
-    "Région Tillabéri",
-    "Région Zinder",
-    "TOTAL Plus Refugies",
-    "Total",
-    "Total réfugies",
+# polio/rougeole 2025
+target_polio_rougeole_2025_columns = [
+    "LVL_3_NAME",
+    "0-11 mois",
+    "12-59 mois",
 ]
 
+# yellow fever 2025
 target_yellow_fever_2025_columns = [
     "LVL_3_NAME",
     "LVL_6_NAME",
@@ -139,7 +128,14 @@ target_yellow_fever_2025_columns = [
     "15-60 ans_mobile",
 ]
 
-# men5 / tcv data
+target_yellow_fever_2025_age_ranges = [
+    "9-11 mois",
+    "12-59 mois",
+    "5-14 ans",
+    "15-60 ans",
+]
+
+# men5/tcv 2025
 target_men5_tcv_2025_columns_dict = {
     "Districts sanitaire": "LVL_3_NAME",
     "CSI": "LVL_6_NAME",
@@ -148,6 +144,13 @@ target_men5_tcv_2025_columns_dict = {
     "15-19ans": "15-19 ans",
 }
 
+# polio 2025 r3
+target_polio_2025_r3_columns = [
+    "LVL_2_NAME",
+    "LVL_3_NAME",
+    "LVL_6_NAME",
+    "cible",
+]
 
 # CSI matching
 csi_matching_failed = {

@@ -655,16 +655,6 @@ def age_categorizer(string):
     return "TOUS"
 
 
-def age_rougeole_categorizer(string):
-    ages = {"6/9-11": "0-11 mois", "12-59 mois": "12-59 mois"}
-
-    for key in ages:
-        if key in string:
-            return ages[key]
-
-    return "TOUS"
-
-
 def pop_segment_categorizer(string):
     ages = {
         "Refugiers": "Refugiers",
@@ -905,7 +895,10 @@ def org_unit_matching(
         "LVL_3_NAME": "LVL_3_NAME_original",
         "LVL_6_NAME": "LVL_6_NAME_original",
     }
-    target = target_df.rename(columns=rename_map).copy()
+
+    target_df = target_df.rename(columns=rename_map)
+    target = target_df[["LVL_3_NAME_original", "LVL_6_NAME_original"]].copy()
+    target = target.drop_duplicates()
     spatial = spatial_unit_df.copy()
 
     # 2. Create Cleansed Concatenations
@@ -992,5 +985,16 @@ def org_unit_matching(
     )
 
     final_df = final_df.rename(columns={"cleansed_spatial": "cleansed_spatial_match"})
+    final_df = target_df.merge(
+        final_df, on=["LVL_3_NAME_original", "LVL_6_NAME_original"], how="left"
+    )
+
+    # Make sure that all entries merged back to target_df
+    count_initial = target_df.shape[0]
+    count_final = final_df.shape[0]
+    if count_initial != count_final:
+        raise ValueError(
+            f"Row count mismatch after merging back to target_df: {count_initial} vs {count_final}"
+        )
 
     return final_df.drop(columns=["match_index"]), spatial
