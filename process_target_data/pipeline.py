@@ -24,14 +24,16 @@ from config import (
 
 @pipeline("process_target_data")
 def process_target_data():
-    """ """
-    spatial_df = get_spatial_data()
-    spatial_df_clean = clean_spatial_data(spatial_df)
+    """
+    Main pipeline function to process target data from various campaigns.
+    """
+    iaso_org_unit_tree_df = get_iaso_org_unit_tree()
+    iaso_org_unit_tree_df_clean = clean_iaso_org_unit_tree(iaso_org_unit_tree_df)
 
     # district-level target data
     targets_polio_2024_r1_r4 = import_target_data_for_polio_2024_r1_r4()
     targets_polio_2024_r1_r4 = match_district_to_org_unit_id(
-        targets_polio_2024_r1_r4, spatial_df_clean
+        targets_polio_2024_r1_r4, iaso_org_unit_tree_df_clean
     )
     targets_polio_2024_r1_r4 = add_rounds_and_products(targets_polio_2024_r1_r4)
 
@@ -39,7 +41,7 @@ def process_target_data():
         import_target_data_for_polio_and_rougeole_2025_r1_r2()
     )
     target_polio_rougeole_2025_r1_r2 = match_district_to_org_unit_id(
-        target_polio_rougeole_2025_r1_r2, spatial_df_clean
+        target_polio_rougeole_2025_r1_r2, iaso_org_unit_tree_df_clean
     )
     target_polio_rougeole_2025_r1_r2 = add_rounds_and_products(
         target_polio_rougeole_2025_r1_r2
@@ -48,7 +50,7 @@ def process_target_data():
     # csi-level target data
     target_yellow_fever_2025_r1_r2 = import_target_data_for_yellow_fever_2025_r1_r2()
     target_yellow_fever_2025_r1_r2 = match_csi_to_org_unit_id(
-        target_yellow_fever_2025_r1_r2, spatial_df_clean
+        target_yellow_fever_2025_r1_r2, iaso_org_unit_tree_df_clean
     )
     target_yellow_fever_2025_r1_r2 = add_rounds_and_products(
         target_yellow_fever_2025_r1_r2
@@ -56,13 +58,13 @@ def process_target_data():
 
     target_men5_tcv_2025_r1_r2 = import_target_data_for_men5_and_tcv_2025_r1_r2()
     target_men5_tcv_2025_r1_r2 = match_csi_to_org_unit_id(
-        target_men5_tcv_2025_r1_r2, spatial_df_clean
+        target_men5_tcv_2025_r1_r2, iaso_org_unit_tree_df_clean
     )
     target_men5_tcv_2025_r1_r2 = add_rounds_and_products(target_men5_tcv_2025_r1_r2)
 
     target_polio_2025_r3 = import_target_data_for_polio_2025_r3()
     target_polio_2025_r3 = match_csi_to_org_unit_id(
-        target_polio_2025_r3, spatial_df_clean
+        target_polio_2025_r3, iaso_org_unit_tree_df_clean
     )
     target_polio_2025_r3 = add_rounds_and_products(target_polio_2025_r3)
 
@@ -81,7 +83,7 @@ def process_target_data():
     save_output(target_data_combined)
 
 
-def get_spatial_data() -> pd.DataFrame:
+def get_iaso_org_unit_tree() -> pd.DataFrame:
     """
     Retrieve organizational unit tree data from IASO based on a specific form ID.
 
@@ -91,44 +93,61 @@ def get_spatial_data() -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame containing the organizational unit tree data.
     """
-    current_run.log_info("Retrieving spatial data...")
+    current_run.log_info("Retrieving org unit tree data from IASO...")
 
-    # iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
-    # spatial_df = iaso_connector_instance.get_ou_tree_dataframe_from_the_form(
-    #     iaso_form_id
-    # )
-
-    spatial_df = pd.read_parquet(
-        os.path.join(
-            workspace.files_path,
-            "temp",
-            "spatial_units_raw.parquet",
-        )
+    iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
+    iaso_org_unit_tree_df = iaso_connector_instance.get_ou_tree_dataframe_from_the_form(
+        iaso_form_id
     )
 
-    return spatial_df
+    # save file to parquet for later use
+    file_path = os.path.join(
+        workspace.files_path, "temp", "iaso_org_unit_tree_df.parquet"
+    )
+    Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+    iaso_org_unit_tree_df.to_parquet(
+        file_path,
+        index=False,
+    )
+    iaso_org_unit_tree_df = pd.read_parquet(file_path)
+
+    return iaso_org_unit_tree_df
 
 
-def clean_spatial_data(spatial_df: pd.DataFrame) -> pd.DataFrame:
+def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Clean the spatial data by filtering out rejected entries and selecting relevant records.
+    Clean the org unit tree data by filtering out rejected entries and selecting relevant records.
 
     Args:
-        spatial_df (pd.DataFrame): DataFrame containing the spatial data to be cleaned.
+        iaso_org_unit_tree_df (pd.DataFrame): DataFrame containing the org unit tree data to be cleaned.
 
     Returns:
-        pd.DataFrame: Cleaned DataFrame with relevant spatial data.
+        pd.DataFrame: Cleaned DataFrame with relevant org unit tree data.
     """
-    current_run.log_info("Cleaning spatial data...")
+    current_run.log_info("Cleaning org unit tree data...")
 
-    spatial_df_clean = spatial_df[spatial_df["Validé"] != "REJECTED"]
-    spatial_df_clean = spatial_df_clean[spatial_df_clean["Source"] == "SNIS"]
+    iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df[
+        iaso_org_unit_tree_df["Validé"] != "REJECTED"
+    ]
+    iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
+        iaso_org_unit_tree_df_clean["Source"] == "SNIS"
+    ]
 
-    spatial_df_clean = spatial_df_clean.groupby("LVL_6_UID", as_index=False).apply(
-        pyramid_selector, include_groups=False
+    iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean.groupby(
+        "LVL_6_UID", as_index=False
+    ).apply(pyramid_selector, include_groups=False)
+
+    # save file
+    file_path = os.path.join(
+        workspace.files_path, "output", "iaso_org_unit_tree_clean.parquet"
+    )
+    Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+    iaso_org_unit_tree_df_clean.to_parquet(
+        file_path,
+        index=False,
     )
 
-    return spatial_df_clean
+    return iaso_org_unit_tree_df_clean
 
 
 def import_target_data_for_polio_2024_r1_r4() -> pd.DataFrame:
@@ -389,78 +408,82 @@ def import_target_data_for_polio_2025_r3() -> pd.DataFrame:
 
 
 def match_csi_to_org_unit_id(
-    csi_level_target_df: pd.DataFrame, spatial_df_clean: pd.DataFrame
+    csi_level_target_df: pd.DataFrame, iaso_org_unit_tree_df_clean: pd.DataFrame
 ) -> pd.DataFrame:
     """
     Match CSI names in df containing the CSI-level target data to organizational unit IDs using spatial data.
 
     Args:
-        df (pd.DataFrame): DataFrame containing the target data at CSI level.
-        spatial_df_clean (pd.DataFrame): Cleaned DataFrame containing the spatial data.
+        csi_level_target_df (pd.DataFrame): DataFrame containing the target data at CSI level.
+        iaso_org_unit_tree_df_clean (pd.DataFrame): DataFrame containing the clean organisational units tree data.
 
     Returns:
         pd.DataFrame: DataFrame with matched organizational unit IDs.
     """
     current_run.log_info("Matching CSI names to organizational unit IDs...")
 
-    spatial_units_for_matching = spatial_df_clean[
+    iaso_org_unit_tree_for_matching = iaso_org_unit_tree_df_clean[
         ["org_unit_id", "LVL_3_NAME", "LVL_6_NAME"]
     ].drop_duplicates()
 
-    target_df_matched, spatial_check = org_unit_matching(
-        csi_level_target_df, spatial_units_for_matching, threshold=50
+    target_df_matched, org_unit_tree_check = org_unit_matching(
+        csi_level_target_df, iaso_org_unit_tree_for_matching, threshold=50
     )
 
-    # # save file to parquet for later use
-    # cols_to_fix = [
-    #     "LVL_3_NAME_original",
-    #     "LVL_6_NAME_original",
-    #     "LVL_3_NAME",
-    #     "LVL_6_NAME",
-    #     "cleansed_target",
-    #     "cleansed_spatial_match",
-    # ]
-    # for col in cols_to_fix:
-    #     if col in target_df_matched.columns:
-    #         target_df_matched[col] = (
-    #             target_df_matched[col].astype(str).replace("nan", "")
-    #         )
-    #     if col in spatial_check.columns:
-    #         spatial_check[col] = spatial_check[col].astype(str).replace("nan", "")
-    # target_df_matched.to_parquet(
-    #     os.path.join(workspace.files_path, "temp", "target_df_matched.parquet"),
-    #     index=False,
-    # )
-    # spatial_check.to_parquet(
-    #     os.path.join(workspace.files_path, "temp", "spatial_check.parquet"), index=False
-    # )
-    # target_df_matched = pd.read_parquet(
-    #     os.path.join(workspace.files_path, "temp", "target_df_matched.parquet")
-    # )
-    # spatial_check = pd.read_parquet(
-    #     os.path.join(workspace.files_path, "temp", "spatial_check.parquet")
-    # )
+    # save file to parquet for later use
+    cols_to_fix = [
+        "LVL_3_NAME_original",
+        "LVL_6_NAME_original",
+        "LVL_3_NAME",
+        "LVL_6_NAME",
+        "cleansed_target",
+        "cleansed_spatial_match",
+    ]
+    for col in cols_to_fix:
+        if col in target_df_matched.columns:
+            target_df_matched[col] = (
+                target_df_matched[col].astype(str).replace("nan", "")
+            )
+        if col in org_unit_tree_check.columns:
+            org_unit_tree_check[col] = (
+                org_unit_tree_check[col].astype(str).replace("nan", "")
+            )
+    target_df_matched.to_parquet(
+        os.path.join(workspace.files_path, "temp", "target_df_matched.parquet"),
+        index=False,
+    )
+    org_unit_tree_check.to_parquet(
+        os.path.join(workspace.files_path, "temp", "org_unit_tree_check.parquet"),
+        index=False,
+    )
+    target_df_matched = pd.read_parquet(
+        os.path.join(workspace.files_path, "temp", "target_df_matched.parquet")
+    )
+    org_unit_tree_check = pd.read_parquet(
+        os.path.join(workspace.files_path, "temp", "org_unit_tree_check.parquet")
+    )
 
-    # # inspect matching results
-    # target_df_matched_check = target_df_matched[
-    #     [
-    #         "org_unit_id",
-    #         "LVL_3_NAME_original",
-    #         "LVL_6_NAME_original",
-    #         "LVL_3_NAME",
-    #         "LVL_6_NAME",
-    #         "cleansed_target",
-    #         "cleansed_spatial_match",
-    #         "match_score",
-    #     ]
-    # ]
-    # target_df_matched_check.to_csv(
-    #     os.path.join(workspace.files_path, "temp", "target_df_matched_check.csv"),
-    #     index=False,
-    # )
-    # spatial_check.to_csv(
-    #     os.path.join(workspace.files_path, "temp", "spatial_check.csv"), index=False
-    # )
+    # inspect matching results
+    target_df_matched_check = target_df_matched[
+        [
+            "org_unit_id",
+            "LVL_3_NAME_original",
+            "LVL_6_NAME_original",
+            "LVL_3_NAME",
+            "LVL_6_NAME",
+            "cleansed_target",
+            "cleansed_spatial_match",
+            "match_score",
+        ]
+    ]
+    target_df_matched_check.to_csv(
+        os.path.join(workspace.files_path, "temp", "target_df_matched_check.csv"),
+        index=False,
+    )
+    org_unit_tree_check.to_csv(
+        os.path.join(workspace.files_path, "temp", "org_unit_tree_check.csv"),
+        index=False,
+    )
 
     for (
         csi_concat_original,
@@ -473,15 +496,15 @@ def match_csi_to_org_unit_id(
             target_df_matched.loc[mask, "LVL_6_NAME"] = None
             continue
 
-        spatial_row = spatial_check.loc[
-            spatial_check["cleansed_spatial"] == csi_concat_correct
+        org_unit_tree_row = org_unit_tree_check.loc[
+            org_unit_tree_check["cleansed_spatial"] == csi_concat_correct
         ]
-        if spatial_row.empty:
+        if org_unit_tree_row.empty:
             continue
 
-        lvl_3_name_correct = spatial_row["LVL_3_NAME"].values[0]
-        lvl_6_name_correct = spatial_row["LVL_6_NAME"].values[0]
-        org_unit_id_correct = spatial_row["org_unit_id"].values[0]
+        lvl_3_name_correct = org_unit_tree_row["LVL_3_NAME"].values[0]
+        lvl_6_name_correct = org_unit_tree_row["LVL_6_NAME"].values[0]
+        org_unit_id_correct = org_unit_tree_row["org_unit_id"].values[0]
         mask = target_df_matched["cleansed_target"] == csi_concat_original
         target_df_matched.loc[mask, "org_unit_id"] = org_unit_id_correct
         target_df_matched.loc[mask, "LVL_3_NAME"] = lvl_3_name_correct
@@ -520,29 +543,29 @@ def match_csi_to_org_unit_id(
 
 
 def match_district_to_org_unit_id(
-    district_level_target_df: pd.DataFrame, spatial_df_clean: pd.DataFrame
+    district_level_target_df: pd.DataFrame, iaso_org_unit_tree_df_clean: pd.DataFrame
 ) -> pd.DataFrame:
     """
-    Match district names in df containing the district-level target data to organizational unit IDs using spatial data.
+    Match district names in df containing the district-level target data to organizational unit IDs using iaso_org_unit_tree data.
 
     Args:
-        df (pd.DataFrame): DataFrame containing the target data at district level.
-        spatial_df_clean (pd.DataFrame): Cleaned DataFrame containing the spatial data.
+        district_level_target_df (pd.DataFrame): DataFrame containing the target data at district level.
+        iaso_org_unit_tree_df_clean (pd.DataFrame): DataFrame containing the clean organisational units tree data.
 
     Returns:
         pd.DataFrame: DataFrame with matched organizational unit IDs.
     """
     current_run.log_info("Matching district names to organizational unit IDs...")
 
-    spatial_units_for_matching = spatial_df_clean[
+    iaso_org_unit_tree_for_matching = iaso_org_unit_tree_df_clean[
         ["org_unit_id", "LVL_3_NAME"]
     ].drop_duplicates()
-    spatial_units_for_matching = spatial_units_for_matching.groupby(
+    iaso_org_unit_tree_for_matching = iaso_org_unit_tree_for_matching.groupby(
         "LVL_3_NAME", as_index=False
     ).first()
 
     target_df_matched = district_level_target_df.merge(
-        spatial_units_for_matching, on=["LVL_3_NAME"], how="left"
+        iaso_org_unit_tree_for_matching, on=["LVL_3_NAME"], how="left"
     )
 
     unmatched_count = target_df_matched["org_unit_id"].isna().sum()
