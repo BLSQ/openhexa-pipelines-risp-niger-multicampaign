@@ -4,11 +4,9 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import re
-# from utils import (
-
-# )
 from config import (
     sites_types,
+    sex_types,
     campaign_dates,
     strategie_types,
     campaign_configs,
@@ -18,24 +16,23 @@ from config import (
 @pipeline("build_combination_products_dataset")
 def build_combination_products_dataset():
     """
-    Main pipeline function to build combination products dataset.
-
+    Main pipeline function to build combination campaigns dataset.
     """
     org_unit_ids_df = extract_org_unit_id()
     sites_df = create_site_df()
     # strategy_df = create_strategy_df()
+    sex_type_df = create_sex_type_df()
     campaign_age_product_status_df = create_campaign_age_product_status_df()
     campaign_period_df = create_campaign_period_df()
     combined_df = combine_dfs(
         org_unit_ids_df,
         sites_df,
         # strategy_df,
+        sex_type_df,
         campaign_age_product_status_df,
         campaign_period_df,
     )
-    print(combined_df.shape)
-    print(combined_df.head())
-    x
+    save_output(combined_df)
 
 
 def extract_org_unit_id() -> pd.DataFrame:
@@ -94,6 +91,22 @@ def create_strategy_df() -> pd.DataFrame:
 
     strategy_df = pd.DataFrame(strategie_types, columns=["strategy"])
     return strategy_df
+
+
+def create_sex_type_df() -> pd.DataFrame:
+    """
+    Create a DataFrame containing all sex types of cases vaccinated.
+
+    Args:
+        None
+
+    Returns:
+        pd.DataFrame: DataFrame with all sex types of cases vaccinated.
+    """
+    current_run.log_info("Creating sex type DataFrame...")
+
+    sex_type_df = pd.DataFrame(sex_types, columns=["sexe"])
+    return sex_type_df
 
 
 def create_campaign_age_product_status_df() -> pd.DataFrame:
@@ -172,6 +185,7 @@ def combine_dfs(
     org_unit_ids_df,
     sites_df,
     # strategy_df,
+    sex_type_df,
     campaign_age_product_status_df,
     campaign_period_df,
 ) -> pd.DataFrame:
@@ -193,6 +207,7 @@ def combine_dfs(
     combined_df = (
         org_unit_ids_df.merge(sites_df, how="cross")
         # .merge(strategy_df, how="cross")
+        .merge(sex_type_df, how="cross")
         .merge(campaign_age_product_status_df, how="cross")
     )
 
@@ -208,16 +223,37 @@ def combine_dfs(
             "site": "site",
             # "strategy": "vaccination_strategy",
             "age_group": "age",
+            "sexe": "sexe",
             "product": "produit",
             "status": "vaccination_status",
             "round": "round",
             "year": "year",
-            "period": "campaign_date",
+            "period": "period",
             "order_day": "order_day",
         }
     )
 
     return combined_df
+
+
+def save_output(combined_df: pd.DataFrame):
+    """
+    Save the combined campaign dataset to a Parquet file.
+
+    Args:
+        combined_df (pd.DataFrame): DataFrame containing the combined campaign data.
+
+    Returns:
+        None
+    """
+    current_run.log_info("Saving combined campaign data...")
+
+    output_path = os.path.join(
+        workspace.files_path, "output", "combined_campaign_data.parquet"
+    )
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    combined_df.to_parquet(output_path, index=False)
+    current_run.log_info(f"Combined campaign data saved to {output_path}.")
 
 
 if __name__ == "__main__":
