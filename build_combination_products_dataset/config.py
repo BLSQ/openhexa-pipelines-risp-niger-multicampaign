@@ -77,8 +77,6 @@ sites_types = [
 
 strategie_types = ["fixe", "avance", "mobile"]
 
-sex_types = ["TOUS"]
-
 campaign_configs = {
     "vpo": {
         "choix_campagne": ["polio"],
