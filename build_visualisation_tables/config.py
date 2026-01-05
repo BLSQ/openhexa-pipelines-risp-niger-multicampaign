@@ -182,7 +182,7 @@ cvrg_tcv_cols = [
 
 cvrg_campaign_map = {
     "polio": cvrg_polio_cols,
-    "fievre jaune": cvrg_fjaune_cols,
+    "fièvre jaune": cvrg_fjaune_cols,
     "rougeole": cvrg_rougeole_cols,
     "méningite": cvrg_meningite_cols,
     "tcv": cvrg_tcv_cols,

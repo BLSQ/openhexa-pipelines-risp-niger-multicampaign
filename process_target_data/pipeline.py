@@ -102,7 +102,7 @@ def get_iaso_org_unit_tree() -> pd.DataFrame:
 
     # save file to parquet for later use
     file_path = os.path.join(
-        workspace.files_path, "output", "iaso_org_unit_tree_df_raw.parquet"
+        workspace.files_path, "output", "iaso_org_unit_tree_raw.parquet"
     )
     # Path(file_path).parent.mkdir(parents=True, exist_ok=True)
     # iaso_org_unit_tree_df.to_parquet(
@@ -140,6 +140,10 @@ def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFram
     iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
         iaso_org_unit_tree_df_clean["LVL_2_NAME"] != "Niger"
     ]  # delete 2 incoherent entries
+
+    iaso_org_unit_tree_df_clean["org_unit_id"] = iaso_org_unit_tree_df_clean[
+        "org_unit_id"
+    ].astype(np.int64)
 
     # save file
     file_path = os.path.join(

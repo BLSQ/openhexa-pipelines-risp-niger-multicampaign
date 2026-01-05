@@ -8,8 +8,8 @@ from config import (
     sites_types,
     sex_types,
     campaign_dates,
-    strategie_types,
     campaign_configs,
+    sites_types_rougeole_adjustment,
 )
 
 
@@ -20,18 +20,17 @@ def build_combination_products_dataset():
     """
     org_unit_ids_df = extract_org_unit_id()
     sites_df = create_site_df()
-    # strategy_df = create_strategy_df()
     sex_type_df = create_sex_type_df()
     campaign_age_product_status_df = create_campaign_age_product_status_df()
     campaign_period_df = create_campaign_period_df()
     combined_df = combine_dfs(
         org_unit_ids_df,
         sites_df,
-        # strategy_df,
         sex_type_df,
         campaign_age_product_status_df,
         campaign_period_df,
     )
+    combined_df = adjust_to_specific_campaigns(combined_df)
     save_output(combined_df)
 
 
@@ -75,22 +74,6 @@ def create_site_df() -> pd.DataFrame:
     sites_df = pd.DataFrame(sites_types, columns=["site"])
 
     return sites_df
-
-
-def create_strategy_df() -> pd.DataFrame:
-    """
-    Create a DataFrame containing all types of vaccination strategies.
-
-    Args:
-        None
-
-    Returns:
-        pd.DataFrame: DataFrame with all types of vaccination strategies.
-    """
-    current_run.log_info("Creating strategy DataFrame...")
-
-    strategy_df = pd.DataFrame(strategie_types, columns=["strategy"])
-    return strategy_df
 
 
 def create_sex_type_df() -> pd.DataFrame:
@@ -162,7 +145,7 @@ def create_campaign_period_df() -> pd.DataFrame:
     for key, dates in campaign_dates.items():
         match = re.match(r"(\d{4})r(\d+)_?(.+)?", key)
         if match:
-            year = int(match.group(1))
+            year = np.int32(match.group(1))
             round_num = f"round {match.group(2)}"
             raw_campagne = match.group(3) if match.group(3) else "polio"
             choix_campagne = raw_campagne.replace("__", " ").replace("_", " ")
@@ -232,6 +215,57 @@ def combine_dfs(
             "order_day": "order_day",
         }
     )
+
+    return combined_df
+
+
+def adjust_to_specific_campaigns(combined_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Adjust the combined DataFrame to fit specific campaign requirements.
+
+    Args:
+        combined_df (pd.DataFrame): The combined DataFrame.
+
+    Returns:
+        pd.DataFrame: Adjusted DataFrame.
+    """
+    current_run.log_info("Adjusting combined DataFrame for specific campaigns...")
+
+    # polio 2024
+    mask_polio_2024 = (
+        (combined_df["year"] == 2024)
+        & (combined_df["produit"].isin(["albendazole", "vitamine A"]))
+        & (combined_df["round"] != "round 2")
+    )
+    combined_df = combined_df[~mask_polio_2024]
+
+    # polio and rougeole 2025 round 1 and 2
+    mask_2025_rounds = combined_df["produit"].isin(["rougeole"])
+    combined_df.loc[mask_2025_rounds, "site"] = combined_df.loc[
+        mask_2025_rounds, "site"
+    ].map(sites_types_rougeole_adjustment)
+    mask_invalid_sites = (combined_df["produit"] == "rougeole") & (
+        ~combined_df["site"].isin(sites_types_rougeole_adjustment.values())
+    )
+    combined_df = combined_df[~mask_invalid_sites]
+
+    # yellow fever 2025 round 1 and 2
+    mask_yellow_fever_sites = (
+        (combined_df["year"] == 2025)
+        & (combined_df["produit"] == "fièvre jaune")
+        & (combined_df["round"].isin(["round 1", "round 2"]))
+        & (combined_df["site"] != "ordinaire")
+    )
+    combined_df = combined_df[~mask_yellow_fever_sites]
+
+    # méningite and tcv 2025 round 1 and 2
+    mask_men5_tcv_sites = (
+        (combined_df["year"] == 2025)
+        & (combined_df["produit"].isin(["méningite", "tcv"]))
+        & (combined_df["round"].isin(["round 1", "round 2"]))
+        & (combined_df["site"] != "ordinaire")
+    )
+    combined_df = combined_df[~mask_men5_tcv_sites]
 
     return combined_df
 

@@ -190,6 +190,7 @@ def retrieve_org_unit_ids(combined_df: pd.DataFrame) -> pd.DataFrame:
     combined_df["org_unit_id"] = combined_df["org_unit_id"].map(
         org_unit_to_final_org_unit_dict
     )
+    combined_df["org_unit_id"] = combined_df["org_unit_id"].astype(np.int64)
 
     return combined_df
 
@@ -357,7 +358,7 @@ def create_coverage_dataset(
     ).drop(columns=["category"])
     df["sexe"] = "TOUS"
 
-    is_fjaune = df["campaign"] == "fievre jaune"
+    is_fjaune = df["campaign"] == "fièvre jaune"
     df.loc[is_fjaune, "site"] = "ordinaire"
     df.loc[is_fjaune, "age"] = df.loc[is_fjaune, "age"].replace(
         {
@@ -374,7 +375,7 @@ def create_coverage_dataset(
     )
 
     is_men_tcv = df["campaign"].isin(["méningite", "tcv"])
-    df.loc[is_men_tcv, "vaccination_status"] = "zero dose"
+    df.loc[is_men_tcv, "vaccination_status"] = "zéro dose"
     df.loc[is_men_tcv, "site"] = "ordinaire"
 
     group_cols = [
@@ -391,30 +392,31 @@ def create_coverage_dataset(
     df = df.groupby(group_cols, as_index=False)["value"].sum()
     df_final = df
 
-    # # merge with expected combined campaign data to ensure all combinations are present
-    # df_final = combined_campaign_data_df.merge(
-    #     df,
-    #     on=[
-    #         "year",
-    #         "round",
-    #         "period",
-    #         "age",
-    #         "sexe",
-    #         "org_unit_id",
-    #         "produit",
-    #         "vaccination_status",
-    #         "site",
-    #     ],
-    #     how="left",
-    # )
+    # merge with expected combined campaign data to ensure all combinations are present
+    combined_campaign_data_df = combined_campaign_data_df
+    df_final = combined_campaign_data_df.merge(
+        df,
+        on=[
+            "year",
+            "round",
+            "period",
+            "age",
+            "sexe",
+            "org_unit_id",
+            "produit",
+            "vaccination_status",
+            "site",
+        ],
+        how="left",
+    )
 
-    # # check proportion of entries in combined_campaign_data_df found in coverage dataset
-    # unmatched_entries = df_final[df_final["value"].isna()]
-    # if not unmatched_entries.empty:
-    #     proportion_unmatched = len(unmatched_entries) / len(combined_campaign_data_df)
-    #     current_run.log_warning(
-    #         f"{len(unmatched_entries)} entrée(s) ({proportion_unmatched:.2%}) du jeu de données combiné de campagne n'ont pas été trouvées dans le jeu de données de couverture."
-    #     )
+    # check proportion of entries in combined_campaign_data_df found in coverage dataset
+    unmatched_entries = df_final[df_final["value"].isna()]
+    if not unmatched_entries.empty:
+        proportion_unmatched = len(unmatched_entries) / len(combined_campaign_data_df)
+        current_run.log_warning(
+            f"{len(unmatched_entries)} entrée(s) ({proportion_unmatched:.2%}) du jeu de données combiné de campagne n'ont pas été trouvées dans le jeu de données de couverture."
+        )
     return df_final
 
 

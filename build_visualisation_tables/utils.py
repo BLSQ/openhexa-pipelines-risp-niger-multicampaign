@@ -1154,17 +1154,20 @@ def site_categorizer(string):
     """
     sites = {
         "site_ordinaire": "ordinaire",
-        "site_speciaux_nomad": "nomade",
-        "site_speciaux_gares": "gare",
-        "site_speciaux_marche": "marche",
-        "site_speciaux_point_eau": "point_eau",
+        "site_speciaux_nomad": "spécial",
+        "site_speciaux_gares": "spécial",
+        "site_speciaux_marche": "spécial",
+        "site_speciaux_point_eau": "spécial",
         "site_speciaux_postefron": "frontalier",
-        "site_trans_front_cote_front": "transfrontalier_etranger",
-        "site_trans_front_cote_niger": "transfrontarlier_Niger",
-        "site_speciaux_deplace_int": "deplaces_internes",
-        "site_speciaux_refugie": "refugies",
-        "site_speciaux": "special",
-        "site_speciaux_autre": "autre",
+        "site_trans_front_cote_front": "transfrontalier : étranger",
+        "site_trans_front_cote_niger": "transfrontalier : Niger",
+        "site_speciaux_deplace_int": "déplacés internes",
+        "site_speciaux_refugie": "réfugiés",
+        "site_speciaux": "spécial",
+        "site_speciaux_autre": "spécial",
+        "fixe": "fixe",
+        "avance": "avancé",
+        "mobile": "mobile",
     }
 
     for key in sites:
@@ -1172,25 +1175,6 @@ def site_categorizer(string):
             return sites[key]
 
     return "TOUS"
-
-
-def strategie_categorizer(string):
-    """
-    Categorizes strategy types based on the input string.
-
-    Parameters:
-        string (str): The input string containing strategy information.
-
-    Returns:
-        str: The categorized strategy type.
-    """
-    sites = {"fixe": "fixe", "avance": "avance", "mobile": "mobile"}
-
-    for key in sites:
-        if key in string:
-            return sites[key]
-
-    return "indéterminé"
 
 
 def produit_categorizer(string):
@@ -1207,10 +1191,10 @@ def produit_categorizer(string):
         "vitamine_a": "vitamine A",
         "vit_a": "vitamine A",
         "vpo": "vaccin polio",
-        "polio": "flacons polio",
+        "polio": "vaccin polio",
         "albendazole": "albendazole",
         "depara": "albendazole",
-        "fievre_jaune": "flacons fievre jaune",
+        "fievre_jaune": "flacons fièvre jaune",
         "men5": "méningite",
         "tcv": "tcv",
     }
@@ -1238,7 +1222,7 @@ def vaccination_status_categorizer(string):
         if key in string:
             return status[key]
 
-    return "zero dose"
+    return "zéro dose"
 
 
 def product_status_categorizer(string):
@@ -1254,8 +1238,8 @@ def product_status_categorizer(string):
     products = {
         "stock": "stock",
         "restants": "stock",
-        "recu": "recu",
-        "utilise": "utilise",
+        "recu": "reçu",
+        "utilise": "utilisé",
     }
 
     for key in products:

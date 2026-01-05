@@ -68,14 +68,26 @@ campaign_dates = {
 
 sites_types = [
     "ordinaire",
-    "special",
+    "spécial",
     "frontalier",
-    "transfrontalier_etranger",
-    "transfrontarlier_Niger",
+    "transfrontalier : étranger",
+    "transfrontalier : Niger",
+    "TOUS",
 ]
 
+sites_types = [
+    "ordinaire",
+    "spécial",
+    "frontalier",
+    "transfrontalier : étranger",
+    "transfrontalier : Niger",
+]
 
-strategie_types = ["fixe", "avance", "mobile"]
+sites_types_rougeole_adjustment = {
+    "ordinaire": "fixe",
+    "special": "avancé",
+    "frontalier": "mobile",
+}
 
 sex_types = ["TOUS"]
 
@@ -100,14 +112,14 @@ campaign_configs = {
     },
     "rougeole": {
         "choix_campagne": ["rougeole"],
-        "ages": ["0-11 mois", "12-59 mois"],
+        "ages": ["6-11 mois", "12-59 mois"],
         "produit": ["rougeole"],
         "status": ["zéro dose"],
     },
     "fjaune": {
         "choix_campagne": ["fièvre jaune"],
         "ages": ["9-11 mois", "12-23 mois", "24-59 mois", "5-14 ans", "15-60 ans"],
-        "produit": ["fièvre jaune"],
+        "produit": ["flacons fièvre jaune"],
         "status": ["zéro dose"],
     },
     "meningite": {
