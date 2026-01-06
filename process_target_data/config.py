@@ -110,6 +110,8 @@ target_polio_rougeole_2025_columns = [
     "12-59 mois",
 ]
 
+age_adjustment_rougeole = {"0-11 mois": "6-11 mois"}
+
 # yellow fever 2025
 target_yellow_fever_2025_columns = [
     "LVL_3_NAME",

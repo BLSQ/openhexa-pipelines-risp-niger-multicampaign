@@ -28,6 +28,16 @@ campaign_name_mapping_dict = {
     "tcv": "tcv",
 }
 
+# iaso df
+iaso_df_common_cols = [
+    "uuid",
+    "form_id",
+    "created_at",
+    "period",
+    "statuschoix_campagne",
+    "org_unit_id",
+]
+
 # coverage table
 cvrg_polio_cols = (
     [
@@ -138,18 +148,18 @@ cvrg_rougeole_cols = (
         "nombre_dose_12_fixe",
         "nombre_vacine_12_fixe",
     ]
-    + [  # Lionel: why do we add these columns for rougeole coverage (they are specific to Polio)? Check with Fernando
-        "zero_dose_vpo_0_11_mois_fois_site_ordinaire",
-        "zero_dose_vpo_0_11_mois_fois_site_speciaux",
-        "zero_dose_vpo_0_11_mois_fois_site_speciaux_postefron",
-        "zero_dose_vpo_0_11_mois_fois_site_trans_front_cote_front",
-        "zero_dose_vpo_0_11_mois_fois_site_trans_front_cote_niger",
-        "zero_dose_vpo_12_59_mois_fois_site_ordinaire",
-        "zero_dose_vpo_12_59_mois_fois_site_speciaux",
-        "zero_dose_vpo_12_59_mois_fois_site_speciaux_postefron",
-        "zero_dose_vpo_12_59_mois_fois_site_trans_front_cote_front",
-        "zero_dose_vpo_12_59_mois_fois_site_trans_front_cote_niger",
-    ]
+    # + [  # Lionel: why do we add these columns for rougeole coverage (they are specific to Polio)? Check with Fernando
+    #     "zero_dose_vpo_0_11_mois_fois_site_ordinaire",
+    #     "zero_dose_vpo_0_11_mois_fois_site_speciaux",
+    #     "zero_dose_vpo_0_11_mois_fois_site_speciaux_postefron",
+    #     "zero_dose_vpo_0_11_mois_fois_site_trans_front_cote_front",
+    #     "zero_dose_vpo_0_11_mois_fois_site_trans_front_cote_niger",
+    #     "zero_dose_vpo_12_59_mois_fois_site_ordinaire",
+    #     "zero_dose_vpo_12_59_mois_fois_site_speciaux",
+    #     "zero_dose_vpo_12_59_mois_fois_site_speciaux_postefron",
+    #     "zero_dose_vpo_12_59_mois_fois_site_trans_front_cote_front",
+    #     "zero_dose_vpo_12_59_mois_fois_site_trans_front_cote_niger",
+    # ]
     + [
         "nombre_zero_dose_6_avance",
         "nombre_vacine_6_avance",

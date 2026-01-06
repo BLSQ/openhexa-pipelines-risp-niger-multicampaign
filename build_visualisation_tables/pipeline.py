@@ -11,6 +11,7 @@ from config import (
     current_period_start_date,
     campaign_name_cleaning_dict,
     campaign_name_mapping_dict,
+    iaso_df_common_cols,
     cvrg_campaign_map,
     district_level_target_keys,
     district_level_group_keys,
@@ -221,6 +222,12 @@ def clean_combined_df(combined_df: pd.DataFrame) -> pd.DataFrame:
         campaign_name_mapping_dict
     )
 
+    # set values of columns unrelated to a specific campaign to NaN (use cvrg_campaign_map dict to identify columns specific to each campaign)
+    for campaign_name, cols in cvrg_campaign_map.items():
+        cols_in_df = [c for c in cols if c in combined_df.columns]
+        mask_not_campaign = combined_df["choix_campagne"] != campaign_name
+        combined_df.loc[mask_not_campaign, cols_in_df] = np.nan
+
     # delete entries with no or unknown campaign assigned (i.e. within the mapping dict)
     na_campaigns = combined_df[combined_df["choix_campagne"].isna()]
     invalid_campaigns = combined_df[
@@ -390,12 +397,27 @@ def create_coverage_dataset(
         "site",
     ]
     df = df.groupby(group_cols, as_index=False)["value"].sum()
-    df_final = df
+    df_updated_0 = df
+
+    # drop entries that are not to be expected in the df:
+    # date invalide
+    mask_date_invalide = df_updated_0["round"] == "date invalide"
+    df_updated_1 = df_updated_0[~mask_date_invalide]
+
+    # rougeole 2024 --> these entries are artificially created due to the commonality of campaign with polio
+    mask_rougeole_2024 = (df_updated_1["year"] == 2024) & (
+        df_updated_1["produit"] == "rougeole"
+    )
+    df_updated_2 = df_updated_1[~mask_rougeole_2024]
+
+    # value of zero
+    mask_value_zero = df_updated_2["value"] == 0
+    df_updated_3 = df_updated_2[~mask_value_zero]
 
     # merge with expected combined campaign data to ensure all combinations are present
     combined_campaign_data_df = combined_campaign_data_df
-    df_final = combined_campaign_data_df.merge(
-        df,
+    df_final = df_updated_3.merge(
+        combined_campaign_data_df,
         on=[
             "year",
             "round",
@@ -408,15 +430,18 @@ def create_coverage_dataset(
             "site",
         ],
         how="left",
+        indicator=True,
     )
 
     # check proportion of entries in combined_campaign_data_df found in coverage dataset
-    unmatched_entries = df_final[df_final["value"].isna()]
-    if not unmatched_entries.empty:
-        proportion_unmatched = len(unmatched_entries) / len(combined_campaign_data_df)
+    unmatched_entries_in_iaso = df_final[df_final["_merge"] == "left_only"]
+    if not unmatched_entries_in_iaso.empty:
+        proportion_unmatched_in_iaso = len(unmatched_entries_in_iaso) / len(df)
         current_run.log_warning(
-            f"{len(unmatched_entries)} entrée(s) ({proportion_unmatched:.2%}) du jeu de données combiné de campagne n'ont pas été trouvées dans le jeu de données de couverture."
+            f"{len(unmatched_entries_in_iaso)} entrée(s) ({proportion_unmatched_in_iaso:.2%}) dans IASO n'ont pas été trouvées dans le expected dataframe. Ces entrées seront supprimées."
         )
+    df_final = df_final[df_final["_merge"] == "both"].drop(columns=["_merge"])
+
     return df_final
 
 
@@ -439,25 +464,15 @@ def add_target_data(coverage_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.Da
         as_index=False,
     )["cible"].sum()
 
-    district_name_mapping = (
-        target_df[["LVL_3_NAME", "org_unit_id"]].copy().drop_duplicates()
-    )
-
-    coverage_district = coverage_df.merge(
-        district_name_mapping,
-        on="org_unit_id",
-        how="left",
-    )
-
-    no_district_entries = coverage_district[coverage_district["LVL_3_NAME"].isna()]
+    no_district_entries = coverage_df[coverage_df["LVL_3_NAME"].isna()]
     if not no_district_entries.empty:
-        proportion_no_district = len(no_district_entries) / len(coverage_district)
+        proportion_no_district = len(no_district_entries) / len(coverage_df)
         current_run.log_warning(
             f"{len(no_district_entries)} entrée(s) ({proportion_no_district:.2%}) du jeu de données de couverture n'ont pas de nom de district associé."
             "Ces entrées auront une valeur de cible NaN."
         )
 
-    coverage_district = coverage_district.groupby(
+    coverage_district = coverage_df.groupby(
         district_level_group_keys, as_index=False
     ).agg({"value": "sum", "org_unit_id": "first"})
 

@@ -54,7 +54,10 @@ def extract_org_unit_id() -> pd.DataFrame:
     )
 
     org_unit_ids_df = pd.read_parquet(file_path)
-    org_unit_ids_df = org_unit_ids_df[["org_unit_id"]].drop_duplicates()
+    org_unit_ids_df = org_unit_ids_df[
+        ["org_unit_id", "LVL_3_NAME", "LVL_6_NAME"]
+    ].drop_duplicates()
+    assert org_unit_ids_df["org_unit_id"].is_unique, "Duplicate org_unit_ids found!"
 
     return org_unit_ids_df
 
@@ -238,6 +241,8 @@ def adjust_to_specific_campaigns(combined_df: pd.DataFrame) -> pd.DataFrame:
         & (combined_df["round"] != "round 2")
     )
     combined_df = combined_df[~mask_polio_2024]
+
+    #
 
     # polio and rougeole 2025 round 1 and 2
     mask_2025_rounds = combined_df["produit"].isin(["rougeole"])

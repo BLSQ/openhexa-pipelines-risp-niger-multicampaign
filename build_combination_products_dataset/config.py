@@ -85,7 +85,7 @@ sites_types = [
 
 sites_types_rougeole_adjustment = {
     "ordinaire": "fixe",
-    "special": "avancé",
+    "spécial": "avancé",
     "frontalier": "mobile",
 }
 
@@ -100,7 +100,7 @@ campaign_configs = {
     },
     "vita": {
         "choix_campagne": ["polio"],
-        "ages": ["6-11 mois", "12-59 mois"],
+        "ages": ["6-11 mois", "12-24 mois"],
         "produit": ["vitamine A"],
         "status": ["zéro dose"],
     },
