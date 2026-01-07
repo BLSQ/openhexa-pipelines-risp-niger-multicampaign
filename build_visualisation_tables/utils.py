@@ -279,7 +279,7 @@ def round_assignment(df):
 
     # Define the boolean masks for the campaign diseases
     is_meningite_tcv = df["choix_campagne"].isin(["men5_tcv", "méningite", "tcv"])
-    is_yellow_fever = df["choix_campagne"].isin(["Fievre_Jaune", "fievre jaune"])
+    is_yellow_fever = df["choix_campagne"].isin(["Fievre_Jaune", "fièvre jaune"])
     is_polio = df["choix_campagne"].isin(["POLIOMYELITE", "polio"])
     is_rougeole = df["choix_campagne"].isin(["rougeole"])
 
@@ -1194,9 +1194,9 @@ def produit_categorizer(string):
         "polio": "vaccin polio",
         "albendazole": "albendazole",
         "depara": "albendazole",
-        "fievre_jaune": "flacons fièvre jaune",
-        "men5": "méningite",
-        "tcv": "tcv",
+        "fievre_jaune": "fièvre jaune",
+        "men5_men5": "méningite",
+        "men5_tcv": "tcv",
     }
 
     for key in products:

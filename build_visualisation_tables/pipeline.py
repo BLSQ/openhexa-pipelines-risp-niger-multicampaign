@@ -17,9 +17,11 @@ from config import (
     district_level_group_keys,
     district_level_final_keys,
     district_level_cumsum_keys,
+    district_level_config,
     csi_level_target_keys,
     csi_level_final_keys,
     csi_level_cumsum_keys,
+    csi_level_config,
 )
 from utils import (
     Conector_from_Dict,
@@ -47,7 +49,6 @@ def build_visualisation_tables():
     combined_campaign_data_df = import_combined_campaign_data()
     coverage_df = create_coverage_dataset(combined_df, combined_campaign_data_df)
     coverage_with_target_df = add_target_data(coverage_df, target_df)
-    x
 
 
 def import_historical_iaso_data() -> pd.DataFrame:
@@ -177,6 +178,9 @@ def retrieve_org_unit_ids(combined_df: pd.DataFrame) -> pd.DataFrame:
     )
     iaso_org_unit_tree_clean = pd.read_parquet(file_path_clean)
     iaso_org_unit_tree_raw = pd.read_parquet(file_path_raw)
+    iaso_org_unit_tree_raw["LVL_6_UID"] = iaso_org_unit_tree_raw.groupby("LVL_6_NAME")[
+        "LVL_6_UID"
+    ].transform("first")
 
     uid_to_org_id_dict = iaso_org_unit_tree_clean.set_index("LVL_6_UID").to_dict()[
         "org_unit_id"
@@ -400,6 +404,7 @@ def create_coverage_dataset(
     df_updated_0 = df
 
     # drop entries that are not to be expected in the df:
+
     # date invalide
     mask_date_invalide = df_updated_0["round"] == "date invalide"
     df_updated_1 = df_updated_0[~mask_date_invalide]
@@ -459,6 +464,17 @@ def add_target_data(coverage_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.Da
     current_run.log_info("Adding target data to coverage dataset...")
 
     # district-level
+
+    # config_list = []
+    # for year, products in district_level_config.items():
+    #     for prod, rounds in products.items():
+    #         for r in rounds:
+    #             config_list.append({"year": year, "produit": prod, "round": r})
+    # district_level_filter = pd.DataFrame(config_list)
+    # target_district = target_df.merge(
+    #     district_level_filter, on=["year", "produit", "round"], how="inner"
+    # ).drop(columns=["LVL_6_NAME"])
+
     target_district = target_df.groupby(
         district_level_target_keys,
         as_index=False,
@@ -481,15 +497,13 @@ def add_target_data(coverage_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.Da
         on=district_level_target_keys,
         how="left",
     )[district_level_final_keys]
-    no_target_entries = coverage_district_with_target_df[
+    no_target_entries_ds = coverage_district_with_target_df[
         coverage_district_with_target_df["cible"].isna()
     ]
-    if not no_target_entries.empty:
-        proportion_no_target = len(no_target_entries) / len(
-            coverage_district_with_target_df
-        )
+    if not no_target_entries_ds.empty:
+        proportion_no_target_ds = len(no_target_entries_ds) / len(coverage_district)
         current_run.log_warning(
-            f"{len(no_target_entries)} entrée(s) ({proportion_no_target:.2%}) du jeu de données de couverture au niveau des districts n'ont pas de cible associée."
+            f"{len(no_target_entries_ds)} entrée(s) ({proportion_no_target_ds:.2%}) du jeu de données de couverture au niveau des districts n'ont pas de cible associée."
             "Ces entrées auront une valeur de cible de 0."
         )
 
@@ -503,28 +517,44 @@ def add_target_data(coverage_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.Da
     )
 
     # csi level
-    coverage_csi_with_target_df = coverage_df.merge(
-        target_df,
+    # restrict to csi-level campaigns: fièvre jaune 2025, méningite 2025, tcv 2025 and vaccin polio 2025 r3
+    config_list = []
+    for year, products in csi_level_config.items():
+        for prod, rounds in products.items():
+            for r in rounds:
+                config_list.append({"year": year, "produit": prod, "round": r})
+    csi_level_filter = pd.DataFrame(config_list)
+    target_csi = target_df.merge(
+        csi_level_filter, on=["year", "produit", "round"], how="inner"
+    ).drop(columns=["LVL_3_NAME", "LVL_6_NAME"])
+    coverage_df_csi = coverage_df.merge(
+        csi_level_filter, on=["year", "produit", "round"], how="inner"
+    )
+
+    coverage_csi_with_target_df = coverage_df_csi.merge(
+        target_csi,
         on=csi_level_target_keys,
         how="left",
     )[csi_level_final_keys]
 
-    no_target_entries = coverage_csi_with_target_df[
+    no_target_entries_csi = coverage_csi_with_target_df[
         coverage_csi_with_target_df["cible"].isna()
     ]
 
-    if not no_target_entries.empty:
-        proportion_no_target = len(no_target_entries) / len(coverage_csi_with_target_df)
+    if not no_target_entries_csi.empty:
+        affected_csi_list = no_target_entries_csi["LVL_6_NAME"].unique().tolist()
+        proportion_no_target_csi = len(no_target_entries_csi) / len(coverage_df_csi)
         current_run.log_warning(
-            f"{len(no_target_entries)} entrée(s) ({proportion_no_target:.2%}) du jeu de données de couverture au niveau des CSI n'ont pas de cible associée."
-            "Ces entrées auront une valeur de cible de 0."
+            f"{len(no_target_entries_csi)} entrée(s) ({proportion_no_target_csi:.2%}) du jeu de données de couverture au niveau des CSI n'ont pas de cible associée."
+            "Ces entrées auront une valeur de cible manquante."
+            f"CSI affectés: {', '.join(affected_csi_list)}"
         )
 
     coverage_csi_with_target_df["value_cum"] = coverage_csi_with_target_df.groupby(
         csi_level_cumsum_keys
     )["value"].transform("cumsum")
-    coverage_csi_with_target_df["cible"] = (
-        coverage_csi_with_target_df["cible"].fillna(0).astype(int)
+    coverage_csi_with_target_df["cible"] = coverage_csi_with_target_df["cible"].astype(
+        "Int64"
     )
 
     cvrg_csi_district = pd.concat(

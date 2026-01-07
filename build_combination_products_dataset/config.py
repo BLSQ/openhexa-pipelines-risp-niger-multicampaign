@@ -119,7 +119,7 @@ campaign_configs = {
     "fjaune": {
         "choix_campagne": ["fièvre jaune"],
         "ages": ["9-11 mois", "12-23 mois", "24-59 mois", "5-14 ans", "15-60 ans"],
-        "produit": ["flacons fièvre jaune"],
+        "produit": ["fièvre jaune"],
         "status": ["zéro dose"],
     },
     "meningite": {

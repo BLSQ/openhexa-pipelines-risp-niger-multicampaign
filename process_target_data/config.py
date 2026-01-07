@@ -110,7 +110,10 @@ target_polio_rougeole_2025_columns = [
     "12-59 mois",
 ]
 
-age_adjustment_rougeole = {"0-11 mois": "6-11 mois"}
+age_adjustment_rougeole = {"0-11 mois": "6-11 mois", "12-59 mois": "12-59 mois"}
+age_adjustment_albendazole = {"0-11 mois": "12-23 mois", "12-59 mois": "24-59 mois"}
+age_adjustment_vitA = {"0-11 mois": "6-11 mois", "12-59 mois": "12-24 mois"}
+
 
 # yellow fever 2025
 target_yellow_fever_2025_columns = [

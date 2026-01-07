@@ -23,7 +23,7 @@ campaign_name_cleaning_dict = {
 campaign_name_mapping_dict = {
     "POLIOMYELITE": "polio",
     "rougeole": "rougeole",
-    "Fievre_Jaune": "fievre jaune",
+    "Fievre_Jaune": "fièvre jaune",
     "men5": "méningite",
     "tcv": "tcv",
 }
@@ -223,6 +223,20 @@ district_level_cumsum_keys = list(
     (set(district_level_group_keys) | {"org_unit_id"}) - {"period"}
 )
 
+district_level_config = {
+    2024: {
+        "vaccin polio": ["round 1", "round 2", "round 3", "round 4"],
+        "albendazole": ["round 1", "round 2", "round 3", "round 4"],
+        "vitamine A": ["round 1", "round 2", "round 3", "round 4"],
+    },
+    2025: {
+        "vaccin polio": ["round 1", "round 2"],
+        "albendazole": ["round 1", "round 2"],
+        "vitamine A": ["round 1", "round 2"],
+        "rougeole": ["round 1", "round 2"],
+    },
+}
+
 csi_level_target_keys = list(
     (set(district_level_target_keys) | {"org_unit_id"}) - {"LVL_3_NAME"}
 )
@@ -230,3 +244,12 @@ csi_level_target_keys = list(
 csi_level_final_keys = district_level_final_keys + ["LVL_6_NAME"]
 
 csi_level_cumsum_keys = district_level_cumsum_keys + ["LVL_6_NAME"]
+
+csi_level_config = {
+    2025: {
+        "fièvre jaune": ["round 1", "round 2"],
+        "méningite": ["round 1", "round 2"],
+        "tcv": ["round 1", "round 2"],
+        "vaccin polio": ["round 3"],
+    },
+}

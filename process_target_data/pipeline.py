@@ -7,6 +7,7 @@ from utils import (
     IASOConnectionHandler,
     org_unit_matching,
     pyramid_selector,
+    strip_accents,
 )
 from config import (
     iaso_connector_slug,
@@ -15,6 +16,8 @@ from config import (
     polio_2024_dict_districts_cibles_iaso,
     target_polio_rougeole_2025_columns,
     age_adjustment_rougeole,
+    age_adjustment_albendazole,
+    age_adjustment_vitA,
     target_yellow_fever_2025_columns,
     target_yellow_fever_2025_age_ranges,
     target_men5_tcv_2025_columns_dict,
@@ -136,9 +139,25 @@ def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFram
         iaso_org_unit_tree_df["Validé"] != "REJECTED"
     ]
     iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
-        iaso_org_unit_tree_df_clean["Source"] == "SNIS"
+        iaso_org_unit_tree_df_clean["Source"].isin(["SNIS", "SNIS 2025"])
     ]
-
+    # remove all CSI marked as closed
+    cloture_filter = (
+        iaso_org_unit_tree_df_clean["LVL_6_NAME"]
+        .apply(strip_accents)
+        .str.contains("cloture", case=False, na=False)
+    )
+    iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[~cloture_filter]
+    if cloture_filter.sum() > 0:
+        proportion_closed_csi = (
+            cloture_filter.sum() / len(iaso_org_unit_tree_df_clean)
+        ) * 100
+        current_run.log_info(
+            f"Removed {cloture_filter.sum()} closed CSI ({proportion_closed_csi:.2f}%) from the org unit tree."
+        )
+    iaso_org_unit_tree_df_clean["LVL_6_UID"] = iaso_org_unit_tree_df_clean.groupby(
+        "LVL_6_NAME"
+    )["LVL_6_UID"].transform("first")
     iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean.groupby(
         "LVL_6_UID", as_index=False
     ).apply(pyramid_selector, include_groups=False)
@@ -452,60 +471,60 @@ def match_csi_to_org_unit_id(
         csi_level_target_df, iaso_org_unit_tree_for_matching, threshold=50
     )
 
-    # save file to parquet for later use
-    cols_to_fix = [
-        "LVL_3_NAME_original",
-        "LVL_6_NAME_original",
-        "LVL_3_NAME",
-        "LVL_6_NAME",
-        "cleansed_target",
-        "cleansed_spatial_match",
-    ]
-    for col in cols_to_fix:
-        if col in target_df_matched.columns:
-            target_df_matched[col] = (
-                target_df_matched[col].astype(str).replace("nan", "")
-            )
-        if col in org_unit_tree_check.columns:
-            org_unit_tree_check[col] = (
-                org_unit_tree_check[col].astype(str).replace("nan", "")
-            )
-    target_df_matched.to_parquet(
-        os.path.join(workspace.files_path, "temp", "target_df_matched.parquet"),
-        index=False,
-    )
-    org_unit_tree_check.to_parquet(
-        os.path.join(workspace.files_path, "temp", "org_unit_tree_check.parquet"),
-        index=False,
-    )
-    target_df_matched = pd.read_parquet(
-        os.path.join(workspace.files_path, "temp", "target_df_matched.parquet")
-    )
-    org_unit_tree_check = pd.read_parquet(
-        os.path.join(workspace.files_path, "temp", "org_unit_tree_check.parquet")
-    )
+    # # save file to parquet for later use
+    # cols_to_fix = [
+    #     "LVL_3_NAME_original",
+    #     "LVL_6_NAME_original",
+    #     "LVL_3_NAME",
+    #     "LVL_6_NAME",
+    #     "cleansed_target",
+    #     "cleansed_spatial_match",
+    # ]
+    # for col in cols_to_fix:
+    #     if col in target_df_matched.columns:
+    #         target_df_matched[col] = (
+    #             target_df_matched[col].astype(str).replace("nan", "")
+    #         )
+    #     if col in org_unit_tree_check.columns:
+    #         org_unit_tree_check[col] = (
+    #             org_unit_tree_check[col].astype(str).replace("nan", "")
+    #         )
+    # target_df_matched.to_parquet(
+    #     os.path.join(workspace.files_path, "temp", "target_df_matched.parquet"),
+    #     index=False,
+    # )
+    # org_unit_tree_check.to_parquet(
+    #     os.path.join(workspace.files_path, "temp", "org_unit_tree_check.parquet"),
+    #     index=False,
+    # )
+    # target_df_matched = pd.read_parquet(
+    #     os.path.join(workspace.files_path, "temp", "target_df_matched.parquet")
+    # )
+    # org_unit_tree_check = pd.read_parquet(
+    #     os.path.join(workspace.files_path, "temp", "org_unit_tree_check.parquet")
+    # )
 
-    # inspect matching results
-    target_df_matched_check = target_df_matched[
-        [
-            "org_unit_id",
-            "LVL_3_NAME_original",
-            "LVL_6_NAME_original",
-            "LVL_3_NAME",
-            "LVL_6_NAME",
-            "cleansed_target",
-            "cleansed_spatial_match",
-            "match_score",
-        ]
-    ]
-    target_df_matched_check.to_csv(
-        os.path.join(workspace.files_path, "temp", "target_df_matched_check.csv"),
-        index=False,
-    )
-    org_unit_tree_check.to_csv(
-        os.path.join(workspace.files_path, "temp", "org_unit_tree_check.csv"),
-        index=False,
-    )
+    # # inspect matching results
+    # target_df_matched_check = target_df_matched[
+    #     [
+    #         "org_unit_id",
+    #         "LVL_3_NAME_original",
+    #         "LVL_6_NAME_original",
+    #         "LVL_3_NAME",
+    #         "LVL_6_NAME",
+    #         "cleansed_target",
+    #         "cleansed_spatial_match",
+    #         "match_score",
+    #     ]
+    # ]
+    # target_df_matched_check.to_csv(
+    #     os.path.join(workspace.files_path, "temp", "target_df_matched_check.csv"),
+    #     index=False,
+    # )
+    # org_unit_tree_check.to_csv(
+    #     os.path.join(workspace.files_path, "temp", "org_unit_tree_check.csv"),
+    #     index=False,
+    # )
 
     for (
         csi_concat_original,
@@ -663,12 +682,22 @@ def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
 
         target_df_expanded_albendazole = target_df_expanded.copy()
         target_df_expanded_albendazole["produit"] = "albendazole"
+        target_df_expanded_albendazole["age"] = target_df_expanded_albendazole[
+            "age"
+        ].replace(age_adjustment_albendazole)
+
+        target_df_expanded_vitA = target_df_expanded.copy()
+        target_df_expanded_vitA["produit"] = "vitamine A"
+        target_df_expanded_vitA["age"] = target_df_expanded_vitA["age"].replace(
+            age_adjustment_vitA
+        )
 
         target_df_expanded = pd.concat(
             [
                 target_df_expanded_rougeole,
                 target_df_expanded_polio,
                 target_df_expanded_albendazole,
+                target_df_expanded_vitA,
             ],
             ignore_index=True,
         )
@@ -768,7 +797,11 @@ def clean_org_unit_id(
     uid_to_org_id_df_clean = iaso_org_unit_tree_clean_df[
         ["LVL_6_UID", "org_unit_id"]
     ].drop_duplicates()
-    uid_to_org_id_df_raw = iaso_org_unit_tree_df[
+    uid_to_org_id_df_raw = iaso_org_unit_tree_df.copy()
+    uid_to_org_id_df_raw["LVL_6_UID"] = uid_to_org_id_df_raw.groupby("LVL_6_NAME")[
+        "LVL_6_UID"
+    ].transform("first")
+    uid_to_org_id_df_raw = uid_to_org_id_df_raw[
         ["LVL_6_UID", "org_unit_id"]
     ].drop_duplicates()
     uid_to_org_id_df_raw = uid_to_org_id_df_raw.rename(

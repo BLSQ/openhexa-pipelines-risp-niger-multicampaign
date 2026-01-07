@@ -853,6 +853,14 @@ def pyramid_selector(df):
         return pyramid_selector(df)
 
 
+def strip_accents(s):
+    if not isinstance(s, str):
+        return s
+    return "".join(
+        c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn"
+    )
+
+
 def normalize_string(text):
     """
     Normalizes a string:
