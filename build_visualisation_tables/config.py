@@ -253,3 +253,259 @@ csi_level_config = {
         "vaccin polio": ["round 3"],
     },
 }
+
+# completeness table
+product_campaign_mapping = {
+    "vaccin polio": "polio",
+    "vitamine A": "polio",
+    "albendazole": "polio",
+    "rougeole": "rougeole",
+    "fièvre jaune": "fièvre jaune",
+    "méningite": "méningite",
+    "tcv": "tcv",
+}
+
+# stocks table
+stock_polio_cols = (
+    ["stock_polio", "nbre_flacons_polio_recus", "nbre_flacons_polio_utilises"]
+    + ["stock_vitamine_a", "nbre_vit_a_recu", "nbre_vit_a_utilise"]
+    + ["stock_albendazole", "nbre_albendazole_recu", "nbre_albendazole_utilise"]
+)
+
+stock_rougeole_cols = [
+    "nombre_vaccin_recu",
+    "nombre_vaccin_utilise",
+]
+
+stock_fjaune_cols = [
+    "stock_fievre_jaune",
+    "nbre_flacons_recus_fievre_jaune",
+    "nbre_flacons_utilises_fievre_jaune",
+]
+
+stock_men5_cols = (
+    [
+        "men5_flacons_diluant_recus",
+        "men5_flacons_diluant_utilises",
+        "men5_flacons_diluant_restants",
+    ]
+    + [
+        "men5_seringues_auto_bloquantes_recus",
+        "men5_seringues_auto_bloquantes_utilises",
+        "men5_seringues_auto_bloquantes_restants",
+    ]
+    + [
+        "men5_seringues_dilution_recus",
+        "men5_seringues_dilution_utilises",
+        "men5_seringues_dilution_restants",
+    ]
+    + [
+        "men5_boites_securite_recus",
+        "men5_boites_securite_utilises",
+        "men5_boites_securite_restants",
+    ]
+)
+
+stock_tcv_cols = (
+    [
+        "tcv_flacons_vaccin_recus",
+        "tcv_flacons_vaccin_utilises",
+        "tcv_flacons_vaccin_restants",
+    ]
+    + [
+        "tcv_seringues_auto_bloquantes_recus",
+        "tcv_seringues_auto_bloquantes_utilises",
+        "tcv_seringues_auto_bloquantes_restants",
+    ]
+    + [
+        "tcv_boites_securite_recus",
+        "tcv_boites_securite_utilises",
+        "tcv_boites_securite_restants",
+    ]
+)
+
+stocks_campaign_map = {
+    "polio": stock_polio_cols,
+    "fièvre jaune": stock_fjaune_cols,
+    "rougeole": stock_rougeole_cols,
+    "méningite": stock_men5_cols,
+    "tcv": stock_tcv_cols,
+}
+
+stock_ratios_config = {
+    "vaccin polio": 50,
+    "vitamine A": 1,
+    "albendazole": 1,
+    "rougeole": 10,
+    "fièvre jaune": 1,
+    "méningite": 1,
+    "tcv": 1,
+}
+
+# surveillance table
+surveillance_polio_cols = [
+    "nbre_cas_pfa_notifie",
+    "nbre_cas_mapi_notifie_mapi",
+    "nbre_cas_mapi_majeur_notifie_mapi",
+]
+surveillance_rougeole_cols = [
+    "nombre_MAPI_non_grave",
+    "nombre_MAPI_graves",
+]
+surveillance_fjaune_cols = [
+    "nbre_cas_pfa_notifie_fievre_jaune",
+    "nbre_cas_fievre_jaune_notifie_fievre_jaune",
+    "nbre_cas_mapi_notifie_mapi_fievre_jaune",
+    "nbre_cas_mapi_majeur_notifie_mapi_fievre_jaune",
+]
+surveillance_men5_cols = [
+    "men5_total_de_cas_de_pfa_signales",
+    "men5_mapi_mineurs",
+    "men5_mapi_graves",
+]
+
+surveillance_campaign_map = {
+    "polio": surveillance_polio_cols,
+    "rougeole": surveillance_rougeole_cols,
+    "fièvre jaune": surveillance_fjaune_cols,
+    "méningite": surveillance_men5_cols,
+}
+
+# communication table
+communication_deployment = [
+    "nbre_relais",
+    "nbre_concession_visite",
+    "nbre_concession_non_favorable_vaccination",
+]
+
+communication_deployment_men5_cols = [
+    "men5_nombre_total_de_relais_mobilises",
+    "men5_nombre_total_de_concessions_visitees",
+    "men5_nombre_de_concessions_non_favorables_a_la_vaccination",
+]
+
+communication_reach = [
+    "nbre_personne_touche_par_relais",
+    "nbre_personne_touche_par_refugie_deplace_mi",
+    "nbre_personne_touche_nomande_trans_puits",
+    "nbre_personne_touche_zone_frontaliere",
+    "nbre_enfant_0_5_ans_demonbre",
+]
+
+communication_reach_men5_cols = [
+    "men5_nombre_de_personnes_touchees_par_le_relais",
+    "men5_nombre_d_enfants_de_0_5_ans_dans_les_concessions_visitees",
+    "men5_nombre_de_personnes_touchees_au_niveau_des_camps_des_refugies_deplaces_migrants",
+    "men5_nombre_de_personnes_touchees_au_niveau_des_camps_des_nomades_transhumants_puits",
+    "men5_nombre_de_personnes_touchees_au_niveau_des_villages_sites_frontaliers",
+]
+communication_causeries = [
+    "nbre_causerie",
+    "nbre_causeri_marche",
+    "nbre_causerie_refugie_deplace_migrant",
+    "nbre_causerie_nomade_trans_puit",
+    "nbre_causerie_fontalier",
+]
+
+communication_causeries_men5_cols = [
+    "men5_nombre_de_causeries_au_niveau_des_sites_ordinaires",
+    "men5_nombre_de_causeries_au_niveau_des_marches",
+    "men5_nombre_de_causeries_au_niveau_des_camps_des_refugies_deplaces_migrants",
+    "men5_nombre_de_causeries_au_niveau_des_camps_des_nomades_transhumants_puits",
+    "men5_nombre_de_causeries_au_niveau_des_villages_frontaliers",
+]
+communication_cas = [
+    "nbre_total_cas_pfa_signale",
+    "nbre_cas_rumeur_notifier",
+]
+
+communication_cas_men5_cols = [
+    "men5_nombre_total_de_cas_pfa_signales",  # to check with Issa/Fernando if these are the right columns
+    "men5_nombre_de_cas_de_rumeur_notifies_par_le_comite_de_veille",
+]
+communication_activities = [
+    "nbre_reunion_plaidoyer_tenue",
+    "nbre_leader_engage",
+    "nbre_radio_implique",
+    "nbre_spots",
+    "nbre_appel_leader",
+    "nbre_debats",
+    "nbre_interviews",
+    "nbre_emission_publique",
+    "nbre_dialoge_commutaire_tenu",
+    "estimation_population_expose",
+]
+
+communication_activities_men5_cols = [
+    "men5_nombre_de_reunions_de_plaidoyer_tenues",  # to check with Issa/Fernando if these are the right columns
+    "men5_nombre_de_leaders_engages",
+    "men5_nombre_de_radios_impliques",
+    "men5_nombre_de_spots_diffuses",
+    "men5_nombre_d_appels_de_leaders",
+    "men5_nombre_de_debats_organises",
+    "men5_nombre_d_interviews_realises",
+    "men5_nombre_d_emissions_publiques_diffusees",
+    "men5_nombre_estime_de_la_population_exposee_aux_messages",
+    "men5_nombre_de_dialogues_communautaires_tenus",
+]
+
+
+communication_denombrement_enfants_fjaune = [
+    "nbre_enfant_9_11_mois_demonbre_fievre_jaune",
+    "nbre_enfant_12_23_mois_demonbre_fievre_jaune",
+    "nbre_enfant_24_59_mois_demonbre_fievre_jaune",
+]
+communication_denombrement_adultes_fjaune = [
+    "nbre_personnes_5_14_ans_demonbre_fievre_jaune",
+    "nbre_personnes_15_60_ans_demonbre_fievre_jaune",
+]
+
+communication_cols = (
+    communication_deployment
+    + communication_deployment_men5_cols
+    + communication_reach
+    + communication_reach_men5_cols
+    + communication_causeries
+    + communication_causeries_men5_cols
+    + communication_cas
+    + communication_cas_men5_cols
+    + communication_activities
+    + communication_activities_men5_cols
+    + communication_denombrement_enfants_fjaune
+    + communication_denombrement_adultes_fjaune
+)
+
+
+# all columns
+cols_campaign_map = {
+    "polio": cvrg_polio_cols
+    + stock_polio_cols
+    + surveillance_polio_cols
+    + communication_deployment
+    + communication_reach
+    + communication_causeries
+    + communication_cas
+    + communication_activities,
+    "fièvre jaune": cvrg_fjaune_cols
+    + stock_fjaune_cols
+    + surveillance_fjaune_cols
+    + communication_denombrement_enfants_fjaune
+    + communication_denombrement_adultes_fjaune,
+    "rougeole": cvrg_rougeole_cols
+    + stock_rougeole_cols
+    + surveillance_rougeole_cols
+    + communication_deployment
+    + communication_reach
+    + communication_causeries
+    + communication_cas
+    + communication_activities,
+    "méningite": cvrg_meningite_cols
+    + stock_men5_cols
+    + surveillance_men5_cols
+    + communication_deployment_men5_cols
+    + communication_reach_men5_cols
+    + communication_causeries_men5_cols
+    + communication_cas_men5_cols
+    + communication_activities_men5_cols,
+    "tcv": cvrg_tcv_cols + stock_tcv_cols,
+}

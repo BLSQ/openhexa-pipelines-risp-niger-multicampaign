@@ -279,7 +279,9 @@ def round_assignment(df):
 
     # Define the boolean masks for the campaign diseases
     is_meningite_tcv = df["choix_campagne"].isin(["men5_tcv", "méningite", "tcv"])
-    is_yellow_fever = df["choix_campagne"].isin(["Fievre_Jaune", "fièvre jaune"])
+    is_yellow_fever = df["choix_campagne"].isin(
+        ["Fievre_Jaune", "fievre jaune", "fièvre jaune"]
+    )
     is_polio = df["choix_campagne"].isin(["POLIOMYELITE", "polio"])
     is_rougeole = df["choix_campagne"].isin(["rougeole"])
 
@@ -298,58 +300,55 @@ def round_assignment(df):
 
     # Define the logic for the yellow fever campaign
     yellow_fever_logic = np.where(
-        df["period"].dt.year == 2025,
+        (pd.to_datetime("2025-10-27") <= df["period"])
+        & (df["period"] <= pd.to_datetime("2025-11-04")),
+        "round 1",
         np.where(
-            (pd.to_datetime("2025-10-27") <= df["period"])
-            & (df["period"] <= pd.to_datetime("2025-11-04")),
-            "round 1",
+            (pd.to_datetime("2025-12-10") <= df["period"])
+            & (df["period"] <= pd.to_datetime("2025-12-17")),
+            "round 2",
             np.where(
-                (pd.to_datetime("2025-12-10") <= df["period"])
-                & (df["period"] <= pd.to_datetime("2025-12-17")),
-                "round 2",
+                (pd.to_datetime("2026-01-20") <= df["period"])
+                & (df["period"] <= pd.to_datetime("2026-01-26")),
+                "round 1",
                 "date invalide",
             ),
         ),
-        "date invalide",
     )
 
     # Define the logic for the polio campaigns
     polio_campaign_logic = np.where(
-        df["period"].dt.year < 2025,
+        (pd.to_datetime("2024-07-10") <= df["period"])
+        & (df["period"] <= pd.to_datetime("2024-07-24")),
+        "round 1",
         np.where(
-            (pd.to_datetime("2024-07-10") <= df["period"])
-            & (df["period"] <= pd.to_datetime("2024-07-24")),
-            "round 1",
+            (pd.to_datetime("2024-09-28") <= df["period"])
+            & (df["period"] <= pd.to_datetime("2024-10-06")),
+            "round 2",
             np.where(
-                (pd.to_datetime("2024-09-28") <= df["period"])
-                & (df["period"] <= pd.to_datetime("2024-10-06")),
-                "round 2",
+                (pd.to_datetime("2024-10-25") <= df["period"])
+                & (df["period"] <= pd.to_datetime("2024-11-01")),
+                "round 3",
                 np.where(
-                    (pd.to_datetime("2024-10-25") <= df["period"])
-                    & (df["period"] <= pd.to_datetime("2024-11-01")),
-                    "round 3",
+                    (pd.to_datetime("2024-12-01") <= df["period"])
+                    & (df["period"] <= pd.to_datetime("2024-12-12")),
+                    "round 4",
                     np.where(
-                        (pd.to_datetime("2024-12-01") <= df["period"])
-                        & (df["period"] <= pd.to_datetime("2024-12-12")),
-                        "round 4",
-                        "date invalide",
+                        (pd.to_datetime("2025-05-04") <= df["period"])
+                        & (df["period"] <= pd.to_datetime("2025-05-08")),
+                        "round 1",
+                        np.where(
+                            (pd.to_datetime("2025-06-14") <= df["period"])
+                            & (df["period"] <= pd.to_datetime("2025-06-21")),
+                            "round 2",
+                            np.where(
+                                (pd.to_datetime("2026-01-11") <= df["period"])
+                                & (df["period"] <= pd.to_datetime("2026-01-15")),
+                                "round 1",
+                                "date invalide",
+                            ),
+                        ),
                     ),
-                ),
-            ),
-        ),
-        np.where(
-            (pd.to_datetime("2025-05-04") <= df["period"])
-            & (df["period"] <= pd.to_datetime("2025-05-08")),
-            "round 1",
-            np.where(
-                (pd.to_datetime("2025-06-14") <= df["period"])
-                & (df["period"] <= pd.to_datetime("2025-06-21")),
-                "round 2",
-                np.where(
-                    (pd.to_datetime("2025-12-05") <= df["period"])
-                    & (df["period"] <= pd.to_datetime("2025-12-08")),
-                    "round 3",
-                    "date invalide",
                 ),
             ),
         ),
@@ -357,13 +356,9 @@ def round_assignment(df):
 
     # Define the logic for the rougeole campaigns
     rougeole_campaign_logic = np.where(
-        df["period"].dt.year == 2025,
-        np.where(
-            (pd.to_datetime("2025-04-18") <= df["period"])
-            & (df["period"] <= pd.to_datetime("2025-04-24")),
-            "round 1",
-            "date invalide",
-        ),
+        (pd.to_datetime("2025-04-18") <= df["period"])
+        & (df["period"] <= pd.to_datetime("2025-04-24")),
+        "round 1",
         "date invalide",
     )
 
@@ -1194,9 +1189,12 @@ def produit_categorizer(string):
         "polio": "vaccin polio",
         "albendazole": "albendazole",
         "depara": "albendazole",
+        "nombre_": "rougeole",  # beware
         "fievre_jaune": "fièvre jaune",
         "men5_men5": "méningite",
+        "men5": "méningite",
         "men5_tcv": "tcv",
+        "tcv": "tcv",
     }
 
     for key in products:
@@ -1261,36 +1259,20 @@ def supervision_categorizer(string):
     """
     supervision_cat = {
         "pfa": "pfa",
-        "mapi": "mapi",
+        "nbre_cas_fievre_jaune_notifie": "fievre_jaune_notifie",
+        "mapi_notifie_mapi": "mapi_mineur",
+        "MAPI_non_grave": "mapi_mineur",
+        "mapi_mineur": "mapi_mineur",
+        "mapi_majeur": "mapi_majeur",
+        "MAPI_grave": "mapi_majeur",
+        "mapi_grave": "mapi_majeur",
     }
 
     for key in supervision_cat:
         if key in string:
             return supervision_cat[key]
 
-    return "TOUS"
-
-
-def category_mapi_categorizer(string):
-    """
-    Categorizes MAPI cases based on the input string.
-
-    Parameters:
-        string (str): The input string containing MAPI case information.
-
-    Returns:
-        str: The categorized MAPI case type.
-    """
-    mapi_cat = {
-        "cas_mapi_notifie": "mineur",
-        "majeur": "majeur",
-    }
-
-    for key in mapi_cat:
-        if key in string:
-            return mapi_cat[key]
-
-    return None
+    return ""
 
 
 def new_cols(

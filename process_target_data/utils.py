@@ -699,7 +699,7 @@ def produit_categorizer(string):
         "polio": "flacons polio",
         "albendazole": "albendazole",
         "depara": "albendazole",
-        "fievre_jaune": "fievre jaune",
+        "fievre_jaune": "fièvre jaune",
     }
 
     for key in products:

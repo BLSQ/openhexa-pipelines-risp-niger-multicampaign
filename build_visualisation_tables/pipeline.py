@@ -13,6 +13,7 @@ from config import (
     campaign_name_mapping_dict,
     iaso_df_common_cols,
     cvrg_campaign_map,
+    cols_campaign_map,
     district_level_target_keys,
     district_level_group_keys,
     district_level_final_keys,
@@ -22,10 +23,16 @@ from config import (
     csi_level_final_keys,
     csi_level_cumsum_keys,
     csi_level_config,
+    product_campaign_mapping,
+    stocks_campaign_map,
+    stock_ratios_config,
+    surveillance_campaign_map,
+    communication_cols,
 )
 from utils import (
     Conector_from_Dict,
     IASOConnectionHandler,
+    all_rows,
     round_assignment,
     year_assignment,
     new_cols,
@@ -33,6 +40,8 @@ from utils import (
     site_categorizer,
     produit_categorizer,
     vaccination_status_categorizer,
+    product_status_categorizer,
+    supervision_categorizer,
 )
 
 
@@ -45,10 +54,16 @@ def build_visualisation_tables():
     combined_df = retrieve_org_unit_ids(combined_df)
     combined_df = clean_combined_df(combined_df)
 
-    target_df = import_target_data()
-    combined_campaign_data_df = import_combined_campaign_data()
-    coverage_df = create_coverage_dataset(combined_df, combined_campaign_data_df)
-    coverage_with_target_df = add_target_data(coverage_df, target_df)
+    # target_df = import_target_data()
+    # combined_campaign_data_df = import_combined_campaign_data()
+    # cvrg_total, cvrg_df = create_coverage_dataset(
+    #     combined_df, combined_campaign_data_df
+    # )
+    # cvrg_csi_district = add_target_data(cvrg_df, target_df)
+    # cmpl = create_completeness_dataset(combined_df, combined_campaign_data_df)
+    # stock = create_stocks_dataset(combined_df, cvrg_total)
+    supervision = create_surveillance_dataset(combined_df)
+    x
 
 
 def import_historical_iaso_data() -> pd.DataFrame:
@@ -227,7 +242,7 @@ def clean_combined_df(combined_df: pd.DataFrame) -> pd.DataFrame:
     )
 
     # set values of columns unrelated to a specific campaign to NaN (use cvrg_campaign_map dict to identify columns specific to each campaign)
-    for campaign_name, cols in cvrg_campaign_map.items():
+    for campaign_name, cols in cols_campaign_map.items():
         cols_in_df = [c for c in cols if c in combined_df.columns]
         mask_not_campaign = combined_df["choix_campagne"] != campaign_name
         combined_df.loc[mask_not_campaign, cols_in_df] = np.nan
@@ -275,7 +290,27 @@ def clean_combined_df(combined_df: pd.DataFrame) -> pd.DataFrame:
             f"{len(invalid_date)} entrée(s) ({proportion_invalid:.2%}) contiennent des dates invalides ou hors période de campagne."
         )
 
-    return combined_df
+    ## drop entries that are not to be expected in the df:
+
+    # rougeole 2024 --> these entries are artificially created due to the commonality of campaign with polio
+    combined_df_updated_0 = combined_df.copy()
+    mask_rougeole_2024 = (combined_df_updated_0["year"] == 2024) & (
+        combined_df_updated_0["choix_campagne"] == "rougeole"
+    )
+    combined_df_updated_1 = combined_df_updated_0[~mask_rougeole_2024].copy()
+
+    # date invalide
+    mask_date_invalide = combined_df_updated_1["round"] == "date invalide"
+    combined_df_updated_2 = combined_df_updated_1[~mask_date_invalide].copy()
+    count_invalide = mask_date_invalide.sum()
+    if count_invalide > 0:
+        proportion_date_invalide = count_invalide / len(combined_df_updated_1)
+        current_run.log_warning(
+            f"{count_invalide} entrées ({proportion_date_invalide:.2%}) ont été supprimées "
+            f"car la période est en dehors de la période de campagne."
+        )
+
+    return combined_df_updated_2
 
 
 def import_target_data() -> pd.DataFrame:
@@ -400,28 +435,21 @@ def create_coverage_dataset(
         "vaccination_status",
         "site",
     ]
-    df = df.groupby(group_cols, as_index=False)["value"].sum()
-    df_updated_0 = df
+    cvrg_total_all_values = df.groupby(group_cols, as_index=False)["value"].sum()
 
-    # drop entries that are not to be expected in the df:
+    # remove zero value entries
+    mask_value_zero = cvrg_total_all_values["value"] == 0
+    cvrg_total = cvrg_total_all_values[~mask_value_zero].copy()
 
-    # date invalide
-    mask_date_invalide = df_updated_0["round"] == "date invalide"
-    df_updated_1 = df_updated_0[~mask_date_invalide]
-
-    # rougeole 2024 --> these entries are artificially created due to the commonality of campaign with polio
-    mask_rougeole_2024 = (df_updated_1["year"] == 2024) & (
-        df_updated_1["produit"] == "rougeole"
-    )
-    df_updated_2 = df_updated_1[~mask_rougeole_2024]
-
-    # value of zero
-    mask_value_zero = df_updated_2["value"] == 0
-    df_updated_3 = df_updated_2[~mask_value_zero]
+    count_value_zero = mask_value_zero.sum()
+    if count_value_zero > 0:
+        proportion_value_zero = count_value_zero / len(cvrg_total_all_values)
+        current_run.log_warning(
+            f"{len(mask_value_zero)} entrées liées aux informations du nombre de cas vaccinés ({proportion_value_zero:.2%}) ont été supprimées car aucune valeur n'a été attribuée."
+        )
 
     # merge with expected combined campaign data to ensure all combinations are present
-    combined_campaign_data_df = combined_campaign_data_df
-    df_final = df_updated_3.merge(
+    df_final = cvrg_total.merge(
         combined_campaign_data_df,
         on=[
             "year",
@@ -437,17 +465,15 @@ def create_coverage_dataset(
         how="left",
         indicator=True,
     )
-
-    # check proportion of entries in combined_campaign_data_df found in coverage dataset
     unmatched_entries_in_iaso = df_final[df_final["_merge"] == "left_only"]
     if not unmatched_entries_in_iaso.empty:
-        proportion_unmatched_in_iaso = len(unmatched_entries_in_iaso) / len(df)
+        proportion_unmatched_in_iaso = len(unmatched_entries_in_iaso) / len(df_final)
         current_run.log_warning(
-            f"{len(unmatched_entries_in_iaso)} entrée(s) ({proportion_unmatched_in_iaso:.2%}) dans IASO n'ont pas été trouvées dans le expected dataframe. Ces entrées seront supprimées."
+            f"{len(unmatched_entries_in_iaso)} entrées ({proportion_unmatched_in_iaso:.2%}) dans IASO n'ont pas été trouvées dans le expected dataframe. Ces entrées seront supprimées."
         )
     df_final = df_final[df_final["_merge"] == "both"].drop(columns=["_merge"])
 
-    return df_final
+    return cvrg_total, df_final
 
 
 def add_target_data(coverage_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.DataFrame:
@@ -464,17 +490,6 @@ def add_target_data(coverage_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.Da
     current_run.log_info("Adding target data to coverage dataset...")
 
     # district-level
-
-    # config_list = []
-    # for year, products in district_level_config.items():
-    #     for prod, rounds in products.items():
-    #         for r in rounds:
-    #             config_list.append({"year": year, "produit": prod, "round": r})
-    # district_level_filter = pd.DataFrame(config_list)
-    # target_district = target_df.merge(
-    #     district_level_filter, on=["year", "produit", "round"], how="inner"
-    # ).drop(columns=["LVL_6_NAME"])
-
     target_district = target_df.groupby(
         district_level_target_keys,
         as_index=False,
@@ -517,7 +532,6 @@ def add_target_data(coverage_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.Da
     )
 
     # csi level
-    # restrict to csi-level campaigns: fièvre jaune 2025, méningite 2025, tcv 2025 and vaccin polio 2025 r3
     config_list = []
     for year, products in csi_level_config.items():
         for prod, rounds in products.items():
@@ -562,6 +576,227 @@ def add_target_data(coverage_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.Da
         ignore_index=True,
     )
     return cvrg_csi_district
+
+
+def create_completeness_dataset(
+    combined_df: pd.DataFrame, combined_campaign_data_df: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Create completeness tables for visualization.
+
+    Args:
+        combined_df (pd.DataFrame): Combined campaign data from IASO DataFrame.
+        combined_campaign_data_df (pd.DataFrame): Expected combined campaign data DataFrame.
+
+    Returns:
+        pd.DataFrame: Completeness dataset DataFrame.
+    """
+    current_run.log_info("Creating completeness dataset...")
+
+    cmpl = combined_df[["period", "org_unit_id", "choix_campagne"]]
+    combined_campaign_data_df_adjusted = combined_campaign_data_df[
+        ["org_unit_id", "period", "produit"]
+    ]
+    combined_campaign_data_df_adjusted.loc[:, "produit"] = (
+        combined_campaign_data_df_adjusted["produit"].map(product_campaign_mapping)
+    )
+    combined_campaign_data_df_adjusted = combined_campaign_data_df_adjusted.rename(
+        columns={"produit": "choix_campagne"}
+    )
+    combined_campaign_data_df_adjusted = (
+        combined_campaign_data_df_adjusted.drop_duplicates()
+    )
+
+    cmpl = (
+        all_rows(combined_campaign_data_df_adjusted, cmpl, "org_unit_id", "period")
+        .sort_values(by=["period", "org_unit_id"])
+        .reset_index(drop=True)
+    )
+    cmpl = round_assignment(cmpl)
+    year_assignment(cmpl)
+    cmpl = cmpl.sort_values(
+        ["year", "round", "org_unit_id", "choix_campagne", "period"]
+    )
+
+    cmpl["presence_equipe_cum"] = cmpl.groupby(
+        ["year", "round", "org_unit_id", "choix_campagne"]
+    )["presence_equipe"].transform("cummax")
+
+    return cmpl
+
+
+def create_stocks_dataset(
+    combined_df: pd.DataFrame, cvrg_total: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Create stocks tables for visualization.
+
+    Args:
+        combined_df (pd.DataFrame): Combined campaign data from IASO DataFrame.
+        cvrg_total (pd.DataFrame): Coverage total DataFrame.
+
+    Returns:
+        pd.DataFrame: Completeness dataset DataFrame.
+    """
+    current_run.log_info("Creating stocks dataset...")
+
+    id_vars = ["period", "round", "year", "org_unit_id"]
+    all_campaign_data = []
+
+    for campaign_name, cols in stocks_campaign_map.items():
+        valid_cols = [c for c in cols if c in combined_df.columns]
+
+        if not valid_cols:
+            continue
+
+        temp_df = pd.melt(
+            combined_df[id_vars + list(set(valid_cols))].fillna(0),
+            id_vars=id_vars,
+            value_vars=list(set(valid_cols)),
+            var_name="category",
+            value_name="value",
+        )
+        temp_df["campaign"] = campaign_name
+        all_campaign_data.append(temp_df)
+
+    df = pd.concat(all_campaign_data, ignore_index=True)
+
+    df = new_cols(
+        df,
+        "categorizer",
+        "category",
+        [
+            produit_categorizer,
+            product_status_categorizer,
+        ],
+    ).drop(columns=["category"])
+
+    group_cols = ["year", "round", "period", "org_unit_id", "produit", "product_status"]
+    stock_total_all_values = df.groupby(group_cols, as_index=False)["value"].sum()
+
+    # remove zero value entries
+    mask_value_zero = stock_total_all_values["value"] == 0
+    stock_total = stock_total_all_values[~mask_value_zero].copy()
+    count_value_zero = mask_value_zero.sum()
+    if count_value_zero > 0:
+        proportion_value_zero = count_value_zero / len(stock_total_all_values)
+        current_run.log_warning(
+            f"{len(mask_value_zero)} entrées liées aux informations des stocks ({proportion_value_zero:.2%}) ont été supprimées car aucune valeur n'a été attribuée."
+        )
+
+    # pivot table to have stock, recu, utilise as columns
+    stock_total_pivot = pd.pivot_table(
+        stock_total,
+        index=["year", "round", "period", "org_unit_id", "produit"],
+        columns=["product_status"],
+        values="value",
+    ).reset_index()
+
+    # compute stock metrics
+    stock_total_pivot["box_ratio"] = stock_total_pivot["produit"].map(
+        stock_ratios_config
+    )
+    stock_total_pivot["stock"] = stock_total_pivot["stock"].fillna(0)
+    stock_total_pivot["reçu"] = stock_total_pivot["reçu"].fillna(0)
+    stock_total_pivot["utilisé"] = stock_total_pivot["utilisé"].fillna(0)
+
+    stock_total_pivot["total"] = stock_total_pivot["stock"] + stock_total_pivot["reçu"]
+    stock_total_pivot["restant"] = (
+        stock_total_pivot["total"] - stock_total_pivot["utilisé"]
+    )
+    stock_total_pivot["restant"] = np.where(
+        stock_total_pivot["restant"] < 0, 0, stock_total_pivot["restant"]
+    )
+
+    # add number of cases vaccinated from coverage data
+    cvrg_stock = (
+        cvrg_total.groupby(
+            ["year", "round", "period", "org_unit_id", "produit"], as_index=False
+        )["value"]
+        .sum()
+        .rename(columns={"value": "enfants_vaccines"})
+    )
+
+    # cvrg_stock["produit"] = np.where(
+    #     cvrg_stock["produit"] == "vaccin polio", "flacons polio", cvrg_stock["produit"]
+    # )
+
+    stock = stock_total_pivot.merge(cvrg_stock, how="left").fillna(0)
+
+    return stock
+
+
+def create_surveillance_dataset(combined_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Create surveillance tables for visualization.
+
+    Args:
+        combined_df (pd.DataFrame): Combined campaign data from IASO DataFrame.
+        combined_campaign_data_df (pd.DataFrame): Expected combined campaign data DataFrame.
+
+    Returns:
+        pd.DataFrame: Surveillance dataset DataFrame.
+    """
+    current_run.log_info("Creating surveillance dataset...")
+
+    id_vars = ["period", "round", "year", "org_unit_id"]
+    all_campaign_data = []
+
+    for campaign_name, cols in surveillance_campaign_map.items():
+        valid_cols = [c for c in cols if c in combined_df.columns]
+
+        if not valid_cols:
+            continue
+
+        temp_df = pd.melt(
+            combined_df[id_vars + list(set(valid_cols))].fillna(0),
+            id_vars=id_vars,
+            value_vars=list(set(valid_cols)),
+            var_name="category",
+            value_name="value",
+        )
+        temp_df["choix_campagne"] = campaign_name
+        all_campaign_data.append(temp_df)
+
+    supervision_all_values = pd.concat(all_campaign_data, ignore_index=True)
+
+    # remove zero value entries
+    mask_value_zero = supervision_all_values["value"] == 0
+    supervision = supervision_all_values[~mask_value_zero].copy()
+    count_value_zero = mask_value_zero.sum()
+    if count_value_zero > 0:
+        proportion_value_zero = count_value_zero / len(supervision_all_values)
+        current_run.log_warning(
+            f"{len(mask_value_zero)} entrées ({proportion_value_zero:.2%}) liées aux informations de surveillance ont été supprimées car aucune valeur n'a été attribuée."
+        )
+
+    supervision = new_cols(
+        supervision,
+        "categorizer",
+        "category",
+        [
+            supervision_categorizer,
+        ],
+    ).drop(columns=["category"])
+
+    supervision_total = (
+        supervision.groupby(
+            ["year", "round", "period", "org_unit_id", "choix_campagne", "supervision"],
+            as_index=False,
+        )["value"]
+        .sum()
+        .fillna(0)
+    )
+
+    supervision_pivot = pd.pivot_table(
+        supervision_total,
+        index=["year", "round", "period", "org_unit_id", "choix_campagne"],
+        columns=["supervision"],
+        values="value",
+        fill_value=0,
+    ).reset_index()
+
+    return supervision_pivot
 
 
 if __name__ == "__main__":

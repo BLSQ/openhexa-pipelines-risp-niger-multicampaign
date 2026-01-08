@@ -340,7 +340,7 @@ def import_target_data_for_yellow_fever_2025_r1_r2() -> pd.DataFrame:
         "cible"
     ].astype(int)
     target_yellow_fever_2025_clean["year"] = 2025
-    target_yellow_fever_2025_clean["campaign"] = "fievre jaune"
+    target_yellow_fever_2025_clean["campaign"] = "fièvre jaune"
 
     return target_yellow_fever_2025_clean
 
@@ -705,7 +705,7 @@ def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
 
     # yellow fever 2025
     elif (
-        target_df["campaign"].iloc[0] == "fievre jaune"
+        target_df["campaign"].iloc[0] == "fièvre jaune"
         and target_df["year"].iloc[0] == 2025
     ):
         rounds = ["round 1", "round 2"]
@@ -714,7 +714,7 @@ def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
             columns=target_df.columns,
         )
         target_df_expanded["round"] = rounds * (len(target_df))
-        target_df_expanded["produit"] = "fievre jaune"
+        target_df_expanded["produit"] = "fièvre jaune"
         target_df_expanded = target_df_expanded.drop("campaign", axis=1)
 
     # men5 and tcv 2025
