@@ -190,70 +190,6 @@ cvrg_tcv_cols = [
     "men5_tcv_15_19_ans",
 ]
 
-cvrg_campaign_map = {
-    "polio": cvrg_polio_cols,
-    "fièvre jaune": cvrg_fjaune_cols,
-    "rougeole": cvrg_rougeole_cols,
-    "méningite": cvrg_meningite_cols,
-    "tcv": cvrg_tcv_cols,
-}
-
-district_level_target_keys = [
-    "year",
-    "round",
-    "age",
-    "produit",
-    "LVL_3_NAME",
-]
-
-district_level_group_keys = district_level_target_keys + [
-    "period",
-    "sexe",
-    "vaccination_status",
-    "site",
-]
-
-district_level_final_keys = district_level_group_keys + [
-    "org_unit_id",
-    "value",
-    "cible",
-]
-
-district_level_cumsum_keys = list(
-    (set(district_level_group_keys) | {"org_unit_id"}) - {"period"}
-)
-
-district_level_config = {
-    2024: {
-        "vaccin polio": ["round 1", "round 2", "round 3", "round 4"],
-        "albendazole": ["round 1", "round 2", "round 3", "round 4"],
-        "vitamine A": ["round 1", "round 2", "round 3", "round 4"],
-    },
-    2025: {
-        "vaccin polio": ["round 1", "round 2"],
-        "albendazole": ["round 1", "round 2"],
-        "vitamine A": ["round 1", "round 2"],
-        "rougeole": ["round 1", "round 2"],
-    },
-}
-
-csi_level_target_keys = list(
-    (set(district_level_target_keys) | {"org_unit_id"}) - {"LVL_3_NAME"}
-)
-
-csi_level_final_keys = district_level_final_keys + ["LVL_6_NAME"]
-
-csi_level_cumsum_keys = district_level_cumsum_keys + ["LVL_6_NAME"]
-
-csi_level_config = {
-    2025: {
-        "fièvre jaune": ["round 1", "round 2"],
-        "méningite": ["round 1", "round 2"],
-        "tcv": ["round 1", "round 2"],
-        "vaccin polio": ["round 3"],
-    },
-}
-
 # completeness table
 product_campaign_mapping = {
     "vaccin polio": "polio",
@@ -332,16 +268,6 @@ stocks_campaign_map = {
     "tcv": stock_tcv_cols,
 }
 
-stock_ratios_config = {
-    "vaccin polio": 50,
-    "vitamine A": 1,
-    "albendazole": 1,
-    "rougeole": 10,
-    "fièvre jaune": 1,
-    "méningite": 1,
-    "tcv": 1,
-}
-
 # surveillance table
 surveillance_polio_cols = [
     "nbre_cas_pfa_notifie",
@@ -364,12 +290,6 @@ surveillance_men5_cols = [
     "men5_mapi_graves",
 ]
 
-surveillance_campaign_map = {
-    "polio": surveillance_polio_cols,
-    "rougeole": surveillance_rougeole_cols,
-    "fièvre jaune": surveillance_fjaune_cols,
-    "méningite": surveillance_men5_cols,
-}
 
 # communication table
 communication_deployment_polio = [
@@ -493,7 +413,7 @@ communication_cas_fjaune = [
 ]
 
 communication_cas_men5_cols = [
-    "men5_nombre_total_de_cas_pfa_signales",  # to check with Issa/Fernando if these are the right columns
+    "men5_nombre_total_de_cas_pfa_signales",
     "men5_nombre_de_cas_de_rumeur_notifies_par_le_comite_de_veille",
 ]
 
@@ -548,78 +468,6 @@ communication_activities_men5_cols = [
     "men5_nombre_de_dialogues_communautaires_tenus",
     "men5_nombre_estime_de_la_population_exposee_aux_messages",
 ]
-
-communication_campaign_map = {
-    "polio": communication_deployment_polio
-    + communication_denombrement_polio
-    + communication_reach_polio
-    + communication_causeries_polio
-    + communication_cas_polio
-    + communication_activities_polio,
-    "rougeole": communication_deployment_rougeole
-    + communication_denombrement_rougeole
-    + communication_reach_rougeole
-    + communication_causeries_rougeole
-    + communication_cas_rougeole
-    + communication_activities_rougeole,
-    "fièvre jaune": communication_deployment_fjaune
-    + communication_denombrement_fjaune
-    + communication_reach_fjaune
-    + communication_causeries_fjaune
-    + communication_cas_fjaune
-    + communication_activities_fjaune,
-    "méningite": communication_deployment_men5_cols
-    + communication_denombrement_men5_cols
-    + communication_reach_men5_cols
-    + communication_causeries_men5_cols
-    + communication_cas_men5_cols
-    + communication_activities_men5_cols,
-    "tcv": communication_deployment_men5_cols
-    + communication_denombrement_men5_cols
-    + communication_reach_men5_cols
-    + communication_causeries_men5_cols
-    + communication_cas_men5_cols
-    + communication_activities_men5_cols,
-}
-
-communication_category_groups = {
-    "Deploiement": (
-        communication_deployment_polio
-        + communication_deployment_rougeole
-        + communication_deployment_fjaune
-        + communication_deployment_men5_cols
-    ),
-    "Portée": (
-        communication_reach_polio
-        + communication_reach_rougeole
-        + communication_reach_fjaune
-        + communication_reach_men5_cols
-    ),
-    "Dénombrement": (
-        communication_denombrement_polio
-        + communication_denombrement_rougeole
-        + communication_denombrement_fjaune
-        + communication_denombrement_men5_cols
-    ),
-    "Causeries": (
-        communication_causeries_polio
-        + communication_causeries_rougeole
-        + communication_causeries_fjaune
-        + communication_causeries_men5_cols
-    ),
-    "Cas Notifiés": (
-        communication_cas_polio
-        + communication_cas_rougeole
-        + communication_cas_fjaune
-        + communication_cas_men5_cols
-    ),
-    "Activitiés": (
-        communication_activities_polio
-        + communication_activities_rougeole
-        + communication_activities_fjaune
-        + communication_activities_men5_cols
-    ),
-}
 
 # all columns
 cols_campaign_map = {

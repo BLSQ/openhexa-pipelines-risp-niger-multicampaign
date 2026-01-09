@@ -141,20 +141,20 @@ def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFram
     iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
         iaso_org_unit_tree_df_clean["Source"].isin(["SNIS", "SNIS 2025"])
     ]
-    # remove all CSI marked as closed
-    cloture_filter = (
-        iaso_org_unit_tree_df_clean["LVL_6_NAME"]
-        .apply(strip_accents)
-        .str.contains("cloture", case=False, na=False)
-    )
-    iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[~cloture_filter]
-    if cloture_filter.sum() > 0:
-        proportion_closed_csi = (
-            cloture_filter.sum() / len(iaso_org_unit_tree_df_clean)
-        ) * 100
-        current_run.log_info(
-            f"Removed {cloture_filter.sum()} closed CSI ({proportion_closed_csi:.2f}%) from the org unit tree."
-        )
+    # # remove all CSI marked as closed
+    # cloture_filter = (
+    #     iaso_org_unit_tree_df_clean["LVL_6_NAME"]
+    #     .apply(strip_accents)
+    #     .str.contains("cloture", case=False, na=False)
+    # )
+    # iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[~cloture_filter]
+    # if cloture_filter.sum() > 0:
+    #     proportion_closed_csi = (
+    #         cloture_filter.sum() / len(iaso_org_unit_tree_df_clean)
+    #     ) * 100
+    #     current_run.log_info(
+    #         f"Removed {cloture_filter.sum()} closed CSI ({proportion_closed_csi:.2f}%) from the org unit tree."
+    #     )
     iaso_org_unit_tree_df_clean["LVL_6_UID"] = iaso_org_unit_tree_df_clean.groupby(
         "LVL_6_NAME"
     )["LVL_6_UID"].transform("first")
@@ -521,6 +521,7 @@ def match_csi_to_org_unit_id(
     #     os.path.join(workspace.files_path, "temp", "target_df_matched_check.csv"),
     #     index=False,
     # )
+    # org_unit_tree_check.drop_duplicates(inplace=True)
     # org_unit_tree_check.to_csv(
     #     os.path.join(workspace.files_path, "temp", "org_unit_tree_check.csv"),
     #     index=False,

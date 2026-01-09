@@ -872,9 +872,7 @@ def normalize_string(text):
     if not isinstance(text, str):
         return ""
 
-    noisy_words = (
-        r"\b(csi|cs|ds|chr|hd|creni|crenam|cloturee|cloture|departement|region|ville)"
-    )
+    noisy_words = r"\b(csi|cs|ds|chr|hd|creni|crenam|cloture|departement|region|ville)"
 
     text = text.lower()
     text = unicodedata.normalize("NFD", text)
@@ -925,34 +923,48 @@ def org_unit_matching(
     spatial_indices = spatial.index.tolist()
 
     for idx_t, query in target["cleansed_target"].items():
-        if query and query.strip():
-            matches = process.extract(
-                query,
-                spatial_list,
-                scorer=lambda s1, s2: max(
-                    fuzz.ratio(s1, s2), fuzz.partial_ratio(s1, s2)
-                ),
-                limit=5,
-            )
+        if not query or not query.strip():
+            continue
 
-            for match in matches:
-                matched_str = match[0]
-                score = match[1]
+        if query in spatial_list:
+            exact_indices = [i for i, x in enumerate(spatial_list) if x == query]
+            for list_idx in exact_indices:
+                idx_s = spatial_indices[list_idx]
+                all_potential_candidates.append(
+                    {"target_idx": idx_t, "spatial_idx": idx_s, "score": 101}
+                )
+            continue
 
-                if score >= threshold:
-                    try:
-                        list_idx = match[2]
-                    except IndexError:
-                        list_idx = spatial_list.index(matched_str)
+        matches = process.extract(
+            query,
+            spatial_list,
+            scorer=lambda s1, s2: (fuzz.token_set_ratio(s1, s2) * 0.7)
+            + (fuzz.ratio(s1, s2) * 0.3),
+            limit=5,
+        )
 
-                    idx_s = spatial_indices[list_idx]
-                    all_potential_candidates.append(
-                        {"target_idx": idx_t, "spatial_idx": idx_s, "score": score}
-                    )
+        for match in matches:
+            matched_str = match[0]
+            score = match[1]
+            if len(match) > 2:
+                list_idx = match[2]
+            else:
+                list_idx = spatial_list.index(matched_str)
+
+            if score >= threshold:
+                idx_s = spatial_indices[list_idx]
+                len_penalty = 1 - (
+                    abs(len(query) - len(matched_str))
+                    / max(len(query), len(matched_str))
+                )
+                adjusted_score = score * len_penalty
+
+                all_potential_candidates.append(
+                    {"target_idx": idx_t, "spatial_idx": idx_s, "score": adjusted_score}
+                )
 
     # 4. Global Greedy Matching Logic
     all_potential_candidates.sort(key=lambda x: x["score"], reverse=True)
-
     assigned_target_indices = set()
     assigned_spatial_indices = set()
     final_assignment = {}
