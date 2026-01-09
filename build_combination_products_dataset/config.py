@@ -68,14 +68,26 @@ campaign_dates = {
 
 sites_types = [
     "ordinaire",
-    "special",
+    "spécial",
     "frontalier",
-    "transfrontalier_etranger",
-    "transfrontarlier_Niger",
+    "transfrontalier : étranger",
+    "transfrontalier : Niger",
+    "TOUS",
 ]
 
+sites_types = [
+    "ordinaire",
+    "spécial",
+    "frontalier",
+    "transfrontalier : étranger",
+    "transfrontalier : Niger",
+]
 
-strategie_types = ["fixe", "avance", "mobile"]
+sites_types_rougeole_adjustment = {
+    "ordinaire": "fixe",
+    "spécial": "avancé",
+    "frontalier": "mobile",
+}
 
 sex_types = ["TOUS"]
 
@@ -88,7 +100,7 @@ campaign_configs = {
     },
     "vita": {
         "choix_campagne": ["polio"],
-        "ages": ["6-11 mois", "12-59 mois"],
+        "ages": ["6-11 mois", "12-24 mois"],
         "produit": ["vitamine A"],
         "status": ["zéro dose"],
     },
@@ -100,7 +112,7 @@ campaign_configs = {
     },
     "rougeole": {
         "choix_campagne": ["rougeole"],
-        "ages": ["0-11 mois", "12-59 mois"],
+        "ages": ["6-11 mois", "12-59 mois"],
         "produit": ["rougeole"],
         "status": ["zéro dose"],
     },

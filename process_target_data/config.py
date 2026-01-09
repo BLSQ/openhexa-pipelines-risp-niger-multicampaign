@@ -110,6 +110,11 @@ target_polio_rougeole_2025_columns = [
     "12-59 mois",
 ]
 
+age_adjustment_rougeole = {"0-11 mois": "6-11 mois", "12-59 mois": "12-59 mois"}
+age_adjustment_albendazole = {"0-11 mois": "12-23 mois", "12-59 mois": "24-59 mois"}
+age_adjustment_vitA = {"0-11 mois": "6-11 mois", "12-59 mois": "12-24 mois"}
+
+
 # yellow fever 2025
 target_yellow_fever_2025_columns = [
     "LVL_3_NAME",
@@ -163,6 +168,13 @@ csi_matching_failed = {
     "niamey ii nord lazaret": "niamey ii cabinet de soin nord lazaret cloturer",  # 3761891
     "niamey iv camp fan": "niamey iv camp bano",  # 3762220
     "tibiri tibiri urbain": "tibiri tibiri doutchi",  # 3759790
+    "loga malankoara": "loga malam koira",  # 3759194
+    "abalak urbain2": "abalak urbain 2 abalak",  # 3758175
+    "abalak fachi": "abalak fachi tabalack",  # 3758127
+    "tchintabaraden darha": "tchintabaraden zigat darha",  # 3758016
+    "illela dandaji": "illela dan dadji",  # 3758485
+    "loga loga": "loga loga i",  # 3759137
+    "dosso garbey gorou": "dosso garbey gorou bessa",  # 3759281
     "tchintabaraden bagare": "",
     "dogon doutchi 2361": "",
 }
