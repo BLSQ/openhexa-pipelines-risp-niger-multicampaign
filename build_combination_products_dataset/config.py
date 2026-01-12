@@ -40,10 +40,6 @@ campaign_dates = {
         "min": pd.to_datetime("2025-11-24"),
         "max": pd.to_datetime("2025-12-02"),
     },
-    "2025r2_fièvre__jaune": {
-        "min": pd.to_datetime("2025-12-10"),
-        "max": pd.to_datetime("2025-12-17"),
-    },
     "2025r2_vita": {
         "min": pd.to_datetime("2025-06-14"),
         "max": pd.to_datetime("2025-06-21"),
@@ -60,9 +56,13 @@ campaign_dates = {
         "min": pd.to_datetime("2025-12-15"),
         "max": pd.to_datetime("2025-12-22"),
     },
-    "2025r3_polio": {
-        "min": pd.to_datetime("2025-12-05"),
-        "max": pd.to_datetime("2025-12-08"),
+    "2026r1_polio": {
+        "min": pd.to_datetime("2026-01-11"),
+        "max": pd.to_datetime("2026-01-15"),
+    },
+    "2026r1_fièvre__jaune": {
+        "min": pd.to_datetime("2026-01-20"),
+        "max": pd.to_datetime("2026-01-26"),
     },
 }
 
@@ -73,14 +73,6 @@ sites_types = [
     "transfrontalier : étranger",
     "transfrontalier : Niger",
     "TOUS",
-]
-
-sites_types = [
-    "ordinaire",
-    "spécial",
-    "frontalier",
-    "transfrontalier : étranger",
-    "transfrontalier : Niger",
 ]
 
 sites_types_rougeole_adjustment = {

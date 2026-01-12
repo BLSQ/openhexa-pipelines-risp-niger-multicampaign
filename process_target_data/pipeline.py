@@ -7,7 +7,6 @@ from utils import (
     IASOConnectionHandler,
     org_unit_matching,
     pyramid_selector,
-    strip_accents,
 )
 from config import (
     iaso_connector_slug,
@@ -18,10 +17,10 @@ from config import (
     age_adjustment_rougeole,
     age_adjustment_albendazole,
     age_adjustment_vitA,
-    target_yellow_fever_2025_columns,
-    target_yellow_fever_2025_age_ranges,
+    target_yellow_fever_2025_2026_columns,
+    target_yellow_fever_2025_2026_age_ranges,
     target_men5_tcv_2025_columns_dict,
-    target_polio_2025_r3_columns,
+    target_polio_2026_r1_columns,
     csi_matching_failed,
 )
 
@@ -52,12 +51,14 @@ def process_target_data():
     )
 
     # csi-level target data
-    target_yellow_fever_2025_r1_r2 = import_target_data_for_yellow_fever_2025_r1_r2()
-    target_yellow_fever_2025_r1_r2 = match_csi_to_org_unit_id(
-        target_yellow_fever_2025_r1_r2, iaso_org_unit_tree_df_clean
+    target_yellow_fever_2025_2026_r1 = (
+        import_target_data_for_yellow_fever_2025_2026_r1()
     )
-    target_yellow_fever_2025_r1_r2 = add_rounds_and_products(
-        target_yellow_fever_2025_r1_r2
+    target_yellow_fever_2025_2026_r1 = match_csi_to_org_unit_id(
+        target_yellow_fever_2025_2026_r1, iaso_org_unit_tree_df_clean
+    )
+    target_yellow_fever_2025_2026_r1 = add_rounds_and_products(
+        target_yellow_fever_2025_2026_r1
     )
 
     target_men5_tcv_2025_r1_r2 = import_target_data_for_men5_and_tcv_2025_r1_r2()
@@ -66,20 +67,19 @@ def process_target_data():
     )
     target_men5_tcv_2025_r1_r2 = add_rounds_and_products(target_men5_tcv_2025_r1_r2)
 
-    target_polio_2025_r3 = import_target_data_for_polio_2025_r3()
-    target_polio_2025_r3 = match_csi_to_org_unit_id(
-        target_polio_2025_r3, iaso_org_unit_tree_df_clean
+    target_polio_2026_r1 = import_target_data_for_polio_2026_r1()
+    target_polio_2026_r1 = match_csi_to_org_unit_id(
+        target_polio_2026_r1, iaso_org_unit_tree_df_clean
     )
-    target_polio_2025_r3 = add_rounds_and_products(target_polio_2025_r3)
-
+    target_polio_2026_r1 = add_rounds_and_products(target_polio_2026_r1)
     # combine all target data
     target_data_combined = combine_target_data(
         [
             targets_polio_2024_r1_r4,
             target_polio_rougeole_2025_r1_r2,
-            target_yellow_fever_2025_r1_r2,
+            target_yellow_fever_2025_2026_r1,
             target_men5_tcv_2025_r1_r2,
-            target_polio_2025_r3,
+            target_polio_2026_r1,
         ]
     )
 
@@ -104,20 +104,23 @@ def get_iaso_org_unit_tree() -> pd.DataFrame:
     """
     current_run.log_info("Retrieving org unit tree data from IASO...")
 
-    # iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
-    # iaso_org_unit_tree_df = iaso_connector_instance.get_ou_tree_dataframe_from_the_form(
-    #     iaso_form_id
-    # )
+    iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
+    iaso_org_unit_tree_df = iaso_connector_instance.get_ou_tree_dataframe_from_the_form(
+        iaso_form_id
+    )
 
     # save file to parquet for later use
     file_path = os.path.join(
-        workspace.files_path, "output", "iaso_org_unit_tree_raw.parquet"
+        workspace.files_path,
+        "niger_june_24",
+        "outputs",
+        "iaso_org_unit_tree_raw.parquet",
     )
-    # Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-    # iaso_org_unit_tree_df.to_parquet(
-    #     file_path,
-    #     index=False,
-    # )
+    Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+    iaso_org_unit_tree_df.to_parquet(
+        file_path,
+        index=False,
+    )
     iaso_org_unit_tree_df = pd.read_parquet(file_path)
 
     return iaso_org_unit_tree_df
@@ -141,20 +144,6 @@ def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFram
     iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
         iaso_org_unit_tree_df_clean["Source"].isin(["SNIS", "SNIS 2025"])
     ]
-    # # remove all CSI marked as closed
-    # cloture_filter = (
-    #     iaso_org_unit_tree_df_clean["LVL_6_NAME"]
-    #     .apply(strip_accents)
-    #     .str.contains("cloture", case=False, na=False)
-    # )
-    # iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[~cloture_filter]
-    # if cloture_filter.sum() > 0:
-    #     proportion_closed_csi = (
-    #         cloture_filter.sum() / len(iaso_org_unit_tree_df_clean)
-    #     ) * 100
-    #     current_run.log_info(
-    #         f"Removed {cloture_filter.sum()} closed CSI ({proportion_closed_csi:.2f}%) from the org unit tree."
-    #     )
     iaso_org_unit_tree_df_clean["LVL_6_UID"] = iaso_org_unit_tree_df_clean.groupby(
         "LVL_6_NAME"
     )["LVL_6_UID"].transform("first")
@@ -172,7 +161,10 @@ def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFram
 
     # save file
     file_path = os.path.join(
-        workspace.files_path, "output", "iaso_org_unit_tree_clean.parquet"
+        workspace.files_path,
+        "niger_june_24",
+        "outputs",
+        "iaso_org_unit_tree_clean.parquet",
     )
     Path(file_path).parent.mkdir(parents=True, exist_ok=True)
     iaso_org_unit_tree_df_clean.to_parquet(
@@ -194,9 +186,12 @@ def import_target_data_for_polio_2024_r1_r4() -> pd.DataFrame:
         pd.DataFrame: DataFrame containing the target data for Polio 2024 rounds 1 to 4
     """
     current_run.log_info("Importing target data for Polio 2024 rounds 1 to 4...")
-
     file_path = os.path.join(
-        workspace.files_path, "cibles", "Population JNV JNM ET DEPRARASITAGE.xlsx"
+        workspace.files_path,
+        "niger_june_24",
+        "inputs",
+        "cibles",
+        "Population JNV JNM ET DEPRARASITAGE.xlsx",
     )
     target_polio_2024 = pd.read_excel(
         file_path, skiprows=6, header=None, usecols=[1, 2, 3, 6, 7, 9, 10]
@@ -251,7 +246,11 @@ def import_target_data_for_polio_and_rougeole_2025_r1_r2() -> pd.DataFrame:
     current_run.log_info("Importing target data for Polio and Rougeole 2025...")
 
     file_path = os.path.join(
-        workspace.files_path, "cibles", "cible_niger_et_refugies_2025.xlsx"
+        workspace.files_path,
+        "niger_june_24",
+        "inputs",
+        "cibles",
+        "cible_niger_et_refugies_2025.xlsx",
     )
 
     target_polio_rougeole_2025 = pd.read_excel(
@@ -287,62 +286,75 @@ def import_target_data_for_polio_and_rougeole_2025_r1_r2() -> pd.DataFrame:
     return target_polio_rougeole_2025
 
 
-def import_target_data_for_yellow_fever_2025_r1_r2() -> pd.DataFrame:
+def import_target_data_for_yellow_fever_2025_2026_r1() -> pd.DataFrame:
     """
-    Import target data for yellow fever campaign for year 2025 rounds 1 and 2
+    Import target data for yellow fever campaign for year 2025 and 2026 rounds 1
 
     Args:
         None
 
     Returns:
-        pd.DataFrame: DataFrame containing the target data for yellow fever campaign year 2025 rounds 1 and 2
+        pd.DataFrame: DataFrame containing the target data for yellow fever campaign year 2025 and 2026 rounds 1
     """
-    current_run.log_info("Importing target data for Yellow Fever 2025...")
-
-    file_path = os.path.join(
-        workspace.files_path, "cibles", "cible_csi_fj_dosso_tahoua.xlsx"
+    current_run.log_info(
+        "Importing target data for Yellow Fever 2025 and 2026 rounds 1..."
     )
 
-    target_yellow_fever_2025 = pd.read_excel(
+    file_path = os.path.join(
+        workspace.files_path,
+        "niger_june_24",
+        "inputs",
+        "cibles",
+        "cible_csi_fj_dosso_tahoua.xlsx",
+    )
+
+    target_yellow_fever_2025_r1 = pd.read_excel(
         file_path,
         header=[0],
         skiprows=10,
         usecols=[2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 17],
     )
 
-    target_yellow_fever_2025.columns = target_yellow_fever_2025_columns
-    target_yellow_fever_2025 = target_yellow_fever_2025[
-        ~target_yellow_fever_2025["LVL_3_NAME"].str.contains("Total")
+    target_yellow_fever_2025_r1.columns = target_yellow_fever_2025_2026_columns
+    target_yellow_fever_2025_r1 = target_yellow_fever_2025_r1[
+        ~target_yellow_fever_2025_r1["LVL_3_NAME"].str.contains("Total")
     ]
-    target_yellow_fever_2025 = target_yellow_fever_2025[
-        ~(target_yellow_fever_2025["LVL_6_NAME"] == "DS")
+    target_yellow_fever_2025_r1 = target_yellow_fever_2025_r1[
+        ~(target_yellow_fever_2025_r1["LVL_6_NAME"] == "DS")
     ]
 
-    for age in target_yellow_fever_2025_age_ranges:
-        target_yellow_fever_2025[age] = (
-            target_yellow_fever_2025[age + "_urban"]
-            + target_yellow_fever_2025[age + "_avancee"]
-            + target_yellow_fever_2025[age + "_mobile"]
+    for age in target_yellow_fever_2025_2026_age_ranges:
+        target_yellow_fever_2025_r1[age] = (
+            target_yellow_fever_2025_r1[age + "_urban"]
+            + target_yellow_fever_2025_r1[age + "_avancee"]
+            + target_yellow_fever_2025_r1[age + "_mobile"]
         )
-        target_yellow_fever_2025[age] = target_yellow_fever_2025[age].astype(int)
-
-    target_yellow_fever_2025_clean = target_yellow_fever_2025[
-        ["LVL_3_NAME", "LVL_6_NAME"] + target_yellow_fever_2025_age_ranges
+        target_yellow_fever_2025_r1[age] = target_yellow_fever_2025_r1[age].astype(int)
+    target_yellow_fever_2025_r1_clean = target_yellow_fever_2025_r1[
+        ["LVL_3_NAME", "LVL_6_NAME"] + target_yellow_fever_2025_2026_age_ranges
     ]
-    target_yellow_fever_2025_clean = pd.melt(
-        target_yellow_fever_2025_clean,
+    target_yellow_fever_2025_r1_clean = pd.melt(
+        target_yellow_fever_2025_r1_clean,
         id_vars=["LVL_3_NAME", "LVL_6_NAME"],
         var_name="age",
         value_name="cible",
     ).fillna(0)
 
-    target_yellow_fever_2025_clean["cible"] = target_yellow_fever_2025_clean[
+    target_yellow_fever_2025_r1_clean["cible"] = target_yellow_fever_2025_r1_clean[
         "cible"
     ].astype(int)
-    target_yellow_fever_2025_clean["year"] = 2025
-    target_yellow_fever_2025_clean["campaign"] = "fièvre jaune"
+    target_yellow_fever_2025_r1_clean["year"] = 2025
+    target_yellow_fever_2025_r1_clean["campaign"] = "fièvre jaune"
 
-    return target_yellow_fever_2025_clean
+    target_yellow_fever_2026_r1_clean = target_yellow_fever_2025_r1_clean.copy()
+    target_yellow_fever_2026_r1_clean["year"] = 2026
+
+    target_yellow_fever_2025_2026_r1 = pd.concat(
+        [target_yellow_fever_2025_r1_clean, target_yellow_fever_2026_r1_clean],
+        ignore_index=True,
+    )
+
+    return target_yellow_fever_2025_2026_r1
 
 
 def import_target_data_for_men5_and_tcv_2025_r1_r2() -> pd.DataFrame:
@@ -357,7 +369,13 @@ def import_target_data_for_men5_and_tcv_2025_r1_r2() -> pd.DataFrame:
     """
     current_run.log_info("Importing target data for Men5 and TCV campaign 2025...")
 
-    file_path = os.path.join(workspace.files_path, "cibles", "Cible Men5-TCV CSI.xlsx")
+    file_path = os.path.join(
+        workspace.files_path,
+        "niger_june_24",
+        "inputs",
+        "cibles",
+        "Cible Men5-TCV CSI.xlsx",
+    )
 
     target_men5_tcv_2025 = pd.read_excel(
         file_path,
@@ -390,62 +408,64 @@ def import_target_data_for_men5_and_tcv_2025_r1_r2() -> pd.DataFrame:
     return target_men5_tcv_2025_clean
 
 
-def import_target_data_for_polio_2025_r3() -> pd.DataFrame:
+def import_target_data_for_polio_2026_r1() -> pd.DataFrame:
     """
-    Import target data for polio campaign for year 2025 round 3
+    Import target data for polio campaign for year 2026 round 1
 
     Args:
         None
 
     Returns:
-        pd.DataFrame: DataFrame containing the target data for polio campaign year 2025 round 3
+        pd.DataFrame: DataFrame containing the target data for polio campaign year 2026 round 1
     """
-    current_run.log_info("Importing target data for Polio 2025 campaign round 3...")
+    current_run.log_info("Importing target data for Polio 2026 campaign round 1...")
 
     file_path = os.path.join(
-        workspace.files_path, "cibles", "cible_jnv_polio_2025.xlsx"
+        workspace.files_path,
+        "niger_june_24",
+        "inputs",
+        "cibles",
+        "cible_jnv_polio_2025.xlsx",
     )
 
-    target_polio_2025_r3 = pd.read_excel(
+    target_polio_2026_r1 = pd.read_excel(
         file_path, header=[0], skiprows=9, usecols=[1, 2, 3, 7]
     )
 
-    target_polio_2025_r3.columns = target_polio_2025_r3_columns
+    target_polio_2026_r1.columns = target_polio_2026_r1_columns
+    target_polio_2026_r1 = target_polio_2026_r1.dropna(subset=["LVL_3_NAME"])
+    target_polio_2026_r1 = target_polio_2026_r1.dropna(subset=["cible"])
 
-    target_polio_2025_r3 = target_polio_2025_r3.dropna(subset=["LVL_3_NAME"])
-    target_polio_2025_r3 = target_polio_2025_r3.dropna(subset=["cible"])
-
-    target_polio_2025_r3 = target_polio_2025_r3[
-        ~target_polio_2025_r3["LVL_3_NAME"].str.contains("Total")
+    target_polio_2026_r1 = target_polio_2026_r1[
+        ~target_polio_2026_r1["LVL_3_NAME"].str.contains("Total")
     ]
-    target_polio_2025_r3 = target_polio_2025_r3[
-        ~(target_polio_2025_r3["LVL_6_NAME"] == "DS")
+    target_polio_2026_r1 = target_polio_2026_r1[
+        ~(target_polio_2026_r1["LVL_6_NAME"] == "DS")
     ]
 
-    target_polio_2025_r3["cible"] = target_polio_2025_r3["cible"].astype(int)
-    target_polio_2025_r3["0-11 mois"] = (
-        target_polio_2025_r3["cible"] * 0.119140832
+    target_polio_2026_r1["cible"] = target_polio_2026_r1["cible"].astype(int)
+    target_polio_2026_r1["0-11 mois"] = (
+        target_polio_2026_r1["cible"] * 0.119140832
     ).round(0)
-    target_polio_2025_r3["12-59 mois"] = (
-        target_polio_2025_r3["cible"] * 0.880859168
+    target_polio_2026_r1["12-59 mois"] = (
+        target_polio_2026_r1["cible"] * 0.880859168
     ).round(0)
-    target_polio_2025_r3 = target_polio_2025_r3.dropna(subset=["LVL_6_NAME"])
-    target_polio_2025_r3.drop(["cible", "LVL_2_NAME"], axis=1, inplace=True)
+    target_polio_2026_r1 = target_polio_2026_r1.dropna(subset=["LVL_6_NAME"])
+    target_polio_2026_r1.drop(["cible", "LVL_2_NAME"], axis=1, inplace=True)
 
-    target_polio_2025_r3_clean = pd.melt(
-        target_polio_2025_r3,
+    target_polio_2026_r1_clean = pd.melt(
+        target_polio_2026_r1,
         id_vars=["LVL_3_NAME", "LVL_6_NAME"],
         var_name="age",
         value_name="cible",
     ).fillna(0)
 
-    target_polio_2025_r3_clean["cible"] = target_polio_2025_r3_clean["cible"].astype(
+    target_polio_2026_r1_clean["cible"] = target_polio_2026_r1_clean["cible"].astype(
         int
     )
-    target_polio_2025_r3_clean["year"] = 2025
-    target_polio_2025_r3_clean["campaign"] = "polio"
-
-    return target_polio_2025_r3_clean
+    target_polio_2026_r1_clean["year"] = 2026
+    target_polio_2026_r1_clean["campaign"] = "polio"
+    return target_polio_2026_r1_clean
 
 
 def match_csi_to_org_unit_id(
@@ -471,62 +491,35 @@ def match_csi_to_org_unit_id(
         csi_level_target_df, iaso_org_unit_tree_for_matching, threshold=50
     )
 
-    # # save file to parquet for later use
-    # cols_to_fix = [
-    #     "LVL_3_NAME_original",
-    #     "LVL_6_NAME_original",
-    #     "LVL_3_NAME",
-    #     "LVL_6_NAME",
-    #     "cleansed_target",
-    #     "cleansed_spatial_match",
-    # ]
-    # for col in cols_to_fix:
-    #     if col in target_df_matched.columns:
-    #         target_df_matched[col] = (
-    #             target_df_matched[col].astype(str).replace("nan", "")
-    #         )
-    #     if col in org_unit_tree_check.columns:
-    #         org_unit_tree_check[col] = (
-    #             org_unit_tree_check[col].astype(str).replace("nan", "")
-    #         )
-    # target_df_matched.to_parquet(
-    #     os.path.join(workspace.files_path, "temp", "target_df_matched.parquet"),
-    #     index=False,
-    # )
-    # org_unit_tree_check.to_parquet(
-    #     os.path.join(workspace.files_path, "temp", "org_unit_tree_check.parquet"),
-    #     index=False,
-    # )
-    # target_df_matched = pd.read_parquet(
-    #     os.path.join(workspace.files_path, "temp", "target_df_matched.parquet")
-    # )
-    # org_unit_tree_check = pd.read_parquet(
-    #     os.path.join(workspace.files_path, "temp", "org_unit_tree_check.parquet")
-    # )
+    # inspect matching results
+    target_df_matched_check = target_df_matched[
+        [
+            "org_unit_id",
+            "LVL_3_NAME_original",
+            "LVL_6_NAME_original",
+            "LVL_3_NAME",
+            "LVL_6_NAME",
+            "cleansed_target",
+            "cleansed_spatial_match",
+            "match_score",
+        ]
+    ]
+    target_df_matched_check.drop_duplicates(inplace=True)
+    target_df_matched_check.to_csv(
+        os.path.join(
+            workspace.files_path, "niger_june_24", "temp", "target_df_matched_check.csv"
+        ),
+        index=False,
+    )
+    org_unit_tree_check.drop_duplicates(inplace=True)
+    org_unit_tree_check.to_csv(
+        os.path.join(
+            workspace.files_path, "niger_june_24", "temp", "org_unit_tree_check.csv"
+        ),
+        index=False,
+    )
 
-    # # inspect matching results
-    # target_df_matched_check = target_df_matched[
-    #     [
-    #         "org_unit_id",
-    #         "LVL_3_NAME_original",
-    #         "LVL_6_NAME_original",
-    #         "LVL_3_NAME",
-    #         "LVL_6_NAME",
-    #         "cleansed_target",
-    #         "cleansed_spatial_match",
-    #         "match_score",
-    #     ]
-    # ]
-    # target_df_matched_check.to_csv(
-    #     os.path.join(workspace.files_path, "temp", "target_df_matched_check.csv"),
-    #     index=False,
-    # )
-    # org_unit_tree_check.drop_duplicates(inplace=True)
-    # org_unit_tree_check.to_csv(
-    #     os.path.join(workspace.files_path, "temp", "org_unit_tree_check.csv"),
-    #     index=False,
-    # )
-
+    # manually correct matching failures
     for (
         csi_concat_original,
         csi_concat_correct,
@@ -704,12 +697,25 @@ def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
         )
         target_df_expanded = target_df_expanded.drop("campaign", axis=1)
 
-    # yellow fever 2025
+    # yellow fever 2025/2026
     elif (
         target_df["campaign"].iloc[0] == "fièvre jaune"
         and target_df["year"].iloc[0] == 2025
     ):
-        rounds = ["round 1", "round 2"]
+        rounds = ["round 1"]
+        target_df_expanded = pd.DataFrame(
+            np.repeat(target_df.values, len(rounds), axis=0),
+            columns=target_df.columns,
+        )
+        target_df_expanded["round"] = rounds * (len(target_df))
+        target_df_expanded["produit"] = "fièvre jaune"
+        target_df_expanded = target_df_expanded.drop("campaign", axis=1)
+
+    elif (
+        target_df["campaign"].iloc[0] == "fièvre jaune"
+        and target_df["year"].iloc[0] == 2026
+    ):
+        rounds = ["round 1"]
         target_df_expanded = pd.DataFrame(
             np.repeat(target_df.values, len(rounds), axis=0),
             columns=target_df.columns,
@@ -739,10 +745,10 @@ def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
         )
         target_df_expanded = target_df_expanded.drop("campaign", axis=1)
 
-    # polio 2025 round 3
-    elif target_df["campaign"].iloc[0] == "polio" and target_df["year"].iloc[0] == 2025:
+    # polio 2026 round 1
+    elif target_df["campaign"].iloc[0] == "polio" and target_df["year"].iloc[0] == 2026:
         target_df_expanded = target_df.copy()
-        target_df_expanded["round"] = "round 3"
+        target_df_expanded["round"] = "round 1"
         target_df_expanded["produit"] = "vaccin polio"
         target_df_expanded = target_df_expanded.drop("campaign", axis=1)
 
@@ -838,7 +844,10 @@ def save_output(target_data_combined: pd.DataFrame):
     current_run.log_info("Saving combined target data...")
 
     output_path = os.path.join(
-        workspace.files_path, "output", "combined_target_data.parquet"
+        workspace.files_path,
+        "niger_june_24",
+        "outputs",
+        "combined_target_data.parquet",
     )
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     target_data_combined.to_parquet(output_path, index=False)

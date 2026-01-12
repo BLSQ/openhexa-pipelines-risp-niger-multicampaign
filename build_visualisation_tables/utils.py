@@ -1,11 +1,5 @@
-import io
 import numpy as np
 import pandas as pd
-import requests
-import random
-import json
-import datetime
-from typing import Tuple, Dict, Any, List
 
 
 def round_assignment(df):
@@ -41,15 +35,10 @@ def round_assignment(df):
         & (df["period"] <= pd.to_datetime("2025-11-04")),
         "round 1",
         np.where(
-            (pd.to_datetime("2025-12-10") <= df["period"])
-            & (df["period"] <= pd.to_datetime("2025-12-17")),
-            "round 2",
-            np.where(
-                (pd.to_datetime("2026-01-20") <= df["period"])
-                & (df["period"] <= pd.to_datetime("2026-01-26")),
-                "round 1",
-                "date invalide",
-            ),
+            (pd.to_datetime("2026-01-20") <= df["period"])
+            & (df["period"] <= pd.to_datetime("2026-01-26")),
+            "round 1",
+            "date invalide",
         ),
     )
 

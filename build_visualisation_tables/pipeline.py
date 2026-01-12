@@ -9,7 +9,6 @@ from config import (
     district_level_group_keys,
     district_level_final_keys,
     district_level_cumsum_keys,
-    district_level_config,
     csi_level_target_keys,
     csi_level_final_keys,
     csi_level_cumsum_keys,
@@ -95,8 +94,8 @@ def import_iaso_combined_data() -> pd.DataFrame:
     current_run.log_info("Importing combined IASO data...")
     file_path = os.path.join(
         workspace.files_path,
-        "extract_process_iaso_form_data",
-        "output",
+        "niger_june_24",
+        "outputs",
         "combined_iaso_data.parquet",
     )
     combined_df = pd.read_parquet(file_path)
@@ -116,8 +115,8 @@ def import_target_data() -> pd.DataFrame:
     current_run.log_info("Importing target data...")
     file_path = os.path.join(
         workspace.files_path,
-        "process_target_data",
-        "output",
+        "niger_june_24",
+        "outputs",
         "combined_target_data.parquet",
     )
     target_df = pd.read_parquet(file_path)
@@ -137,8 +136,8 @@ def import_combined_campaign_data() -> pd.DataFrame:
     current_run.log_info("Importing combined campaign data...")
     file_path = os.path.join(
         workspace.files_path,
-        "build_combination_products",
-        "output",
+        "niger_june_24",
+        "outputs",
         "combined_campaign_data.parquet",
     )
     combined_campaign_data_df = pd.read_parquet(file_path)
@@ -767,8 +766,8 @@ def create_dynamic_org_unit_table() -> pd.DataFrame:
 
     file_path = os.path.join(
         workspace.files_path,
-        "process_target_data",
-        "output",
+        "niger_june_24",
+        "outputs",
         "iaso_org_unit_tree_clean.parquet",
     )
 

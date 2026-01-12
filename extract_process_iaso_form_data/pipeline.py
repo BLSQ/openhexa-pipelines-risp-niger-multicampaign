@@ -54,7 +54,9 @@ def import_historical_iaso_data() -> pd.DataFrame:
         pd.DataFrame: Combined historical data from all feather files.
     """
     current_run.log_info("Importing historical data...")
-    historical_data_folder = os.path.join(workspace.files_path, "IASO historical data")
+    historical_data_folder = os.path.join(
+        workspace.files_path, "niger_june_24", "inputs", "historical_iaso_data"
+    )
     historical_df = pd.DataFrame()
     for file in os.listdir(historical_data_folder):
         if file.endswith(".feather"):
@@ -87,17 +89,12 @@ def extract_iaso_data_for_current_period() -> pd.DataFrame:
     # save for future use
     file_path = os.path.join(
         workspace.files_path,
+        "niger_june_24",
         "temp",
         f"multicampaign_df_{current_period}_raw.feather",
     )
     Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-    current_df.to_feather(
-        os.path.join(
-            workspace.files_path,
-            "temp",
-            f"multicampaign_df_{current_period}_raw.feather",
-        )
-    )
+    current_df.to_feather(file_path)
 
     # fast import
     current_df = pd.read_feather(file_path)
@@ -157,8 +154,8 @@ def import_raw_iaso_org_unit_tree() -> pd.DataFrame:
 
     file_path = os.path.join(
         workspace.files_path,
-        "process_target_data",
-        "output",
+        "niger_june_24",
+        "outputs",
         "iaso_org_unit_tree_raw.parquet",
     )
 
@@ -180,8 +177,8 @@ def import_clean_iaso_org_unit_tree() -> pd.DataFrame:
 
     file_path = os.path.join(
         workspace.files_path,
-        "process_target_data",
-        "output",
+        "niger_june_24",
+        "outputs",
         "iaso_org_unit_tree_clean.parquet",
     )
 
@@ -344,7 +341,7 @@ def save_output(combined_df: pd.DataFrame):
     current_run.log_info("Saving combined IASO data...")
 
     output_path = os.path.join(
-        workspace.files_path, "output", "combined_iaso_data.parquet"
+        workspace.files_path, "niger_june_24", "outputs", "combined_iaso_data.parquet"
     )
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     combined_df.to_parquet(output_path, index=False)

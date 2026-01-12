@@ -48,8 +48,8 @@ def extract_org_unit_id() -> pd.DataFrame:
 
     file_path = os.path.join(
         workspace.files_path,
-        "process_target_data",
-        "output",
+        "niger_june_24",
+        "outputs",
         "iaso_org_unit_tree_clean.parquet",
     )
 
@@ -170,7 +170,6 @@ def create_campaign_period_df() -> pd.DataFrame:
 def combine_dfs(
     org_unit_ids_df,
     sites_df,
-    # strategy_df,
     sex_type_df,
     campaign_age_product_status_df,
     campaign_period_df,
@@ -192,7 +191,6 @@ def combine_dfs(
 
     combined_df = (
         org_unit_ids_df.merge(sites_df, how="cross")
-        # .merge(strategy_df, how="cross")
         .merge(sex_type_df, how="cross")
         .merge(campaign_age_product_status_df, how="cross")
     )
@@ -207,7 +205,6 @@ def combine_dfs(
         columns={
             "org_unit_id": "org_unit_id",
             "site": "site",
-            # "strategy": "vaccination_strategy",
             "age_group": "age",
             "sexe": "sexe",
             "product": "produit",
@@ -242,8 +239,6 @@ def adjust_to_specific_campaigns(combined_df: pd.DataFrame) -> pd.DataFrame:
     )
     combined_df = combined_df[~mask_polio_2024]
 
-    #
-
     # polio and rougeole 2025 round 1 and 2
     mask_2025_rounds = combined_df["produit"].isin(["rougeole"])
     combined_df.loc[mask_2025_rounds, "site"] = combined_df.loc[
@@ -254,11 +249,11 @@ def adjust_to_specific_campaigns(combined_df: pd.DataFrame) -> pd.DataFrame:
     )
     combined_df = combined_df[~mask_invalid_sites]
 
-    # yellow fever 2025 round 1 and 2
+    # yellow fever 2025/2026 round 1
     mask_yellow_fever_sites = (
-        (combined_df["year"] == 2025)
+        (combined_df["year"].isin([2025, 2026]))
         & (combined_df["produit"] == "fièvre jaune")
-        & (combined_df["round"].isin(["round 1", "round 2"]))
+        & (combined_df["round"].isin(["round 1"]))
         & (combined_df["site"] != "ordinaire")
     )
     combined_df = combined_df[~mask_yellow_fever_sites]
@@ -288,7 +283,10 @@ def save_output(combined_df: pd.DataFrame):
     current_run.log_info("Saving combined campaign data...")
 
     output_path = os.path.join(
-        workspace.files_path, "output", "combined_campaign_data.parquet"
+        workspace.files_path,
+        "niger_june_24",
+        "outputs",
+        "combined_campaign_data.parquet",
     )
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     combined_df.to_parquet(output_path, index=False)
