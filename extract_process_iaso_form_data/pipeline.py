@@ -222,7 +222,17 @@ def retrieve_org_unit_ids(
     combined_df["org_unit_id"] = combined_df["org_unit_id"].map(
         org_unit_to_final_org_unit_dict
     )
-    combined_df["org_unit_id"] = combined_df["org_unit_id"].astype(np.int64)
+    # remove entries with missing org_unit_id
+    mask_missing_org_unit = combined_df["org_unit_id"].isna()
+    missing_org_unit_entries = combined_df[mask_missing_org_unit]
+    if not missing_org_unit_entries.empty:
+        missing_org_unit_proportion = len(missing_org_unit_entries) / len(combined_df)
+        current_run.log_warning(
+            f"{len(missing_org_unit_entries)} entrées ({missing_org_unit_proportion:.2%}) contiennent des org_unit_id manquants. Ces entrées seront supprimées."
+        )
+        combined_df = combined_df[~mask_missing_org_unit].copy()
+
+    combined_df.loc[:, "org_unit_id"] = combined_df["org_unit_id"].astype(np.int64)
 
     return combined_df
 
@@ -292,18 +302,9 @@ def clean_combined_df(combined_df: pd.DataFrame) -> pd.DataFrame:
             subset=["uuid", "org_unit_id", "period", "choix_campagne"], keep="last"
         )
 
-    # assign rounds and check proportion of entries outside the range of campaign rounds
+    # assign rounds and years
     combined_df = round_assignment(combined_df)
     year_assignment(combined_df)
-
-    invalid_date = combined_df[
-        combined_df["round"].isna() | combined_df["round"].isin(["date invalide"])
-    ]
-    if not invalid_date.empty:
-        proportion_invalid = len(invalid_date) / len(combined_df)
-        current_run.log_warning(
-            f"{len(invalid_date)} entrée(s) ({proportion_invalid:.2%}) contiennent des dates invalides ou hors période de campagne."
-        )
 
     ## drop entries that are not to be expected in the df:
 

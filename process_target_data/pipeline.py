@@ -33,7 +33,7 @@ def process_target_data():
     iaso_org_unit_tree_df = get_iaso_org_unit_tree()
     iaso_org_unit_tree_df_clean = clean_iaso_org_unit_tree(iaso_org_unit_tree_df)
 
-    # district-level target data
+    # district-level historical target data
     targets_polio_2024_r1_r4 = import_target_data_for_polio_2024_r1_r4()
     targets_polio_2024_r1_r4 = match_district_to_org_unit_id(
         targets_polio_2024_r1_r4, iaso_org_unit_tree_df_clean
@@ -50,7 +50,7 @@ def process_target_data():
         target_polio_rougeole_2025_r1_r2
     )
 
-    # csi-level target data
+    # csi-level historical target data
     target_yellow_fever_2025_2026_r1 = (
         import_target_data_for_yellow_fever_2025_2026_r1()
     )
@@ -72,6 +72,10 @@ def process_target_data():
         target_polio_2026_r1, iaso_org_unit_tree_df_clean
     )
     target_polio_2026_r1 = add_rounds_and_products(target_polio_2026_r1)
+
+    # future target data
+    future_target_data = import_target_data_for_future_campaigns()
+
     # combine all target data
     target_data_combined = combine_target_data(
         [
@@ -122,7 +126,6 @@ def get_iaso_org_unit_tree() -> pd.DataFrame:
         index=False,
     )
     iaso_org_unit_tree_df = pd.read_parquet(file_path)
-
     return iaso_org_unit_tree_df
 
 
@@ -144,6 +147,12 @@ def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFram
     iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
         iaso_org_unit_tree_df_clean["Source"].isin(["SNIS", "SNIS 2025"])
     ]
+    iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
+        iaso_org_unit_tree_df_clean["LVL_6_NAME"].str.contains(
+            "CSI", case=False, na=False
+        )
+    ]
+
     iaso_org_unit_tree_df_clean["LVL_6_UID"] = iaso_org_unit_tree_df_clean.groupby(
         "LVL_6_NAME"
     )["LVL_6_UID"].transform("first")
@@ -559,8 +568,8 @@ def match_csi_to_org_unit_id(
         ].unique()
         current_run.log_warning(
             f"{unmatched_count} out of {total_count} records could not be matched to an org_unit_id. "
-            f"Unmatched CSIs: {', '.join(map(str, unmatched_csis))}"
-            "These entries will be dropped from the target data."
+            f"Unmatched CSIs: {', '.join(map(str, unmatched_csis))}. "
+            "A manual matching is required for these entries."
         )
 
     target_df_matched = target_df_matched.drop(
@@ -829,6 +838,22 @@ def clean_org_unit_id(
     target_data_combined.drop(columns=["final_org_unit_id", "_merge"], inplace=True)
 
     return target_data_combined
+
+
+def import_target_data_for_future_campaigns():
+    """
+    Placeholder function for importing target data for future campaigns.
+
+    Args:
+        None
+
+    Returns:
+        pd.DataFrame: DataFrame containing the target data for future campaigns.
+    """
+    current_run.log_info("Importing target data for future campaigns...")
+    # Placeholder implementation
+    future_target_data = pd.DataFrame()
+    return future_target_data
 
 
 def save_output(target_data_combined: pd.DataFrame):

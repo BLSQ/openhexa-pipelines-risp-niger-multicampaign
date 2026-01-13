@@ -64,21 +64,21 @@ def build_visualisation_tables():
     ) = create_filter_tables(combined_df, combined_campaign_data_df)
     spatial_units_combined = create_dynamic_org_unit_table()
 
-    # write to db
-    write_to_db(cvrg_total, "ner_vaccination_couverture")
-    write_to_db(cvrg_csi_district, "ner_vaccination_couverture_csi_district_cibled")
-    write_to_db(cmpl, "ner_vaccination_completude")
-    write_to_db(stock, "ner_vaccination_stock")
-    write_to_db(supervision, "ner_vaccination_supervision")
-    write_to_db(communication_long, "ner_vaccination_communications_long")
-    write_to_db(communication, "ner_vaccination_communications")
-    write_to_db(target_df, "ner_vaccination_cibles_district")
-    write_to_db(campaign_filter_table, "ner_vaccination_campaign_filter_table")
-    write_to_db(round_filter_table, "ner_vaccination_round_filter_table")
-    write_to_db(year_filter_table, "ner_vaccination_year_filter_table")
-    write_to_db(products_filter_table, "ner_vaccination_products_filter_table")
-    write_to_db(combination_filter_table, "ner_vaccination_combination_filter_table")
-    write_to_db(spatial_units_combined, "ner_spatial_units")
+    # # write to db
+    # write_to_db(cvrg_total, "ner_vaccination_couverture")
+    # write_to_db(cvrg_csi_district, "ner_vaccination_couverture_csi_district_cibled")
+    # write_to_db(cmpl, "ner_vaccination_completude")
+    # write_to_db(stock, "ner_vaccination_stock")
+    # write_to_db(supervision, "ner_vaccination_supervision")
+    # write_to_db(communication_long, "ner_vaccination_communications_long")
+    # write_to_db(communication, "ner_vaccination_communications")
+    # write_to_db(target_df, "ner_vaccination_cibles_district")
+    # write_to_db(campaign_filter_table, "ner_vaccination_campaign_filter_table")
+    # write_to_db(round_filter_table, "ner_vaccination_round_filter_table")
+    # write_to_db(year_filter_table, "ner_vaccination_year_filter_table")
+    # write_to_db(products_filter_table, "ner_vaccination_products_filter_table")
+    # write_to_db(combination_filter_table, "ner_vaccination_combination_filter_table")
+    # write_to_db(spatial_units_combined, "ner_spatial_units")
 
 
 def import_iaso_combined_data() -> pd.DataFrame:
@@ -403,10 +403,11 @@ def create_completeness_dataset(
     )
     cmpl = round_assignment(cmpl)
     year_assignment(cmpl)
+    cmpl = cmpl.drop_duplicates()
+
     cmpl = cmpl.sort_values(
         ["year", "round", "org_unit_id", "choix_campagne", "period"]
     )
-
     cmpl["presence_equipe_cum"] = cmpl.groupby(
         ["year", "round", "org_unit_id", "choix_campagne"]
     )["presence_equipe"].transform("cummax")
