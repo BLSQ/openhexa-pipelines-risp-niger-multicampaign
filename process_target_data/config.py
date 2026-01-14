@@ -12,6 +12,12 @@ iaso_connector_slug = {
 
 iaso_form_id = 1186
 
+# paths
+outputs_path = "niger_june_24/outputs/"
+target_historical_data_path = "niger_june_24/inputs/cibles/historique/"
+target_other_data_path = "niger_june_24/inputs/cibles/autres"
+temp_path = "niger_june_24/temp/"
+
 # polio 2024
 target_polio_2024_cols = [
     "LVL_3_NAME",
@@ -217,3 +223,13 @@ csi_matching_failed = {
     "tibiri tibiri urbain": "tibiri tibiri doutchi",  # 3759790
     "zinder sabongarizinder": "zinder sabongari",  # 3764862
 }
+
+list_of_valid_campaigns = [
+    "polio",
+    "rougeole",
+    "fièvre jaune",
+    "méningite",
+    "tcv",
+    "albendazole",
+    "vitamine A",
+]

@@ -12,8 +12,10 @@ iaso_connector_slug = {
 }
 
 iaso_form_id = 1186
-current_period = "2026Q1"
-current_period_start_date = "2026-01-01"
+
+# paths
+iaso_extracted_data_path = "niger_june_24/iaso_données_extraites/"
+outputs_path = "niger_june_24/outputs/"
 
 # campaign name cleaning and mapping
 campaign_name_cleaning_dict = {

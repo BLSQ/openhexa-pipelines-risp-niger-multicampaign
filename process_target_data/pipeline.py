@@ -1,4 +1,5 @@
 import os
+import re
 from openhexa.sdk import current_run, workspace, pipeline
 import pandas as pd
 import numpy as np
@@ -11,6 +12,10 @@ from utils import (
 from config import (
     iaso_connector_slug,
     iaso_form_id,
+    outputs_path,
+    target_historical_data_path,
+    target_other_data_path,
+    temp_path,
     target_polio_2024_cols,
     polio_2024_dict_districts_cibles_iaso,
     target_polio_rougeole_2025_columns,
@@ -22,6 +27,7 @@ from config import (
     target_men5_tcv_2025_columns_dict,
     target_polio_2026_r1_columns,
     csi_matching_failed,
+    list_of_valid_campaigns,
 )
 
 
@@ -75,6 +81,10 @@ def process_target_data():
 
     # future target data
     future_target_data = import_target_data_for_future_campaigns()
+    if not future_target_data.empty:
+        future_target_data = match_csi_to_org_unit_id(
+            future_target_data, iaso_org_unit_tree_df_clean
+        )
 
     # combine all target data
     target_data_combined = combine_target_data(
@@ -84,6 +94,7 @@ def process_target_data():
             target_yellow_fever_2025_2026_r1,
             target_men5_tcv_2025_r1_r2,
             target_polio_2026_r1,
+            future_target_data,
         ]
     )
 
@@ -116,8 +127,7 @@ def get_iaso_org_unit_tree() -> pd.DataFrame:
     # save file to parquet for later use
     file_path = os.path.join(
         workspace.files_path,
-        "niger_june_24",
-        "outputs",
+        outputs_path,
         "iaso_org_unit_tree_raw.parquet",
     )
     Path(file_path).parent.mkdir(parents=True, exist_ok=True)
@@ -171,8 +181,7 @@ def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFram
     # save file
     file_path = os.path.join(
         workspace.files_path,
-        "niger_june_24",
-        "outputs",
+        outputs_path,
         "iaso_org_unit_tree_clean.parquet",
     )
     Path(file_path).parent.mkdir(parents=True, exist_ok=True)
@@ -197,9 +206,7 @@ def import_target_data_for_polio_2024_r1_r4() -> pd.DataFrame:
     current_run.log_info("Importing target data for Polio 2024 rounds 1 to 4...")
     file_path = os.path.join(
         workspace.files_path,
-        "niger_june_24",
-        "inputs",
-        "cibles",
+        target_historical_data_path,
         "Population JNV JNM ET DEPRARASITAGE.xlsx",
     )
     target_polio_2024 = pd.read_excel(
@@ -256,9 +263,7 @@ def import_target_data_for_polio_and_rougeole_2025_r1_r2() -> pd.DataFrame:
 
     file_path = os.path.join(
         workspace.files_path,
-        "niger_june_24",
-        "inputs",
-        "cibles",
+        target_historical_data_path,
         "cible_niger_et_refugies_2025.xlsx",
     )
 
@@ -311,9 +316,7 @@ def import_target_data_for_yellow_fever_2025_2026_r1() -> pd.DataFrame:
 
     file_path = os.path.join(
         workspace.files_path,
-        "niger_june_24",
-        "inputs",
-        "cibles",
+        target_historical_data_path,
         "cible_csi_fj_dosso_tahoua.xlsx",
     )
 
@@ -380,9 +383,7 @@ def import_target_data_for_men5_and_tcv_2025_r1_r2() -> pd.DataFrame:
 
     file_path = os.path.join(
         workspace.files_path,
-        "niger_june_24",
-        "inputs",
-        "cibles",
+        target_historical_data_path,
         "Cible Men5-TCV CSI.xlsx",
     )
 
@@ -431,9 +432,7 @@ def import_target_data_for_polio_2026_r1() -> pd.DataFrame:
 
     file_path = os.path.join(
         workspace.files_path,
-        "niger_june_24",
-        "inputs",
-        "cibles",
+        target_historical_data_path,
         "cible_jnv_polio_2025.xlsx",
     )
 
@@ -515,16 +514,12 @@ def match_csi_to_org_unit_id(
     ]
     target_df_matched_check.drop_duplicates(inplace=True)
     target_df_matched_check.to_csv(
-        os.path.join(
-            workspace.files_path, "niger_june_24", "temp", "target_df_matched_check.csv"
-        ),
+        os.path.join(workspace.files_path, temp_path, "target_df_matched_check.csv"),
         index=False,
     )
     org_unit_tree_check.drop_duplicates(inplace=True)
     org_unit_tree_check.to_csv(
-        os.path.join(
-            workspace.files_path, "niger_june_24", "temp", "org_unit_tree_check.csv"
-        ),
+        os.path.join(workspace.files_path, temp_path, "org_unit_tree_check.csv"),
         index=False,
     )
 
@@ -851,9 +846,108 @@ def import_target_data_for_future_campaigns():
         pd.DataFrame: DataFrame containing the target data for future campaigns.
     """
     current_run.log_info("Importing target data for future campaigns...")
-    # Placeholder implementation
-    future_target_data = pd.DataFrame()
-    return future_target_data
+
+    clean_target_path = target_other_data_path.lstrip("/")
+    folder_path = os.path.join(workspace.files_path, clean_target_path)
+
+    all_target_data = []
+
+    if not os.path.exists(folder_path):
+        current_run.log_error(f"Le chemin spécifié n'existe pas : {folder_path}")
+        return pd.DataFrame()
+
+    for subdir, dirs, files in os.walk(folder_path):
+        for folder_name in dirs:
+            year_match = re.search(r"20\d{2}", folder_name)
+
+            if not year_match:
+                current_run.log_info(f"Dossier ignoré (pas d'année) : {folder_name}")
+                continue
+
+            year = int(year_match.group(0))
+            subfolder_path = os.path.join(subdir, folder_name)
+
+            for file in os.listdir(subfolder_path):
+                if not (file.endswith(".xlsx") and not file.startswith("~$")):
+                    continue
+
+                campaign_round_match = re.search(r"Cibles_(.+)_(r\d+)\.xlsx", file)
+                if not campaign_round_match:
+                    current_run.log_warning(
+                        f"Format de nommage invalide : '{file}' dans '{folder_name}'. "
+                        "Format attendu: 'Cibles_<campagne>_r<round>.xlsx'"
+                    )
+                    continue
+
+                campaign = campaign_round_match.group(1)
+                round_code = campaign_round_match.group(2)
+
+                if campaign not in list_of_valid_campaigns:
+                    current_run.log_warning(
+                        f"Campagne invalide '{campaign}' détectée dans '{file}'. "
+                        f"Valeurs autorisées : {', '.join(list_of_valid_campaigns)}"
+                    )
+                    continue
+
+                file_path = os.path.join(subfolder_path, file)
+                try:
+                    df = pd.read_excel(file_path, engine="openpyxl")
+
+                    if df.empty:
+                        current_run.log_warning(f"Le fichier {file} est vide.")
+                        continue
+
+                    required_cols = ["District Sanitaire", "CSI"]
+                    if not all(col in df.columns for col in required_cols):
+                        current_run.log_error(
+                            f"Colonnes manquantes dans {file}. Attendu: {required_cols}"
+                        )
+                        continue
+
+                    df["LVL_3_NAME"] = df["District Sanitaire"]
+                    df["LVL_6_NAME"] = df["CSI"]
+                    df["year"] = year
+                    df["produit"] = campaign
+                    df["round"] = round_code.replace("r", "round ")
+
+                    id_vars = ["LVL_3_NAME", "LVL_6_NAME", "year", "produit", "round"]
+                    value_vars = [
+                        col for col in df.columns if col.startswith("Cible (")
+                    ]
+
+                    if not value_vars:
+                        current_run.log_warning(
+                            f"Aucune colonne de cible trouvée dans {file}"
+                        )
+                        continue
+
+                    df_melted = pd.melt(
+                        df,
+                        id_vars=id_vars,
+                        value_vars=value_vars,
+                        var_name="age_group",
+                        value_name="cible",
+                    )
+
+                    df_melted["age"] = df_melted["age_group"].str.extract(
+                        r"Cible \((.+)\)"
+                    )
+                    df_melted = df_melted.drop(columns=["age_group"])
+
+                    all_target_data.append(df_melted)
+                    current_run.log_info(f"Importation réussie : {file}")
+
+                except Exception as e:
+                    current_run.log_error(
+                        f"Impossible de lire le fichier {file} : {str(e)}"
+                    )
+                    continue
+
+    if not all_target_data:
+        current_run.log_warning("Aucune donnée cible n'a été importée.")
+        return pd.DataFrame()
+
+    return pd.concat(all_target_data, ignore_index=True)
 
 
 def save_output(target_data_combined: pd.DataFrame):
@@ -870,8 +964,7 @@ def save_output(target_data_combined: pd.DataFrame):
 
     output_path = os.path.join(
         workspace.files_path,
-        "niger_june_24",
-        "outputs",
+        outputs_path,
         "combined_target_data.parquet",
     )
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
