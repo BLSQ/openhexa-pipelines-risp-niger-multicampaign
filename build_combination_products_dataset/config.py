@@ -1,32 +1,74 @@
 import pandas as pd
 
-# Definition of date ranges for all campaign rounds
-campaign_dates = {
+# paths
+outputs_path = "niger_june_24/outputs/"
+
+campaign_dates_config = {
     # 2024
-    "2024r1_polio": {
+    "2024r1_vaccin__polio": {
         "min": pd.to_datetime("2024-07-10"),
         "max": pd.to_datetime("2024-07-24"),
     },
-    "2024r2_polio": {
+    "2024r1_vitamine__A": {
+        "min": pd.to_datetime("2024-07-10"),
+        "max": pd.to_datetime("2024-07-24"),
+    },
+    "2024r1_albendazole": {
+        "min": pd.to_datetime("2024-07-10"),
+        "max": pd.to_datetime("2024-07-24"),
+    },
+    "2024r2_vaccin__polio": {
         "min": pd.to_datetime("2024-09-28"),
         "max": pd.to_datetime("2024-10-06"),
     },
-    "2024r3_polio": {
+    "2024r2_vitamine__A": {
+        "min": pd.to_datetime("2024-09-28"),
+        "max": pd.to_datetime("2024-10-06"),
+    },
+    "2024r2_albendazole": {
+        "min": pd.to_datetime("2024-09-28"),
+        "max": pd.to_datetime("2024-10-06"),
+    },
+    "2024r3_vaccin__polio": {
         "min": pd.to_datetime("2024-10-25"),
         "max": pd.to_datetime("2024-11-01"),
     },
-    "2024r4_polio": {
+    "2024r3_vitamine__A": {
+        "min": pd.to_datetime("2024-10-25"),
+        "max": pd.to_datetime("2024-11-01"),
+    },
+    "2024r3_albendazole": {
+        "min": pd.to_datetime("2024-10-25"),
+        "max": pd.to_datetime("2024-11-01"),
+    },
+    "2024r4_vaccin__polio": {
+        "min": pd.to_datetime("2024-12-01"),
+        "max": pd.to_datetime("2024-12-12"),
+    },
+    "2024r4_vitamine__A": {
+        "min": pd.to_datetime("2024-12-01"),
+        "max": pd.to_datetime("2024-12-12"),
+    },
+    "2024r4_albendazole": {
         "min": pd.to_datetime("2024-12-01"),
         "max": pd.to_datetime("2024-12-12"),
     },
     # 2025
+    "2025r1_vaccin__polio": {
+        "min": pd.to_datetime("2025-05-04"),
+        "max": pd.to_datetime("2025-05-08"),
+    },
+    "2025r1_vitamine__A": {
+        "min": pd.to_datetime("2025-05-04"),
+        "max": pd.to_datetime("2025-05-08"),
+    },
+    "2025r1_albendazole": {
+        "min": pd.to_datetime("2025-05-04"),
+        "max": pd.to_datetime("2025-05-08"),
+    },
     "2025r1_rougeole": {
         "min": pd.to_datetime("2025-04-18"),
         "max": pd.to_datetime("2025-04-24"),
-    },
-    "2025r1_polio": {
-        "min": pd.to_datetime("2025-05-04"),
-        "max": pd.to_datetime("2025-05-08"),
     },
     "2025r1_fièvre__jaune": {
         "min": pd.to_datetime("2025-10-27"),
@@ -40,15 +82,15 @@ campaign_dates = {
         "min": pd.to_datetime("2025-11-24"),
         "max": pd.to_datetime("2025-12-02"),
     },
-    "2025r2_fièvre__jaune": {
-        "min": pd.to_datetime("2025-12-10"),
-        "max": pd.to_datetime("2025-12-17"),
-    },
-    "2025r2_vita": {
+    "2025r2_vaccin__polio": {
         "min": pd.to_datetime("2025-06-14"),
         "max": pd.to_datetime("2025-06-21"),
     },
-    "2025r2_polio": {
+    "2025r2_vitamine__A": {
+        "min": pd.to_datetime("2025-06-14"),
+        "max": pd.to_datetime("2025-06-21"),
+    },
+    "2025r2_albendazole": {
         "min": pd.to_datetime("2025-06-14"),
         "max": pd.to_datetime("2025-06-21"),
     },
@@ -60,78 +102,76 @@ campaign_dates = {
         "min": pd.to_datetime("2025-12-15"),
         "max": pd.to_datetime("2025-12-22"),
     },
-    "2025r3_polio": {
-        "min": pd.to_datetime("2025-12-05"),
-        "max": pd.to_datetime("2025-12-08"),
+    # 2026
+    "2026r1_vaccin__polio": {
+        "min": pd.to_datetime("2026-01-11"),
+        "max": pd.to_datetime("2026-01-15"),
+    },
+    "2026r1_vitamine__A": {
+        "min": pd.to_datetime("2026-01-11"),
+        "max": pd.to_datetime("2026-01-15"),
+    },
+    "2026r1_albendazole": {
+        "min": pd.to_datetime("2026-01-11"),
+        "max": pd.to_datetime("2026-01-15"),
+    },
+    "2026r1_fièvre__jaune": {
+        "min": pd.to_datetime("2026-01-20"),
+        "max": pd.to_datetime("2026-01-26"),
     },
 }
 
-sites_types = [
-    "ordinaire",
-    "spécial",
-    "frontalier",
-    "transfrontalier : étranger",
-    "transfrontalier : Niger",
-    "TOUS",
-]
-
-sites_types = [
-    "ordinaire",
-    "spécial",
-    "frontalier",
-    "transfrontalier : étranger",
-    "transfrontalier : Niger",
-]
-
-sites_types_rougeole_adjustment = {
-    "ordinaire": "fixe",
-    "spécial": "avancé",
-    "frontalier": "mobile",
-}
-
-sex_types = ["TOUS"]
-
-campaign_configs = {
-    "vpo": {
-        "choix_campagne": ["polio"],
-        "ages": ["0-11 mois", "12-59 mois"],
-        "produit": ["vaccin polio"],
-        "status": ["déjà reçu", "zéro dose"],
+product_site_config = {
+    "vaccin polio": {
+        "ordinaire",
+        "spécial",
+        "frontalier",
+        "transfrontalier : étranger",
+        "transfrontalier : Niger",
     },
-    "vita": {
-        "choix_campagne": ["polio"],
-        "ages": ["6-11 mois", "12-24 mois"],
-        "produit": ["vitamine A"],
-        "status": ["zéro dose"],
+    "vitamine A": {
+        "ordinaire",
+        "spécial",
+        "frontalier",
+        "transfrontalier : étranger",
+        "transfrontalier : Niger",
     },
     "albendazole": {
-        "choix_campagne": ["polio"],
-        "ages": ["12-23 mois", "24-59 mois"],
-        "produit": ["albendazole"],
-        "status": ["zéro dose"],
+        "ordinaire",
+        "spécial",
+        "frontalier",
+        "transfrontalier : étranger",
+        "transfrontalier : Niger",
+    },
+    "rougeole": {"fixe", "avancé", "mobile"},
+    "fièvre jaune": {"ordinaire"},
+    "méningite": {"ordinaire"},
+    "tcv": {"ordinaire"},
+}
+
+sex_types_config = ["TOUS"]
+
+product_status_config = {
+    "vaccin polio": {
+        "déjà reçu",
+        "zéro dose",
+    },
+    "vitamine A": {
+        "zéro dose",
+    },
+    "albendazole": {
+        "zéro dose",
     },
     "rougeole": {
-        "choix_campagne": ["rougeole"],
-        "ages": ["6-11 mois", "12-59 mois"],
-        "produit": ["rougeole"],
-        "status": ["zéro dose"],
+        "zéro dose",
     },
-    "fjaune": {
-        "choix_campagne": ["fièvre jaune"],
-        "ages": ["9-11 mois", "12-23 mois", "24-59 mois", "5-14 ans", "15-60 ans"],
-        "produit": ["fièvre jaune"],
-        "status": ["zéro dose"],
+    "fièvre jaune": {
+        "zéro dose",
     },
-    "meningite": {
-        "choix_campagne": ["méningite"],
-        "ages": ["1-4 ans", "5-14 ans", "15-19 ans"],
-        "produit": ["méningite"],
-        "status": ["zéro dose"],
+    "méningite": {
+        "zéro dose",
     },
     "tcv": {
-        "choix_campagne": ["tcv"],
-        "ages": ["1-4 ans", "5-14 ans", "15-19 ans"],
-        "produit": ["tcv"],
-        "status": ["zéro dose"],
+        "zéro dose",
     },
 }

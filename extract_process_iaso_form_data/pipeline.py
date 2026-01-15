@@ -1,3 +1,4 @@
+import datetime
 import os
 import pandas as pd
 import numpy as np
@@ -6,8 +7,8 @@ from pathlib import Path
 from config import (
     iaso_connector_slug,
     iaso_form_id,
-    current_period,
-    current_period_start_date,
+    iaso_extracted_data_path,
+    outputs_path,
     campaign_name_cleaning_dict,
     campaign_name_mapping_dict,
     cols_campaign_map,
@@ -27,13 +28,13 @@ def extract_process_iaso_form_data():
     # data imports
     iaso_org_unit_tree_clean = import_clean_iaso_org_unit_tree()
     iaso_org_unit_tree_raw = import_raw_iaso_org_unit_tree()
-    historical_df = import_historical_iaso_data()
 
     # data extraction
-    current_df = extract_iaso_data_for_current_period()
+    extract_iaso_data_for_current_month()
+    extract_iaso_data_for_other_months()
 
     # data processing
-    combined_df = combine_historical_and_current_data(historical_df, current_df)
+    combined_df = combine_historical_and_current_data()
     combined_df = retrieve_org_unit_ids(
         combined_df, iaso_org_unit_tree_raw, iaso_org_unit_tree_clean
     )
@@ -43,103 +44,204 @@ def extract_process_iaso_form_data():
     save_output(combined_df)
 
 
-def import_historical_iaso_data() -> pd.DataFrame:
+def extract_iaso_data_for_current_month() -> None:
     """
-    Import historical data from IASO historical data folder.
-
-    Args:
-        None
-
-    Returns:
-        pd.DataFrame: Combined historical data from all feather files.
+    Extrait les données IASO pour le mois en cours et met à jour le fichier local.
     """
-    current_run.log_info("Importing historical data...")
-    historical_data_folder = os.path.join(workspace.files_path, "IASO historical data")
-    historical_df = pd.DataFrame()
-    for file in os.listdir(historical_data_folder):
-        if file.endswith(".feather"):
-            file_path = os.path.join(historical_data_folder, file)
-            current_run.log_info(f"Imported {file_path}")
-            df = pd.read_feather(file_path)
-            historical_df = pd.concat([historical_df, df], ignore_index=True)
+    now = datetime.datetime.today()
+    current_month = now.month
+    current_year = now.year
+    current_period_str = f"{current_year}-{current_month:02d}"
 
-    return historical_df
-
-
-def extract_iaso_data_for_current_period() -> pd.DataFrame:
-    """
-    Extract data from IASO for the current quarter using the IASO connector.
-
-    Args:
-        None
-
-    Returns:
-        pd.DataFrame: DataFrame containing data for the current quarter.
-    """
-    current_run.log_info("Extracting IASO data for the current period...")
-    iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
-    iaso_connector_instance.get_data_structure_from_the_form(iaso_form_id)
-    iaso_connector_instance.form_data_structure_df
-    current_df = iaso_connector_instance.extract_submissions_info(
-        form_id=iaso_form_id, dateFrom=current_period_start_date
+    current_run.log_info(
+        f"Début de l'extraction IASO pour le mois en cours : {current_period_str}..."
     )
 
-    # save for future use
-    file_path = os.path.join(
-        workspace.files_path,
-        "temp",
-        f"multicampaign_df_{current_period}_raw.feather",
-    )
-    Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-    current_df.to_feather(
-        os.path.join(
-            workspace.files_path,
-            "temp",
-            f"multicampaign_df_{current_period}_raw.feather",
+    try:
+        iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
+        iaso_connector_instance.get_data_structure_from_the_form(iaso_form_id)
+    except Exception as e:
+        current_run.log_error(f"Erreur d'initialisation du connecteur : {str(e)}")
+        return
+
+    current_period_start_date = f"{current_year}-{current_month:02d}-01"
+
+    try:
+        current_df = iaso_connector_instance.extract_submissions_info(
+            form_id=iaso_form_id, dateFrom=current_period_start_date
         )
+
+        if current_df is None or current_df.empty:
+            current_run.log_warning(
+                f"Aucune soumission trouvée pour {current_period_str}. Le fichier existant ne sera pas modifié."
+            )
+            return
+
+        clean_extract_path = iaso_extracted_data_path.lstrip("/")
+        file_name = f"multicampaign_df_{current_period_str}_raw.feather"
+
+        file_path = os.path.join(workspace.files_path, clean_extract_path, file_name)
+        Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+
+        current_df.to_feather(file_path)
+        current_run.log_info(
+            f"Mise à jour réussie : {file_path} ({len(current_df)} lignes)."
+        )
+
+    except Exception as e:
+        current_run.log_error(
+            f"Erreur critique lors de l'extraction du mois en cours : {str(e)}"
+        )
+
+
+def extract_iaso_data_for_other_months() -> None:
+    """
+    Extract data from IASO for all months from 2024 up to the current date,
+    skipping months that already have a saved file.
+    """
+    now = datetime.datetime.today()
+    current_month = now.month
+    current_year = now.year
+    current_period_str = f"{current_year}-{current_month:02d}"
+
+    current_run.log_info(
+        f"Vérification des données historiques IASO (Excluant {current_period_str})..."
     )
 
-    # fast import
-    current_df = pd.read_feather(file_path)
+    try:
+        iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
+        iaso_connector_instance.get_data_structure_from_the_form(iaso_form_id)
+    except Exception as e:
+        current_run.log_error(f"Échec de l'initialisation du connecteur IASO: {e}")
+        return
 
-    return current_df
+    clean_extract_path = iaso_extracted_data_path.lstrip("/")
+    folder_path = os.path.join(workspace.files_path, clean_extract_path)
+    existing_files = os.listdir(folder_path) if os.path.exists(folder_path) else []
+
+    for year in range(2024, current_year + 1):
+        for month in range(1, 13):
+            if year == current_year and month >= current_month:
+                continue
+
+            period_str = f"{year}-{month:02d}"
+            expected_file_name = f"multicampaign_df_{period_str}_raw.feather"
+
+            if expected_file_name in existing_files:
+                continue
+
+            period_start_date = datetime.date(year, month, 1)
+            if month == 12:
+                period_end_date = datetime.date(year + 1, 1, 1)
+            else:
+                period_end_date = datetime.date(year, month + 1, 1)
+
+            current_run.log_info(f"Extraction des données IASO pour {period_str}...")
+
+            try:
+                month_df = iaso_connector_instance.extract_submissions_info(
+                    form_id=iaso_form_id,
+                    dateFrom=period_start_date.strftime("%Y-%m-%d"),
+                    dateTo=period_end_date.strftime("%Y-%m-%d"),
+                )
+
+                if month_df is None or month_df.empty:
+                    current_run.log_info(f"Aucune donnée trouvée pour {period_str}.")
+                    continue
+
+                # Save the file
+                file_path = os.path.join(folder_path, expected_file_name)
+                Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+
+                month_df.to_feather(file_path)
+                current_run.log_info(f"Sauvegardé : {expected_file_name}")
+
+            except Exception as e:
+                current_run.log_error(
+                    f"Erreur lors de l'extraction de {period_str}: {str(e)}"
+                )
+                continue
 
 
-def combine_historical_and_current_data(
-    historical_df: pd.DataFrame, current_df: pd.DataFrame
-) -> pd.DataFrame:
+def combine_historical_and_current_data() -> pd.DataFrame:
     """
-    Combine historical and current period data into a single DataFrame.
-
-    Args:
-        historical_df (pd.DataFrame): DataFrame containing historical data.
-        current_df (pd.DataFrame): DataFrame containing current period data.
-
-    Returns:
-        pd.DataFrame: Combined DataFrame with historical and current data.
+    Combine les données historiques et la période actuelle dans un seul DataFrame
+    avec gestion des doublons et validation de la structure.
     """
-    current_run.log_info("Combining historical and current data...")
-    combined_df = pd.concat([current_df, historical_df], ignore_index=True)
+    clean_path = iaso_extracted_data_path.lstrip("/")
+    folder_path = os.path.join(workspace.files_path, clean_path)
 
-    duplicates_count = combined_df.duplicated(subset=["uuid"], keep=False).sum()
-    if duplicates_count > 0:
-        duplicates_proportion = duplicates_count / len(combined_df)
+    # 1. Vérification de l'existence du dossier
+    if not os.path.exists(folder_path):
+        current_run.log_error(f"Le dossier de données n'existe pas : {folder_path}")
+        return pd.DataFrame()
+
+    dataframes_list = []
+
+    # 2. Collecte efficace des fichiers
+    for file in os.listdir(folder_path):
+        if file.endswith(".feather") and not file.startswith("~$"):
+            file_path = os.path.join(folder_path, file)
+
+            try:
+                current_run.log_info(f"Lecture de : {file}")
+                df = pd.read_feather(file_path)
+
+                if not df.empty:
+                    dataframes_list.append(df)
+                else:
+                    current_run.log_info(f"Fichier vide ignoré : {file}")
+
+            except Exception as e:
+                current_run.log_error(f"Erreur lors de la lecture de {file} : {e}")
+                continue
+
+    # 3. Combinaison unique
+    if not dataframes_list:
+        current_run.log_warning("Aucune donnée trouvée dans les fichiers Feather.")
+        return pd.DataFrame()
+
+    combined_df = pd.concat(dataframes_list, ignore_index=True)
+
+    # 4. Gestion robuste des doublons (basée sur UUID)
+    if "uuid" in combined_df.columns:
+        duplicates = combined_df.duplicated(subset=["uuid"], keep="first")
+        duplicates_count = duplicates.sum()
+
+        if duplicates_count > 0:
+            total = len(combined_df)
+            current_run.log_warning(
+                f"{duplicates_count} doublons détectés ({duplicates_count / total:.2%}). "
+                "Suppression en gardant la première occurrence."
+            )
+            combined_df = combined_df[~duplicates].reset_index(drop=True)
+    else:
         current_run.log_warning(
-            f"{duplicates_count} entrées ({duplicates_proportion:.2%}) dupliquées trouvées pour la même UUID. Les doublons seront supprimés."
+            "La colonne 'uuid' est absente. Impossible de dédoublonner."
         )
-        combined_df = combined_df.drop_duplicates(subset="uuid")
 
-    iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
-    iaso_connector_instance.get_data_structure_from_the_form(iaso_form_id)
-    for col in [
-        _
-        for _ in iaso_connector_instance.form_data_structure_df.name.unique()
-        if _ not in combined_df.columns
-    ]:
-        current_run.log_warning(
-            f"La colonne '{col}' est manquante dans les données combinées. Elle sera ajoutée avec des valeurs NaN."
+    # 5. Alignement avec la structure attendue du formulaire IASO
+    try:
+        iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
+        iaso_connector_instance.get_data_structure_from_the_form(iaso_form_id)
+        expected_columns = iaso_connector_instance.form_data_structure_df.name.unique()
+
+        missing_cols = [
+            col for col in expected_columns if col not in combined_df.columns
+        ]
+
+        if missing_cols:
+            current_run.log_warning(
+                f"{len(missing_cols)} colonnes manquantes ajoutées (NaN)."
+            )
+            for col in missing_cols:
+                combined_df[col] = np.nan
+    except Exception as e:
+        current_run.log_error(
+            f"Impossible de vérifier la structure via l'API IASO : {e}"
         )
-        combined_df[col] = np.nan
+
+    current_run.log_info(f"Combinaison terminée. Taille finale : {combined_df.shape}")
 
     return combined_df
 
@@ -157,12 +259,14 @@ def import_raw_iaso_org_unit_tree() -> pd.DataFrame:
 
     file_path = os.path.join(
         workspace.files_path,
-        "process_target_data",
-        "output",
+        outputs_path,
         "iaso_org_unit_tree_raw.parquet",
     )
-
-    iaso_org_unit_tree_raw = pd.read_parquet(file_path)
+    try:
+        iaso_org_unit_tree_raw = pd.read_parquet(file_path)
+    except FileNotFoundError:
+        current_run.log_error(f"Fichier non trouvé : {file_path}")
+        return pd.DataFrame()
 
     return iaso_org_unit_tree_raw
 
@@ -180,12 +284,15 @@ def import_clean_iaso_org_unit_tree() -> pd.DataFrame:
 
     file_path = os.path.join(
         workspace.files_path,
-        "process_target_data",
-        "output",
+        outputs_path,
         "iaso_org_unit_tree_clean.parquet",
     )
 
-    iaso_org_unit_tree_clean = pd.read_parquet(file_path)
+    try:
+        iaso_org_unit_tree_clean = pd.read_parquet(file_path)
+    except FileNotFoundError:
+        current_run.log_error(f"Fichier non trouvé : {file_path}")
+        return pd.DataFrame()
 
     return iaso_org_unit_tree_clean
 
@@ -225,7 +332,17 @@ def retrieve_org_unit_ids(
     combined_df["org_unit_id"] = combined_df["org_unit_id"].map(
         org_unit_to_final_org_unit_dict
     )
-    combined_df["org_unit_id"] = combined_df["org_unit_id"].astype(np.int64)
+    # remove entries with missing org_unit_id
+    mask_missing_org_unit = combined_df["org_unit_id"].isna()
+    missing_org_unit_entries = combined_df[mask_missing_org_unit]
+    if not missing_org_unit_entries.empty:
+        missing_org_unit_proportion = len(missing_org_unit_entries) / len(combined_df)
+        current_run.log_warning(
+            f"{len(missing_org_unit_entries)} entrées ({missing_org_unit_proportion:.2%}) contiennent des org_unit_id manquants. Ces entrées seront supprimées."
+        )
+        combined_df = combined_df[~mask_missing_org_unit].copy()
+
+    combined_df.loc[:, "org_unit_id"] = combined_df["org_unit_id"].astype(np.int64)
 
     return combined_df
 
@@ -295,18 +412,9 @@ def clean_combined_df(combined_df: pd.DataFrame) -> pd.DataFrame:
             subset=["uuid", "org_unit_id", "period", "choix_campagne"], keep="last"
         )
 
-    # assign rounds and check proportion of entries outside the range of campaign rounds
+    # assign rounds and years
     combined_df = round_assignment(combined_df)
     year_assignment(combined_df)
-
-    invalid_date = combined_df[
-        combined_df["round"].isna() | combined_df["round"].isin(["date invalide"])
-    ]
-    if not invalid_date.empty:
-        proportion_invalid = len(invalid_date) / len(combined_df)
-        current_run.log_warning(
-            f"{len(invalid_date)} entrée(s) ({proportion_invalid:.2%}) contiennent des dates invalides ou hors période de campagne."
-        )
 
     ## drop entries that are not to be expected in the df:
 
@@ -344,7 +452,7 @@ def save_output(combined_df: pd.DataFrame):
     current_run.log_info("Saving combined IASO data...")
 
     output_path = os.path.join(
-        workspace.files_path, "output", "combined_iaso_data.parquet"
+        workspace.files_path, "niger_june_24", "outputs", "combined_iaso_data.parquet"
     )
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     combined_df.to_parquet(output_path, index=False)

@@ -12,8 +12,9 @@ iaso_connector_slug = {
 }
 
 iaso_form_id = 1186
-current_period = "2026Q1"
-current_period_start_date = "2026-01-01"
+
+# paths
+outputs_path = "niger_june_24/outputs/"
 
 # campaign name cleaning and mapping
 campaign_name_cleaning_dict = {
@@ -208,6 +209,7 @@ district_level_target_keys = [
 
 district_level_group_keys = district_level_target_keys + [
     "period",
+    "order_day",
     "sexe",
     "vaccination_status",
     "site",
@@ -220,22 +222,8 @@ district_level_final_keys = district_level_group_keys + [
 ]
 
 district_level_cumsum_keys = list(
-    (set(district_level_group_keys) | {"org_unit_id"}) - {"period"}
+    (set(district_level_group_keys) | {"org_unit_id"}) - {"period"} - {"order_day"}
 )
-
-district_level_config = {
-    2024: {
-        "vaccin polio": ["round 1", "round 2", "round 3", "round 4"],
-        "albendazole": ["round 1", "round 2", "round 3", "round 4"],
-        "vitamine A": ["round 1", "round 2", "round 3", "round 4"],
-    },
-    2025: {
-        "vaccin polio": ["round 1", "round 2"],
-        "albendazole": ["round 1", "round 2"],
-        "vitamine A": ["round 1", "round 2"],
-        "rougeole": ["round 1", "round 2"],
-    },
-}
 
 csi_level_target_keys = list(
     (set(district_level_target_keys) | {"org_unit_id"}) - {"LVL_3_NAME"}
@@ -247,10 +235,13 @@ csi_level_cumsum_keys = district_level_cumsum_keys + ["LVL_6_NAME"]
 
 csi_level_config = {
     2025: {
-        "fièvre jaune": ["round 1", "round 2"],
+        "fièvre jaune": ["round 1"],
         "méningite": ["round 1", "round 2"],
         "tcv": ["round 1", "round 2"],
-        "vaccin polio": ["round 3"],
+    },
+    2026: {
+        "fièvre jaune": ["round 1"],
+        "vaccin polio": ["round 1"],
     },
 }
 
