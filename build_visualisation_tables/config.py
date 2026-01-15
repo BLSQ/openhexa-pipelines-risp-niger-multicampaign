@@ -12,8 +12,9 @@ iaso_connector_slug = {
 }
 
 iaso_form_id = 1186
-current_period = "2026Q1"
-current_period_start_date = "2026-01-01"
+
+# paths
+outputs_path = "niger_june_24/outputs/"
 
 # campaign name cleaning and mapping
 campaign_name_cleaning_dict = {
@@ -208,6 +209,7 @@ district_level_target_keys = [
 
 district_level_group_keys = district_level_target_keys + [
     "period",
+    "order_day",
     "sexe",
     "vaccination_status",
     "site",
@@ -220,7 +222,7 @@ district_level_final_keys = district_level_group_keys + [
 ]
 
 district_level_cumsum_keys = list(
-    (set(district_level_group_keys) | {"org_unit_id"}) - {"period"}
+    (set(district_level_group_keys) | {"org_unit_id"}) - {"period"} - {"order_day"}
 )
 
 csi_level_target_keys = list(

@@ -4,6 +4,7 @@ import numpy as np
 import sqlalchemy as sa
 from openhexa.sdk import current_run, workspace, pipeline
 from config import (
+    outputs_path,
     cvrg_campaign_map,
     district_level_target_keys,
     district_level_group_keys,
@@ -64,21 +65,21 @@ def build_visualisation_tables():
     ) = create_filter_tables(combined_df, combined_campaign_data_df)
     spatial_units_combined = create_dynamic_org_unit_table()
 
-    # # write to db
-    # write_to_db(cvrg_total, "ner_vaccination_couverture")
-    # write_to_db(cvrg_csi_district, "ner_vaccination_couverture_csi_district_cibled")
-    # write_to_db(cmpl, "ner_vaccination_completude")
-    # write_to_db(stock, "ner_vaccination_stock")
-    # write_to_db(supervision, "ner_vaccination_supervision")
-    # write_to_db(communication_long, "ner_vaccination_communications_long")
-    # write_to_db(communication, "ner_vaccination_communications")
-    # write_to_db(target_df, "ner_vaccination_cibles_district")
-    # write_to_db(campaign_filter_table, "ner_vaccination_campaign_filter_table")
-    # write_to_db(round_filter_table, "ner_vaccination_round_filter_table")
-    # write_to_db(year_filter_table, "ner_vaccination_year_filter_table")
-    # write_to_db(products_filter_table, "ner_vaccination_products_filter_table")
-    # write_to_db(combination_filter_table, "ner_vaccination_combination_filter_table")
-    # write_to_db(spatial_units_combined, "ner_spatial_units")
+    # write to db
+    write_to_db(cvrg_total, "ner_vaccination_couverture")
+    write_to_db(cvrg_csi_district, "ner_vaccination_couverture_csi_district_cibled")
+    write_to_db(cmpl, "ner_vaccination_completude")
+    write_to_db(stock, "ner_vaccination_stock")
+    write_to_db(supervision, "ner_vaccination_supervision")
+    write_to_db(communication_long, "ner_vaccination_communications_long")
+    write_to_db(communication, "ner_vaccination_communications")
+    write_to_db(target_df, "ner_vaccination_cibles_district")
+    write_to_db(campaign_filter_table, "ner_vaccination_campaign_filter_table")
+    write_to_db(round_filter_table, "ner_vaccination_round_filter_table")
+    write_to_db(year_filter_table, "ner_vaccination_year_filter_table")
+    write_to_db(products_filter_table, "ner_vaccination_products_filter_table")
+    write_to_db(combination_filter_table, "ner_vaccination_combination_filter_table")
+    write_to_db(spatial_units_combined, "ner_spatial_units")
 
 
 def import_iaso_combined_data() -> pd.DataFrame:
@@ -94,8 +95,7 @@ def import_iaso_combined_data() -> pd.DataFrame:
     current_run.log_info("Importing combined IASO data...")
     file_path = os.path.join(
         workspace.files_path,
-        "niger_june_24",
-        "outputs",
+        outputs_path,
         "combined_iaso_data.parquet",
     )
     combined_df = pd.read_parquet(file_path)
@@ -115,8 +115,7 @@ def import_target_data() -> pd.DataFrame:
     current_run.log_info("Importing target data...")
     file_path = os.path.join(
         workspace.files_path,
-        "niger_june_24",
-        "outputs",
+        outputs_path,
         "combined_target_data.parquet",
     )
     target_df = pd.read_parquet(file_path)
@@ -136,8 +135,7 @@ def import_combined_campaign_data() -> pd.DataFrame:
     current_run.log_info("Importing combined campaign data...")
     file_path = os.path.join(
         workspace.files_path,
-        "niger_june_24",
-        "outputs",
+        outputs_path,
         "combined_campaign_data.parquet",
     )
     combined_campaign_data_df = pd.read_parquet(file_path)
@@ -238,8 +236,8 @@ def create_coverage_dataset(
         )
 
     # merge with expected combined campaign data to ensure all combinations are present
-    df_final = cvrg_total.merge(
-        combined_campaign_data_df,
+    df_final = combined_campaign_data_df.merge(
+        cvrg_total,
         on=[
             "year",
             "round",
@@ -254,13 +252,13 @@ def create_coverage_dataset(
         how="left",
         indicator=True,
     )
-    unmatched_entries_in_iaso = df_final[df_final["_merge"] == "left_only"]
+    unmatched_entries_in_iaso = df_final[df_final["_merge"] == "right_only"]
     if not unmatched_entries_in_iaso.empty:
         proportion_unmatched_in_iaso = len(unmatched_entries_in_iaso) / len(df_final)
         current_run.log_warning(
             f"{len(unmatched_entries_in_iaso)} entrées ({proportion_unmatched_in_iaso:.2%}) dans IASO n'ont pas été trouvées dans le expected dataframe. Ces entrées seront supprimées."
         )
-    df_final = df_final[df_final["_merge"] == "both"].drop(columns=["_merge"])
+    df_final = df_final[df_final["_merge"] != "right_only"].drop(columns=["_merge"])
 
     return cvrg_total, df_final
 
@@ -344,6 +342,29 @@ def add_target_data(coverage_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.Da
         coverage_csi_with_target_df["cible"].isna()
     ]
 
+    # remove entries which are not in regions of Dosso and Tahoua for yellow fever campaign
+    # import iaso_org_unit_tree_clean to get region names
+    file_path = os.path.join(
+        workspace.files_path,
+        "niger_june_24",
+        "outputs",
+        "iaso_org_unit_tree_clean.parquet",
+    )
+    iaso_org_unit_tree_clean_df = pd.read_parquet(file_path)
+    iaso_org_unit_tree_clean_df_restricted = iaso_org_unit_tree_clean_df[
+        ["LVL_3_NAME", "LVL_2_NAME"]
+    ].drop_duplicates()
+    no_target_entries_csi = no_target_entries_csi.merge(
+        iaso_org_unit_tree_clean_df_restricted,
+        how="left",
+        left_on="LVL_3_NAME",
+        right_on="LVL_3_NAME",
+    )
+    mask_yf_dosso_tahoua = (no_target_entries_csi["produit"] == "fièvre jaune") & (
+        ~no_target_entries_csi["LVL_2_NAME"].isin(["Dosso", "Tahoua"])
+    )
+    no_target_entries_csi = no_target_entries_csi[~mask_yf_dosso_tahoua]
+
     if not no_target_entries_csi.empty:
         affected_csi_list = no_target_entries_csi["LVL_6_NAME"].unique().tolist()
         proportion_no_target_csi = len(no_target_entries_csi) / len(coverage_df_csi)
@@ -353,6 +374,9 @@ def add_target_data(coverage_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.Da
             f"CSI affectés: {', '.join(affected_csi_list)}"
         )
 
+    coverage_csi_with_target_df["value"] = coverage_csi_with_target_df["value"].fillna(
+        0
+    )
     coverage_csi_with_target_df["value_cum"] = coverage_csi_with_target_df.groupby(
         csi_level_cumsum_keys
     )["value"].transform("cumsum")
@@ -360,10 +384,12 @@ def add_target_data(coverage_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.Da
         "Int64"
     )
 
+    # combine csi and district level
     cvrg_csi_district = pd.concat(
         [coverage_csi_with_target_df, coverage_district_with_target_df],
         ignore_index=True,
     )
+
     return cvrg_csi_district
 
 

@@ -119,10 +119,10 @@ def get_iaso_org_unit_tree() -> pd.DataFrame:
     """
     current_run.log_info("Retrieving org unit tree data from IASO...")
 
-    iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
-    iaso_org_unit_tree_df = iaso_connector_instance.get_ou_tree_dataframe_from_the_form(
-        iaso_form_id
-    )
+    # iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
+    # iaso_org_unit_tree_df = iaso_connector_instance.get_ou_tree_dataframe_from_the_form(
+    #     iaso_form_id
+    # )
 
     # save file to parquet for later use
     file_path = os.path.join(
@@ -131,10 +131,10 @@ def get_iaso_org_unit_tree() -> pd.DataFrame:
         "iaso_org_unit_tree_raw.parquet",
     )
     Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-    iaso_org_unit_tree_df.to_parquet(
-        file_path,
-        index=False,
-    )
+    # iaso_org_unit_tree_df.to_parquet(
+    #     file_path,
+    #     index=False,
+    # )
     iaso_org_unit_tree_df = pd.read_parquet(file_path)
     return iaso_org_unit_tree_df
 
@@ -302,13 +302,13 @@ def import_target_data_for_polio_and_rougeole_2025_r1_r2() -> pd.DataFrame:
 
 def import_target_data_for_yellow_fever_2025_2026_r1() -> pd.DataFrame:
     """
-    Import target data for yellow fever campaign for year 2025 and 2026 rounds 1
+    Import target data for yellow fever campaign for year 2025 and 2026 rounds 1 for the regions of Dosso and Tahoua
 
     Args:
         None
 
     Returns:
-        pd.DataFrame: DataFrame containing the target data for yellow fever campaign year 2025 and 2026 rounds 1
+        pd.DataFrame: DataFrame containing the target data for yellow fever campaign year 2025 and 2026 rounds 1 for the regions of Dosso and Tahoua
     """
     current_run.log_info(
         "Importing target data for Yellow Fever 2025 and 2026 rounds 1..."
@@ -674,6 +674,9 @@ def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
         target_df_expanded_rougeole["age"] = target_df_expanded_rougeole["age"].replace(
             age_adjustment_rougeole
         )
+        target_df_expanded_rougeole = target_df_expanded_rougeole[
+            target_df_expanded_rougeole["round"] == "round 1"
+        ]
 
         target_df_expanded_polio = target_df_expanded.copy()
         target_df_expanded_polio["produit"] = "vaccin polio"

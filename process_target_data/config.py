@@ -225,7 +225,7 @@ csi_matching_failed = {
 }
 
 list_of_valid_campaigns = [
-    "polio",
+    "vaccin polio",
     "rougeole",
     "fièvre jaune",
     "méningite",
