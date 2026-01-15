@@ -119,10 +119,10 @@ def get_iaso_org_unit_tree() -> pd.DataFrame:
     """
     current_run.log_info("Retrieving org unit tree data from IASO...")
 
-    # iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
-    # iaso_org_unit_tree_df = iaso_connector_instance.get_ou_tree_dataframe_from_the_form(
-    #     iaso_form_id
-    # )
+    iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
+    iaso_org_unit_tree_df = iaso_connector_instance.get_ou_tree_dataframe_from_the_form(
+        iaso_form_id
+    )
 
     # save file to parquet for later use
     file_path = os.path.join(
