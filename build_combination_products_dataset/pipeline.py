@@ -6,10 +6,10 @@ from pathlib import Path
 import re
 from config import (
     outputs_path,
+    config_path,
     product_site_config,
     product_status_config,
     sex_types_config,
-    campaign_dates_config,
 )
 
 
@@ -185,14 +185,24 @@ def create_campaign_period_df() -> pd.DataFrame:
     """
     current_run.log_info("Creating campaign period DataFrame...")
 
-    rows = []
+    campaign_round_config_path = os.path.join(
+        workspace.files_path, config_path, "campagne_dates.json"
+    )
+    try:
+        campaign_round_config = pd.read_json(campaign_round_config_path).to_dict()
+    except Exception as e:
+        current_run.log_error(
+            f"Erreur de lecture du fichier de la configuration des campagnes: {e}"
+        )
+        raise e
 
-    for key, dates in campaign_dates_config.items():
+    rows = []
+    for key, dates in campaign_round_config.items():
         match = re.match(r"(\d{4})r(\d+)_?(.+)?", key)
         if match:
             year = np.int32(match.group(1))
             round_num = f"round {match.group(2)}"
-            raw_campagne = match.group(3) if match.group(3) else "polio"
+            raw_campagne = match.group(3) if match.group(3) else "campagne inconnue"
             product = raw_campagne.replace("__", " ").replace("_", " ")
             date_series = pd.date_range(start=dates["min"], end=dates["max"])
             for i, day in enumerate(date_series, start=1):

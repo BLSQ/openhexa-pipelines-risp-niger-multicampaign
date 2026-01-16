@@ -30,6 +30,16 @@ campaign_name_mapping_dict = {
     "tcv": "tcv",
 }
 
+campaign_product_name_mapping_dict = {
+    "vaccin polio": "polio",
+    "vitamine A": "polio",
+    "albendazole": "polio",
+    "rougeole": "rougeole",
+    "fièvre jaune": "fièvre jaune",
+    "méningite": "méningite",
+    "tcv": "tcv",
+}
+
 # iaso df
 iaso_df_common_cols = [
     "uuid",

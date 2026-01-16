@@ -11,12 +11,11 @@ from config import (
     outputs_path,
     campaign_name_cleaning_dict,
     campaign_name_mapping_dict,
+    campaign_product_name_mapping_dict,
     cols_campaign_map,
 )
 from utils import (
     IASOConnectionHandler,
-    round_assignment,
-    year_assignment,
 )
 
 
@@ -28,6 +27,7 @@ def extract_process_iaso_form_data():
     # data imports
     iaso_org_unit_tree_clean = import_clean_iaso_org_unit_tree()
     iaso_org_unit_tree_raw = import_raw_iaso_org_unit_tree()
+    expected_data_structure = import_expected_data_structure()
 
     # data extraction
     extract_iaso_data_for_current_month()
@@ -38,7 +38,7 @@ def extract_process_iaso_form_data():
     combined_df = retrieve_org_unit_ids(
         combined_df, iaso_org_unit_tree_raw, iaso_org_unit_tree_clean
     )
-    combined_df = clean_combined_df(combined_df)
+    combined_df = clean_combined_df(combined_df, expected_data_structure)
 
     # save output
     save_output(combined_df)
@@ -161,6 +161,35 @@ def extract_iaso_data_for_other_months() -> None:
                     f"Erreur lors de l'extraction de {period_str}: {str(e)}"
                 )
                 continue
+
+
+def import_expected_data_structure() -> pd.DataFrame:
+    """
+    Import the expected data structure from IASO to ensure consistency.
+
+    Returns:
+        pd.DataFrame: DataFrame containing the expected data structure.
+    """
+    current_run.log_info("Importing expected IASO data structure...")
+
+    output_path = os.path.join(
+        workspace.files_path,
+        outputs_path,
+        "combined_campaign_data.parquet",
+    )
+
+    try:
+        expected_structure_df = pd.read_parquet(output_path)
+        current_run.log_info(
+            f"Expected data structure imported with {len(expected_structure_df.columns)} columns."
+        )
+        return expected_structure_df
+
+    except Exception as e:
+        current_run.log_error(
+            f"Failed to import expected data structure from IASO: {str(e)}"
+        )
+        return pd.DataFrame()
 
 
 def combine_historical_and_current_data() -> pd.DataFrame:
@@ -347,7 +376,9 @@ def retrieve_org_unit_ids(
     return combined_df
 
 
-def clean_combined_df(combined_df: pd.DataFrame) -> pd.DataFrame:
+def clean_combined_df(
+    combined_df: pd.DataFrame, expected_data_structure: pd.DataFrame
+) -> pd.DataFrame:
     """
     Clean the combined DataFrame by:
         - formatting the period column
@@ -357,6 +388,7 @@ def clean_combined_df(combined_df: pd.DataFrame) -> pd.DataFrame:
         - dropping entries whose period is outside the expected campaign periods
     Args:
         combined_df (pd.DataFrame): The combined DataFrame to be cleaned.
+        expected_data_structure (pd.DataFrame): DataFrame containing the expected data structure.
 
     Returns:
         pd.DataFrame: The cleaned DataFrame.
@@ -412,31 +444,32 @@ def clean_combined_df(combined_df: pd.DataFrame) -> pd.DataFrame:
             subset=["uuid", "org_unit_id", "period", "choix_campagne"], keep="last"
         )
 
-    # assign rounds and years
-    combined_df = round_assignment(combined_df)
-    year_assignment(combined_df)
-
-    ## drop entries that are not to be expected in the df:
-
-    # rougeole 2024 --> these entries are artificially created due to the commonality of campaign with polio
-    combined_df_updated_0 = combined_df.copy()
-    mask_rougeole_2024 = (combined_df_updated_0["year"] == 2024) & (
-        combined_df_updated_0["choix_campagne"] == "rougeole"
+    # drop entries that are not in the expected campaign periods
+    expected_periods = expected_data_structure[
+        ["produit", "period", "year", "round"]
+    ].drop_duplicates()
+    expected_periods["choix_campagne"] = expected_periods["produit"].map(
+        campaign_product_name_mapping_dict
     )
-    combined_df_updated_1 = combined_df_updated_0[~mask_rougeole_2024].copy()
+    expected_periods = expected_periods.drop(columns=["produit"]).drop_duplicates()
+    combined_df = combined_df.merge(
+        expected_periods[["choix_campagne", "period", "year", "round"]],
+        on=["choix_campagne", "period"],
+        how="outer",
+        validate="many_to_one",
+        indicator=True,
+    )
 
-    # date invalide
-    mask_date_invalide = combined_df_updated_1["round"] == "date invalide"
-    combined_df_updated_2 = combined_df_updated_1[~mask_date_invalide].copy()
-    count_invalide = mask_date_invalide.sum()
-    if count_invalide > 0:
-        proportion_date_invalide = count_invalide / len(combined_df_updated_1)
+    date_invalide_mask = combined_df["_merge"] == "left_only"
+    if date_invalide_mask.sum() > 0:
+        proportion_date_invalide = date_invalide_mask.sum() / len(combined_df)
         current_run.log_warning(
-            f"{count_invalide} entrées ({proportion_date_invalide:.2%}) ont été supprimées "
+            f"{date_invalide_mask.sum()} entrées ({proportion_date_invalide:.2%}) ont été supprimées "
             f"car la période est en dehors de la période de campagne."
         )
+    combined_df = combined_df[~date_invalide_mask].drop(columns=["_merge"])
 
-    return combined_df_updated_2
+    return combined_df
 
 
 def save_output(combined_df: pd.DataFrame):
