@@ -22,9 +22,6 @@ from config import (
     communication_category_groups,
 )
 from utils import (
-    all_rows,
-    round_assignment,
-    year_assignment,
     new_cols,
     age_categorizer,
     site_categorizer,
@@ -407,36 +404,33 @@ def create_completeness_dataset(
         pd.DataFrame: Completeness dataset DataFrame.
     """
     current_run.log_info("Creating completeness dataset...")
+    reality = combined_df[
+        ["period", "org_unit_id", "choix_campagne", "round", "year"]
+    ].copy()
+    reality["presence_equipe"] = 1
 
-    cmpl = combined_df[["period", "org_unit_id", "choix_campagne"]]
-    combined_campaign_data_df_adjusted = combined_campaign_data_df[
-        ["org_unit_id", "period", "produit"]
-    ]
-    combined_campaign_data_df_adjusted.loc[:, "produit"] = (
-        combined_campaign_data_df_adjusted["produit"].map(product_campaign_mapping)
-    )
-    combined_campaign_data_df_adjusted = combined_campaign_data_df_adjusted.rename(
-        columns={"produit": "choix_campagne"}
-    )
-    combined_campaign_data_df_adjusted = (
-        combined_campaign_data_df_adjusted.drop_duplicates()
+    expectation = combined_campaign_data_df[
+        ["period", "org_unit_id", "produit", "round", "year"]
+    ].copy()
+    expectation["choix_campagne"] = expectation["produit"].map(product_campaign_mapping)
+    expectation = expectation.drop(columns=["produit"]).drop_duplicates()
+
+    cmpl = pd.merge(
+        expectation,
+        reality,
+        on=["period", "org_unit_id", "choix_campagne", "round", "year"],
+        how="left",
     )
 
-    cmpl = (
-        all_rows(combined_campaign_data_df_adjusted, cmpl, "org_unit_id", "period")
-        .sort_values(by=["period", "org_unit_id"])
-        .reset_index(drop=True)
-    )
-    cmpl = round_assignment(cmpl)
-    year_assignment(cmpl)
-    cmpl = cmpl.drop_duplicates()
-
+    cmpl["presence_equipe"] = cmpl["presence_equipe"].fillna(0).astype(int)
     cmpl = cmpl.sort_values(
         ["year", "round", "org_unit_id", "choix_campagne", "period"]
     )
     cmpl["presence_equipe_cum"] = cmpl.groupby(
         ["year", "round", "org_unit_id", "choix_campagne"]
     )["presence_equipe"].transform("cummax")
+
+    cmpl = cmpl.reset_index(drop=True)
 
     return cmpl
 

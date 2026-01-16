@@ -397,37 +397,3 @@ def new_cols(
         new_colname = fun.__name__.rsplit("_", maxsplit=1)[0]
         df.loc[:, new_colname] = df.loc[:, value_col].map(fun)
     return df
-
-
-def all_rows(
-    expected_df: pd.DataFrame,
-    df: pd.DataFrame,
-    spatial_column: str,
-    temporal_column: str,
-) -> pd.DataFrame:
-    """
-    Creates a dataframe that contains all combinations of the spatial and temporal columns.
-
-    Parameters:
-        expected_df (pd.DataFrame): A dataframe containing all expected combinations of spatial and temporal values
-        df (pd.DataFrame): The original dataframe to merge with the expected combinations.
-        spatial_column (str): The name of the spatial column.
-        temporal_column (str): The name of the temporal (datetime) column.
-
-    Returns:
-        pd.DataFrame: The merged dataframe with all combinations of spatial and temporal values.
-    """
-    expected_df.loc[:, temporal_column] = pd.to_datetime(
-        expected_df.loc[:, temporal_column], format="%Y-%m-%d", errors="coerce"
-    ).dt.date
-    df = pd.merge(
-        df,
-        expected_df,
-        on=[spatial_column, temporal_column, "choix_campagne"],
-        how="right",
-        indicator=True,
-    )
-    df["presence_equipe"] = 0
-    df.loc[df["_merge"] == "both", "presence_equipe"] = 1
-    df = df.drop(["_merge"], axis=1)
-    return df
