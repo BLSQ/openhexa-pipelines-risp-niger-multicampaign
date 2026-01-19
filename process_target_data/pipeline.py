@@ -31,7 +31,7 @@ from config import (
 )
 
 
-@pipeline("process_target_data")
+@pipeline(name="01. Import et traitement des données de cibles")
 def process_target_data():
     """
     Main pipeline function to process target data from various campaigns.
@@ -117,7 +117,9 @@ def get_iaso_org_unit_tree() -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame containing the organizational unit tree data.
     """
-    current_run.log_info("Retrieving org unit tree data from IASO...")
+    current_run.log_info(
+        "Extraction des données de l'arbre des unités organisationnelles IASO..."
+    )
 
     iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
     iaso_org_unit_tree_df = iaso_connector_instance.get_ou_tree_dataframe_from_the_form(
@@ -131,10 +133,10 @@ def get_iaso_org_unit_tree() -> pd.DataFrame:
         "iaso_org_unit_tree_raw.parquet",
     )
     Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-    # iaso_org_unit_tree_df.to_parquet(
-    #     file_path,
-    #     index=False,
-    # )
+    iaso_org_unit_tree_df.to_parquet(
+        file_path,
+        index=False,
+    )
     iaso_org_unit_tree_df = pd.read_parquet(file_path)
     return iaso_org_unit_tree_df
 
@@ -149,7 +151,9 @@ def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFram
     Returns:
         pd.DataFrame: Cleaned DataFrame with relevant org unit tree data.
     """
-    current_run.log_info("Cleaning org unit tree data...")
+    current_run.log_info(
+        "Nettoyage des données de l'arbre des unités organisationnelles IASO..."
+    )
 
     iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df[
         iaso_org_unit_tree_df["Validé"] != "REJECTED"
@@ -203,7 +207,9 @@ def import_target_data_for_polio_2024_r1_r4() -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame containing the target data for Polio 2024 rounds 1 to 4
     """
-    current_run.log_info("Importing target data for Polio 2024 rounds 1 to 4...")
+    current_run.log_info(
+        "Importation des données de cibles pour la polio 2024 rounds 1 à 4..."
+    )
     file_path = os.path.join(
         workspace.files_path,
         target_historical_data_path,
@@ -259,7 +265,9 @@ def import_target_data_for_polio_and_rougeole_2025_r1_r2() -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame containing the target data for polio and rougeole campaigns year 2025 rounds 1 and 2
     """
-    current_run.log_info("Importing target data for Polio and Rougeole 2025...")
+    current_run.log_info(
+        "Importation des données de cibles pour la polio et rougeole 2025..."
+    )
 
     file_path = os.path.join(
         workspace.files_path,
@@ -311,7 +319,7 @@ def import_target_data_for_yellow_fever_2025_2026_r1() -> pd.DataFrame:
         pd.DataFrame: DataFrame containing the target data for yellow fever campaign year 2025 and 2026 rounds 1 for the regions of Dosso and Tahoua
     """
     current_run.log_info(
-        "Importing target data for Yellow Fever 2025 and 2026 rounds 1..."
+        "Importation des données de cibles pour la fièvre jaune 2025 et 2026 rounds 1..."
     )
 
     file_path = os.path.join(
@@ -379,7 +387,9 @@ def import_target_data_for_men5_and_tcv_2025_r1_r2() -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame containing the target data for yellow fever campaign year 2025 rounds 1 and 2
     """
-    current_run.log_info("Importing target data for Men5 and TCV campaign 2025...")
+    current_run.log_info(
+        "Importation des données de cibles pour la campagne Méningite et TCV 2025..."
+    )
 
     file_path = os.path.join(
         workspace.files_path,
@@ -428,7 +438,9 @@ def import_target_data_for_polio_2026_r1() -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame containing the target data for polio campaign year 2026 round 1
     """
-    current_run.log_info("Importing target data for Polio 2026 campaign round 1...")
+    current_run.log_info(
+        "Importation des données de cibles pour la polio 2026 round 1..."
+    )
 
     file_path = os.path.join(
         workspace.files_path,
@@ -489,7 +501,9 @@ def match_csi_to_org_unit_id(
     Returns:
         pd.DataFrame: DataFrame with matched organizational unit IDs.
     """
-    current_run.log_info("Matching CSI names to organizational unit IDs...")
+    current_run.log_info(
+        "Appariement des noms CSI aux identifiants des unités organisationnelles..."
+    )
 
     iaso_org_unit_tree_for_matching = iaso_org_unit_tree_df_clean[
         ["org_unit_id", "LVL_3_NAME", "LVL_6_NAME"]
@@ -562,9 +576,9 @@ def match_csi_to_org_unit_id(
             "LVL_6_NAME_original"
         ].unique()
         current_run.log_warning(
-            f"{unmatched_count} out of {total_count} records could not be matched to an org_unit_id. "
-            f"Unmatched CSIs: {', '.join(map(str, unmatched_csis))}. "
-            "A manual matching is required for these entries."
+            f"{unmatched_count} sur {total_count} entrées n'ont pas pu être appariés à un org_unit_id. "
+            f"CSIs non appariés : {', '.join(map(str, unmatched_csis))}. "
+            "Un appariement manuel est nécessaire pour ces entrées."
         )
 
     target_df_matched = target_df_matched.drop(
@@ -614,9 +628,9 @@ def match_district_to_org_unit_id(
             target_df_matched["org_unit_id"].isna()
         ]["LVL_3_NAME"].unique()
         current_run.log_warning(
-            f"{unmatched_count} out of {total_count} records could not be matched to an org_unit_id. "
-            f"Unmatched districts: {', '.join(unmatched_districts)}"
-            "These entries will be dropped from the target data."
+            f"{unmatched_count} sur {total_count} entrées n'ont pas pu être appariés à un org_unit_id. "
+            f"Districts non appariés : {', '.join(unmatched_districts)}"
+            "Ces entrées seront supprimées des données cibles."
         )
 
     return target_df_matched
@@ -632,7 +646,7 @@ def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame with rounds added.
     """
-    current_run.log_info("Adding rounds and products to target data...")
+    current_run.log_info("Ajout des rounds et des produits aux données de cibles...")
 
     # polio 2024
     if target_df["campaign"].iloc[0] == "polio" and target_df["year"].iloc[0] == 2024:
@@ -761,7 +775,7 @@ def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
 
     else:
         current_run.log_error(
-            "Unknown campaign and year combination. Cannot add rounds and products."
+            "Combinaison campagne et année inconnue. Impossible d'ajouter les rounds et les produits."
         )
         return target_df
 
@@ -780,7 +794,7 @@ def combine_target_data(
     Returns:
         pd.DataFrame: Combined DataFrame containing all target data.
     """
-    current_run.log_info("Combining target data...")
+    current_run.log_info("Combinaison des différentes données de cibles...")
 
     target_data_combined = pd.concat(dfs, ignore_index=True)
 
@@ -805,7 +819,7 @@ def clean_org_unit_id(
         pd.DataFrame: DataFrame with cleaned org_unit_id column.
     """
     current_run.log_info(
-        "Retrieving organization unit IDs and applying one-to-many mapping..."
+        "Récupération des identifiants des unités d'organisation et application de la correspondance un-à-plusieurs..."
     )
 
     uid_to_org_id_df_clean = iaso_org_unit_tree_clean_df[
@@ -848,7 +862,9 @@ def import_target_data_for_future_campaigns():
     Returns:
         pd.DataFrame: DataFrame containing the target data for future campaigns.
     """
-    current_run.log_info("Importing target data for future campaigns...")
+    current_run.log_info(
+        "Importation et traitement des données non-historiques de cibles..."
+    )
 
     clean_target_path = target_other_data_path.lstrip("/")
     folder_path = os.path.join(workspace.files_path, clean_target_path)
@@ -947,7 +963,9 @@ def import_target_data_for_future_campaigns():
                     continue
 
     if not all_target_data:
-        current_run.log_warning("Aucune donnée cible n'a été importée.")
+        current_run.log_warning(
+            "Aucune donnée cible dans le dossier 'cibles/autres/' n'a été importée."
+        )
         return pd.DataFrame()
 
     return pd.concat(all_target_data, ignore_index=True)
@@ -963,7 +981,7 @@ def save_output(target_data_combined: pd.DataFrame):
     Returns:
         None
     """
-    current_run.log_info("Saving combined target data...")
+    current_run.log_info("Enregistrement des données cibles combinées...")
 
     output_path = os.path.join(
         workspace.files_path,
@@ -972,7 +990,7 @@ def save_output(target_data_combined: pd.DataFrame):
     )
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     target_data_combined.to_parquet(output_path, index=False)
-    current_run.log_info(f"Combined target data saved to {output_path}.")
+    current_run.log_info(f"Données cibles combinées enregistrées dans {output_path}.")
 
 
 if __name__ == "__main__":
