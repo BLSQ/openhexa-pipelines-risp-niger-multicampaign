@@ -220,6 +220,7 @@ class IASOConnectionHandler:
             "latest_form_version",
         ]
         url = f"{self.iaso_connector.url}/api/forms/{form_id}/?fields={','.join(fields_scope_list)}"
+        print(url)
         r = requests.get(url, headers=self.headers)
         form_metadata_dict = json.loads(r.content)
         return form_metadata_dict

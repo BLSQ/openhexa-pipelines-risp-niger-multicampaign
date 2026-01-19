@@ -34,7 +34,7 @@ from utils import (
 )
 
 
-@pipeline("build_visualisation_tables")
+@pipeline("04. Construction des tableaux pour la visualisation")
 def build_visualisation_tables():
     """
     Main pipeline function to build visualisation tables.
@@ -89,7 +89,7 @@ def import_iaso_combined_data() -> pd.DataFrame:
     Returns:
         pd.DataFrame: Combined historical data from all feather files.
     """
-    current_run.log_info("Importing combined IASO data...")
+    current_run.log_info("Importation des données combinées du formulaire IASO...")
     file_path = os.path.join(
         workspace.files_path,
         outputs_path,
@@ -109,7 +109,7 @@ def import_target_data() -> pd.DataFrame:
     Returns:
         pd.DataFrame: Target data DataFrame.
     """
-    current_run.log_info("Importing target data...")
+    current_run.log_info("Importation des données cibles...")
     file_path = os.path.join(
         workspace.files_path,
         outputs_path,
@@ -129,7 +129,9 @@ def import_combined_campaign_data() -> pd.DataFrame:
     Returns:
         pd.DataFrame: Combined campaign data DataFrame.
     """
-    current_run.log_info("Importing combined campaign data...")
+    current_run.log_info(
+        "Importation du Dataframe contenant la structure attendue des données de campagne..."
+    )
     file_path = os.path.join(
         workspace.files_path,
         outputs_path,
@@ -153,7 +155,7 @@ def create_coverage_dataset(
     Returns:
         pd.DataFrame: Coverage dataset DataFrame.
     """
-    current_run.log_info("Creating coverage dataset...")
+    current_run.log_info("Création du tableau de couverture vaccinale...")
 
     id_vars = ["period", "round", "year", "org_unit_id"]
     all_campaign_data = []
@@ -253,7 +255,7 @@ def create_coverage_dataset(
     if not unmatched_entries_in_iaso.empty:
         proportion_unmatched_in_iaso = len(unmatched_entries_in_iaso) / len(df_final)
         current_run.log_warning(
-            f"{len(unmatched_entries_in_iaso)} entrées ({proportion_unmatched_in_iaso:.2%}) dans IASO n'ont pas été trouvées dans le expected dataframe. Ces entrées seront supprimées."
+            f"{len(unmatched_entries_in_iaso)} entrées ({proportion_unmatched_in_iaso:.2%}) n'ont pas le même format que le Dataframe de la structure attendue. Ces entrées seront supprimées."
         )
     df_final = df_final[df_final["_merge"] != "right_only"].drop(columns=["_merge"])
 
@@ -271,7 +273,9 @@ def add_target_data(coverage_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.Da
     Returns:
         pd.DataFrame: Coverage dataset with target data added.
     """
-    current_run.log_info("Adding target data to coverage dataset...")
+    current_run.log_info(
+        "Ajout des données cibles au tableau de couverture vaccinale..."
+    )
 
     # district-level
     target_district = target_df.groupby(
@@ -339,29 +343,6 @@ def add_target_data(coverage_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.Da
         coverage_csi_with_target_df["cible"].isna()
     ]
 
-    # remove entries which are not in regions of Dosso and Tahoua for yellow fever campaign
-    # import iaso_org_unit_tree_clean to get region names
-    file_path = os.path.join(
-        workspace.files_path,
-        "niger_june_24",
-        "outputs",
-        "iaso_org_unit_tree_clean.parquet",
-    )
-    iaso_org_unit_tree_clean_df = pd.read_parquet(file_path)
-    iaso_org_unit_tree_clean_df_restricted = iaso_org_unit_tree_clean_df[
-        ["LVL_3_NAME", "LVL_2_NAME"]
-    ].drop_duplicates()
-    no_target_entries_csi = no_target_entries_csi.merge(
-        iaso_org_unit_tree_clean_df_restricted,
-        how="left",
-        left_on="LVL_3_NAME",
-        right_on="LVL_3_NAME",
-    )
-    mask_yf_dosso_tahoua = (no_target_entries_csi["produit"] == "fièvre jaune") & (
-        ~no_target_entries_csi["LVL_2_NAME"].isin(["Dosso", "Tahoua"])
-    )
-    no_target_entries_csi = no_target_entries_csi[~mask_yf_dosso_tahoua]
-
     if not no_target_entries_csi.empty:
         affected_csi_list = no_target_entries_csi["LVL_6_NAME"].unique().tolist()
         proportion_no_target_csi = len(no_target_entries_csi) / len(coverage_df_csi)
@@ -403,7 +384,7 @@ def create_completeness_dataset(
     Returns:
         pd.DataFrame: Completeness dataset DataFrame.
     """
-    current_run.log_info("Creating completeness dataset...")
+    current_run.log_info("Création du tableau de complétude vaccinale...")
     reality = combined_df[
         ["period", "org_unit_id", "choix_campagne", "round", "year"]
     ].copy()
@@ -448,7 +429,7 @@ def create_stocks_dataset(
     Returns:
         pd.DataFrame: Completeness dataset DataFrame.
     """
-    current_run.log_info("Creating stocks dataset...")
+    current_run.log_info("Création du tableau des stocks...")
 
     id_vars = ["period", "round", "year", "org_unit_id"]
     all_campaign_data = []
@@ -547,7 +528,7 @@ def create_surveillance_dataset(combined_df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Surveillance dataset DataFrame.
     """
-    current_run.log_info("Creating surveillance dataset...")
+    current_run.log_info("Création du tableau de surveillance...")
 
     id_vars = ["period", "round", "year", "org_unit_id"]
     all_campaign_data = []
@@ -619,7 +600,7 @@ def create_communication_dataset(combined_df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Communication dataset DataFrame.
     """
-    current_run.log_info("Creating communication dataset...")
+    current_run.log_info("Création du tableau de communication...")
     id_vars = ["period", "round", "year", "org_unit_id"]
 
     all_campaign_data = []
@@ -718,7 +699,7 @@ def create_filter_tables(
     Returns:
         pd.DataFrame: Filter tables DataFrames.
     """
-    current_run.log_info("Creating filter datasets...")
+    current_run.log_info("Création de filtres nécessaires à la visualisation...")
 
     campaign_filter_table = (
         combined_df[["choix_campagne"]]
@@ -783,12 +764,13 @@ def create_dynamic_org_unit_table() -> pd.DataFrame:
     Returns:
         pd.DataFrame: Dynamic organization unit table DataFrame.
     """
-    current_run.log_info("Creating dynamic organization unit table...")
+    current_run.log_info(
+        "Création du tableau dynamique des unités organisationnelles..."
+    )
 
     file_path = os.path.join(
         workspace.files_path,
-        "niger_june_24",
-        "outputs",
+        outputs_path,
         "iaso_org_unit_tree_clean.parquet",
     )
 
@@ -830,6 +812,7 @@ def write_to_db(df: pd.DataFrame, table_name: str) -> None:
     table_name : str
         The name of the table to write to.
     """
+    current_run.log_info(f"Écriture des données dans la table DB {table_name}...")
     try:
         engine = sa.create_engine(workspace.database_url)
         connection = engine.connect()
@@ -839,11 +822,12 @@ def write_to_db(df: pd.DataFrame, table_name: str) -> None:
             if_exists="replace",
             index=False,
         )
-        current_run.log_info(f"Data written to DB table {table_name}")
+        current_run.log_info(f"Données écrites dans la table DB {table_name}")
         connection.close()
     except Exception as e:
-        current_run.log_error(f"Error writing data to DB table {table_name}: {e}")
-        raise ValueError(f"Failed to write data to DB table {table_name}: {e}")
+        raise ValueError(
+            f"Échec de l'écriture des données dans la table DB {table_name}: {e}"
+        )
 
 
 if __name__ == "__main__":

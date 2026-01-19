@@ -19,7 +19,7 @@ from utils import (
 )
 
 
-@pipeline("extract_process_iaso_form_data")
+@pipeline("03. Extraction et traitement des données du formulaire IASO")
 def extract_process_iaso_form_data():
     """
     Main pipeline function to extract and process IASO form data.
@@ -170,7 +170,9 @@ def import_expected_data_structure() -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame containing the expected data structure.
     """
-    current_run.log_info("Importing expected IASO data structure...")
+    current_run.log_info(
+        "Importation du Dataframe contenant la structure attendue des données de campagne..."
+    )
 
     output_path = os.path.join(
         workspace.files_path,
@@ -181,13 +183,13 @@ def import_expected_data_structure() -> pd.DataFrame:
     try:
         expected_structure_df = pd.read_parquet(output_path)
         current_run.log_info(
-            f"Expected data structure imported with {len(expected_structure_df.columns)} columns."
+            f"Dataframe contenant la structure attendue des campagnes importé avec {len(expected_structure_df.columns)} colonnes."
         )
         return expected_structure_df
 
     except Exception as e:
         current_run.log_error(
-            f"Failed to import expected data structure from IASO: {str(e)}"
+            f"Échec de l'importation du Dataframe contenant la structure attendue des campagnes: {str(e)}"
         )
         return pd.DataFrame()
 
@@ -284,7 +286,7 @@ def import_raw_iaso_org_unit_tree() -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame containing the raw IASO organisation tree.
     """
-    current_run.log_info("Importing raw IASO organisation tree...")
+    current_run.log_info("Importation de l'arbre organisationnel brut depuis IASO...")
 
     file_path = os.path.join(
         workspace.files_path,
@@ -309,7 +311,9 @@ def import_clean_iaso_org_unit_tree() -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame containing the clean IASO organisation tree.
     """
-    current_run.log_info("Importing clean IASO organisation tree...")
+    current_run.log_info(
+        "Importation de l'arbre organisationnel nettoyé depuis IASO..."
+    )
 
     file_path = os.path.join(
         workspace.files_path,
@@ -342,7 +346,7 @@ def retrieve_org_unit_ids(
     Returns:
         pd.DataFrame: The updated combined DataFrame with org unit IDs.
     """
-    current_run.log_info("Retrieving organization unit IDs...")
+    current_run.log_info("Récupération des identifiants des unités d'organisation...")
 
     iaso_org_unit_tree_raw["LVL_6_UID"] = iaso_org_unit_tree_raw.groupby("LVL_6_NAME")[
         "LVL_6_UID"
@@ -393,7 +397,7 @@ def clean_combined_df(
     Returns:
         pd.DataFrame: The cleaned DataFrame.
     """
-    current_run.log_info("Cleaning the combined DataFrame...")
+    current_run.log_info("Nettoyage du DataFrame combiné...")
 
     # format period
     combined_df["period"] = pd.to_datetime(combined_df["period"])
@@ -482,14 +486,16 @@ def save_output(combined_df: pd.DataFrame):
     Returns:
         None
     """
-    current_run.log_info("Saving combined IASO data...")
+    current_run.log_info("Enregistrement des données combinées du formulaire IASO...")
 
     output_path = os.path.join(
         workspace.files_path, "niger_june_24", "outputs", "combined_iaso_data.parquet"
     )
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     combined_df.to_parquet(output_path, index=False)
-    current_run.log_info(f"Combined IASO data saved to {output_path}.")
+    current_run.log_info(
+        f"Données combinées du formulaire IASO enregistrées dans {output_path}."
+    )
 
 
 if __name__ == "__main__":

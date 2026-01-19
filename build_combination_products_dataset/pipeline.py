@@ -13,7 +13,7 @@ from config import (
 )
 
 
-@pipeline("build_combination_products_dataset")
+@pipeline("02. Etablissement de la structure des données attendues")
 def build_combination_products_dataset():
     """
     Main pipeline function to build combination campaigns dataset.
@@ -47,7 +47,7 @@ def extract_org_unit_id() -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame with unique 'org_unit_id's.
     """
-    current_run.log_info("Extracting list of org unit IDs...")
+    current_run.log_info("Extraction des identifiants des unités d'organisation...")
 
     file_path = os.path.join(
         workspace.files_path,
@@ -74,7 +74,7 @@ def create_product_site_df() -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame with all sites.
     """
-    current_run.log_info("Creating site DataFrame...")
+    current_run.log_info("Création du DataFrame des sites...")
 
     combinations = []
 
@@ -100,7 +100,7 @@ def create_sex_type_df() -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame with all sex types of cases vaccinated.
     """
-    current_run.log_info("Creating sex type DataFrame...")
+    current_run.log_info("Création du DataFrame des types de sexe...")
 
     sex_type_df = pd.DataFrame(sex_types_config, columns=["sexe"])
     return sex_type_df
@@ -116,7 +116,7 @@ def import_target_data() -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame containing the imported target data.
     """
-    current_run.log_info("Importing target data from Parquet files...")
+    current_run.log_info("Importation des données cibles traitées...")
 
     target_data_path = os.path.join(
         workspace.files_path, outputs_path, "combined_target_data.parquet"
@@ -140,7 +140,9 @@ def create_age_product_year_round_df(target_df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame with all combinations of age groups, products, years and rounds.
     """
-    current_run.log_info("Creating age, product, round, year combinations DataFrame...")
+    current_run.log_info(
+        "Création du DataFrame des combinaisons âge, produit, round, année..."
+    )
 
     age_product_year_round_df = target_df[
         ["year", "produit", "round", "age"]
@@ -159,7 +161,7 @@ def create_product_status_df() -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame with all combinations of products and vaccination statuses.
     """
-
+    current_run.log_info("Création du DataFrame des statuts de vaccination...")
     combinations = []
 
     for product, statuses in product_status_config.items():
@@ -183,7 +185,7 @@ def create_campaign_period_df() -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame with campaign rounds and periods and order days.
     """
-    current_run.log_info("Creating campaign period DataFrame...")
+    current_run.log_info("Création du DataFrame des périodes de campagne...")
 
     campaign_round_config_path = os.path.join(
         workspace.files_path, config_path, "campagne_dates.json"
@@ -204,7 +206,15 @@ def create_campaign_period_df() -> pd.DataFrame:
             round_num = f"round {match.group(2)}"
             raw_campagne = match.group(3) if match.group(3) else "campagne inconnue"
             product = raw_campagne.replace("__", " ").replace("_", " ")
-            date_series = pd.date_range(start=dates["min"], end=dates["max"])
+            if not (
+                re.match(r"\d{4}-\d{2}-\d{2}", dates["début"])
+                and re.match(r"\d{4}-\d{2}-\d{2}", dates["fin"])
+            ):
+                current_run.log_error(
+                    f"Format de date invalide pour la campagne {key}: {dates}. Cette campagne sera ignorée."
+                )
+                continue
+            date_series = pd.date_range(start=dates["début"], end=dates["fin"])
             for i, day in enumerate(date_series, start=1):
                 rows.append(
                     {
@@ -215,6 +225,11 @@ def create_campaign_period_df() -> pd.DataFrame:
                         "order_day": i,
                     }
                 )
+        else:
+            current_run.log_error(
+                f"Clé de campagne non conforme dans la configuration: {key}. Cette campagne sera ignorée."
+            )
+            continue
     df = pd.DataFrame(rows)
     return df
 
@@ -240,7 +255,9 @@ def combine_dfs(
     Returns:
         pd.DataFrame: Combined DataFrame.
     """
-    current_run.log_info("Combining all DataFrames into the final dataset...")
+    current_run.log_info(
+        "Combinaison de tous les DataFrames en un seul jeu de données final..."
+    )
 
     # cross join org_unit, sex, and combo df
     combined_df = org_unit_ids_df.merge(sex_type_df, how="cross").merge(
@@ -254,10 +271,10 @@ def combine_dfs(
     unmatched = combined_df[combined_df["_merge"] == "left_only"]
     if not unmatched.empty:
         current_run.log_error(
-            f"Unmatched entries found when merging product and site DataFrames: {unmatched}"
+            f"Entrées non appariées trouvées lors de la fusion des DataFrames produit et site : {unmatched}"
         )
         raise ValueError(
-            "Merging product and site DataFrames resulted in unmatched entries."
+            "La fusion des DataFrames produit et site a entraîné des entrées non appariées."
         )
     combined_df = combined_df.drop(columns=["_merge"])
 
@@ -268,10 +285,10 @@ def combine_dfs(
     unmatched = combined_df[combined_df["_merge"] == "left_only"]
     if not unmatched.empty:
         current_run.log_error(
-            f"Unmatched entries found when merging product and status DataFrames: {unmatched}"
+            f"Entrées non appariées trouvées lors de la fusion des DataFrames produit et statut : {unmatched}"
         )
         raise ValueError(
-            "Merging product and status DataFrames resulted in unmatched entries."
+            "La fusion des DataFrames produit et statut a entraîné des entrées non appariées."
         )
     combined_df = combined_df.drop(columns=["_merge"])
 
@@ -282,11 +299,19 @@ def combine_dfs(
     unmatched = combined_df[combined_df["_merge"] == "left_only"]
     if not unmatched.empty:
         current_run.log_error(
-            f"Unmatched entries found when merging campaign period DataFrame: {unmatched}"
+            f"Entrées non appariées trouvées lors de la fusion du DataFrame des périodes de campagne : {unmatched}"
         )
+        # export to csv for debugging
+        debug_path = os.path.join(
+            workspace.files_path,
+            outputs_path,
+            "debug_unmatched_campaign_periods.csv",
+        )
+        unmatched.to_csv(debug_path, index=False)
         raise ValueError(
-            "Merging campaign period DataFrame resulted in unmatched entries."
+            "La fusion du DataFrame des périodes de campagne a entraîné des entrées non appariées."
         )
+
     combined_df = combined_df.drop(columns=["_merge"])
 
     # final cleanup
@@ -320,7 +345,9 @@ def adjust_to_specific_campaigns(combined_df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Adjusted DataFrame.
     """
-    current_run.log_info("Adjusting combined DataFrame for specific campaigns...")
+    current_run.log_info(
+        "Ajustement du DataFrame combiné pour des campagnes spécifiques..."
+    )
 
     # For yellow fever campaigns 2025 2026 round 1, delete all entries outside the regions of Dosso and Tahoua (only these 2 regions have been covered)
     mask_yellow_fever_dosso_tahouha = (
@@ -345,7 +372,9 @@ def save_output(combined_df: pd.DataFrame):
     Returns:
         None
     """
-    current_run.log_info("Saving combined campaign data...")
+    current_run.log_info(
+        "Enregistrement du Dataframe contenant la structure attendue des campagnes..."
+    )
 
     output_path = os.path.join(
         workspace.files_path,
@@ -354,7 +383,9 @@ def save_output(combined_df: pd.DataFrame):
     )
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     combined_df.to_parquet(output_path, index=False)
-    current_run.log_info(f"Combined campaign data saved to {output_path}.")
+    current_run.log_info(
+        f"Dataframe contenant la structure attendue des campagnes enregistré dans {output_path}."
+    )
 
 
 if __name__ == "__main__":
