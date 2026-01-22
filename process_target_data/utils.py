@@ -478,33 +478,48 @@ class IASOConnectionHandler:
 
         return instance_full_df
 
-    def _json_request_extract(self, form_id: int) -> Dict[str, Any]:
+    def _json_request_extract(
+        self, form_id: int, limit_batch: int = 20
+    ) -> pd.DataFrame:
         """
         Extracts submission information from IASO.
         """
         instances_endpoint = f"{self.iaso_connector.url}/api/instances/"
-        """
-        #Time Filtering of the query
-        
-        dateFrom = pd.to_datetime(dateFrom, format='%Y-%m-%d').date()
-        dateTo = pd.to_datetime(dateTo, format='%Y-%m-%d').date()
-        modificationDateFrom = pd.to_datetime(modificationDateFrom, format='%Y-%m-%d').date()
-        modificationDateTo = pd.to_datetime(modificationDateTo, format='%Y-%m-%d').date()
-        
-        format_date_from = f"&dateFrom={self.dateFrom}" if not pd.isna(self.dateFrom) else ""
-        format_date_to = f"&dateTo={self.dateTo}" if not pd.isna(self.dateTo) else ""
-        format_modif_date_from = f"&modificationDateFrom={self.modificationDateFrom}" if not pd.isna(self.modificationDateFrom) else ""
-        format_modif_date_to = f"&modificationDateTo={self.modificationDateTo}" if not pd.isna(self.modificationDateTo) else ""
-        
-        format_period = "".join([format_date_from, format_date_to, format_modif_date_from, format_modif_date_to])
-        """
-        form_endpoint = instances_endpoint + f"?form_ids={form_id}"  # + format_period
+
+        # # Time Filtering of the query
+        # dateFrom = pd.to_datetime(dateFrom, format='%Y-%m-%d').date()
+        # dateTo = pd.to_datetime(dateTo, format='%Y-%m-%d').date()
+        # modificationDateFrom = pd.to_datetime(modificationDateFrom, format='%Y-%m-%d').date()
+        # modificationDateTo = pd.to_datetime(modificationDateTo, format='%Y-%m-%d').date()
+
+        # format_date_from = f"&dateFrom={self.dateFrom}" if not pd.isna(self.dateFrom) else ""
+        # format_date_to = f"&dateTo={self.dateTo}" if not pd.isna(self.dateTo) else ""
+        # format_modif_date_from = f"&modificationDateFrom={self.modificationDateFrom}" if not pd.isna(self.modificationDateFrom) else ""
+        # format_modif_date_to = f"&modificationDateTo={self.modificationDateTo}" if not pd.isna(self.modificationDateTo) else ""
+
+        # format_period = "".join([format_date_from, format_date_to, format_modif_date_from, format_modif_date_to])
+
+        base_url = instances_endpoint + f"?form_ids={form_id}&limit={limit_batch}"
 
         r = request_with_explanation(
-            form_endpoint, self.headers, "Form Submission Request"
+            base_url + "&page=1", self.headers, f"Form {form_id} - Page 1"
         )
-        json_extract = r.json()
-        return json_extract
+        first_page_json = r.json()
+        all_chunks = [self._json_iaso_crawler(first_page_json)]
+
+        total_pages = first_page_json.get("pages", 1)
+
+        for page in range(2, total_pages + 1):
+            datetime.time.sleep(0.5)
+            r = request_with_explanation(
+                base_url + f"&page={page}",
+                self.headers,
+                f"Form {form_id} - Page {page}",
+            )
+            all_chunks.append(self._json_iaso_crawler(r.json()))
+
+        all_extracted_df = pd.concat(all_chunks, ignore_index=True)
+        return all_extracted_df
 
     def _submmission_df_formatting(self, df: pd.DataFrame) -> pd.DataFrame:
         df = period_processing(df)
@@ -521,16 +536,22 @@ class IASOConnectionHandler:
     def extract_submissions_info(self, form_id: int) -> pd.DataFrame:
         """
         Extracts submission information from IASO.
+
+        Args:
+            form_id (int): The ID of the form to extract submissions from.
+
+        Returns:
+            pd.DataFrame: The formatted submission dataframe.
+
         """
         self.get_data_structure_from_the_form(form_id)
-        json_extract = self._json_request_extract(form_id)
-        instance_full_df = self._json_iaso_crawler(json_extract)
+
+        instance_full_df = self._json_request_extract(form_id, limit_batch=20)
+
         if instance_full_df.empty:
             return instance_full_df
-        else:
-            instance_full_df = self._submmission_df_formatting(instance_full_df)
-            # full_df.rename(columns= {'org_unit_id' : 'ID', 'period':'PERIOD'}, inplace = True)
-            return instance_full_df
+
+        return self._submmission_df_formatting(instance_full_df)
 
     # ---------------
 

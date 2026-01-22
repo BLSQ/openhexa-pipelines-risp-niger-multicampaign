@@ -1,127 +1,11 @@
 import io
+import time
 import numpy as np
 import pandas as pd
 import requests
 import random
 import json
-import datetime
 from typing import Tuple, Dict, Any, List
-
-
-def round_assignment(df):
-    """
-    Assigns rounds to the DataFrame based on the 'period' column,
-    using different logic based on the 'choix_campagne' column.
-    """
-
-    # Define the boolean masks for the campaign diseases
-    is_meningite_tcv = df["choix_campagne"].isin(["men5_tcv", "méningite", "tcv"])
-    is_yellow_fever = df["choix_campagne"].isin(
-        ["Fievre_Jaune", "fievre jaune", "fièvre jaune"]
-    )
-    is_polio = df["choix_campagne"].isin(["POLIOMYELITE", "polio"])
-    is_rougeole = df["choix_campagne"].isin(["rougeole"])
-
-    # Define the logic for the méningite/tcv campaign
-    meningite_tcv_logic = np.where(
-        (df["period"] <= pd.to_datetime("2025-12-02"))
-        & (df["period"] >= pd.to_datetime("2025-11-24")),
-        "round 1",
-        np.where(
-            (pd.to_datetime("2025-12-15") <= df["period"])
-            & (df["period"] <= pd.to_datetime("2025-12-22")),
-            "round 2",
-            "date invalide",
-        ),
-    )
-
-    # Define the logic for the yellow fever campaign
-    yellow_fever_logic = np.where(
-        (pd.to_datetime("2025-10-27") <= df["period"])
-        & (df["period"] <= pd.to_datetime("2025-11-04")),
-        "round 1",
-        np.where(
-            (pd.to_datetime("2026-01-20") <= df["period"])
-            & (df["period"] <= pd.to_datetime("2026-01-26")),
-            "round 1",
-            "date invalide",
-        ),
-    )
-
-    # Define the logic for the polio campaigns
-    polio_campaign_logic = np.where(
-        (pd.to_datetime("2024-07-10") <= df["period"])
-        & (df["period"] <= pd.to_datetime("2024-07-24")),
-        "round 1",
-        np.where(
-            (pd.to_datetime("2024-09-28") <= df["period"])
-            & (df["period"] <= pd.to_datetime("2024-10-06")),
-            "round 2",
-            np.where(
-                (pd.to_datetime("2024-10-25") <= df["period"])
-                & (df["period"] <= pd.to_datetime("2024-11-01")),
-                "round 3",
-                np.where(
-                    (pd.to_datetime("2024-12-01") <= df["period"])
-                    & (df["period"] <= pd.to_datetime("2024-12-12")),
-                    "round 4",
-                    np.where(
-                        (pd.to_datetime("2025-05-04") <= df["period"])
-                        & (df["period"] <= pd.to_datetime("2025-05-08")),
-                        "round 1",
-                        np.where(
-                            (pd.to_datetime("2025-06-14") <= df["period"])
-                            & (df["period"] <= pd.to_datetime("2025-06-21")),
-                            "round 2",
-                            np.where(
-                                (pd.to_datetime("2026-01-11") <= df["period"])
-                                & (df["period"] <= pd.to_datetime("2026-01-15")),
-                                "round 1",
-                                "date invalide",
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    )
-
-    # Define the logic for the rougeole campaigns
-    rougeole_campaign_logic = np.where(
-        (pd.to_datetime("2025-04-18") <= df["period"])
-        & (df["period"] <= pd.to_datetime("2025-04-24")),
-        "round 1",
-        "date invalide",
-    )
-
-    df["round"] = np.where(
-        is_meningite_tcv,
-        meningite_tcv_logic,
-        np.where(
-            is_yellow_fever,
-            yellow_fever_logic,
-            np.where(
-                is_polio,
-                polio_campaign_logic,
-                np.where(is_rougeole, rougeole_campaign_logic, "campagne inconnue"),
-            ),
-        ),
-    )
-
-    return df
-
-
-def year_assignment(df):
-    """
-    Assigns the year to the DataFrame based on the 'period' column.
-
-    Parameters:
-        df (pd.DataFrame): The input DataFrame containing a 'period' column.
-
-    Returns:
-        pd.DataFrame: The DataFrame with an additional 'year' column.
-    """
-    df["year"] = df["period"].dt.year
 
 
 def request_explanatory_decorator(function):
@@ -870,6 +754,7 @@ class IASOConnectionHandler:
         form_full_df = [instance_full_df]
 
         for page_id in range(2, total_pages + 1):
+            time.sleep(0.5)
             r = request_with_explanation(
                 base_full_endpoint + f"&page={page_id}",
                 self.headers,
@@ -880,7 +765,6 @@ class IASOConnectionHandler:
         form_full_df = pd.concat(form_full_df, ignore_index=True)
         form_full_df = form_full_df.drop_duplicates(subset="uuid")
         return form_full_df
-        # return json_extract
 
     def _submmission_df_formatting(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -918,14 +802,11 @@ class IASOConnectionHandler:
             pd.DataFrame: The formatted submission dataframe.
         """
         self.get_data_structure_from_the_form(form_id)
-        instance_full_df = self._json_request_extract(form_id, 200, dateFrom, dateTo)
-        # json_extract=self._json_request_extract(form_id)
-        # instance_full_df = self._json_iaso_crawler(json_extract)
+        instance_full_df = self._json_request_extract(form_id, 20, dateFrom, dateTo)
         if instance_full_df.empty:
             return instance_full_df
         else:
             instance_full_df = self._submmission_df_formatting(instance_full_df)
-            # full_df.rename(columns= {'org_unit_id' : 'ID', 'period':'PERIOD'}, inplace = True)
             return instance_full_df
 
     def all_param_data_generation_per_orgunit(
