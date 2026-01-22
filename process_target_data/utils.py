@@ -479,7 +479,7 @@ class IASOConnectionHandler:
         return instance_full_df
 
     def _json_request_extract(
-        self, form_id: int, limit_batch: int = 20
+        self, form_id: int, limit_batch: int = 50
     ) -> pd.DataFrame:
         """
         Extracts submission information from IASO.
@@ -546,7 +546,7 @@ class IASOConnectionHandler:
         """
         self.get_data_structure_from_the_form(form_id)
 
-        instance_full_df = self._json_request_extract(form_id, limit_batch=20)
+        instance_full_df = self._json_request_extract(form_id, limit_batch=50)
 
         if instance_full_df.empty:
             return instance_full_df
