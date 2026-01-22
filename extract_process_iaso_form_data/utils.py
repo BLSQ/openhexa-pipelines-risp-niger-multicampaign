@@ -802,7 +802,7 @@ class IASOConnectionHandler:
             pd.DataFrame: The formatted submission dataframe.
         """
         self.get_data_structure_from_the_form(form_id)
-        instance_full_df = self._json_request_extract(form_id, 20, dateFrom, dateTo)
+        instance_full_df = self._json_request_extract(form_id, 50, dateFrom, dateTo)
         if instance_full_df.empty:
             return instance_full_df
         else:
