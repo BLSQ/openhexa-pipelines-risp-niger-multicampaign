@@ -1,3 +1,4 @@
+from datetime import date
 import os
 from openhexa.sdk import current_run, workspace, pipeline
 import pandas as pd
@@ -10,6 +11,7 @@ from config import (
     product_site_config,
     product_status_config,
     sex_types_config,
+    campaign_names_config,
 )
 
 
@@ -48,20 +50,25 @@ def extract_org_unit_id() -> pd.DataFrame:
         pd.DataFrame: DataFrame with unique 'org_unit_id's.
     """
     current_run.log_info("Extraction des identifiants des unités d'organisation...")
+    try:
+        file_path = os.path.join(
+            workspace.files_path,
+            outputs_path,
+            "iaso_org_unit_tree_clean.parquet",
+        )
 
-    file_path = os.path.join(
-        workspace.files_path,
-        outputs_path,
-        "iaso_org_unit_tree_clean.parquet",
-    )
+        org_unit_ids_df = pd.read_parquet(file_path)
+        org_unit_ids_df = org_unit_ids_df[
+            ["org_unit_id", "LVL_2_NAME", "LVL_3_NAME", "LVL_6_NAME"]
+        ].drop_duplicates()
+        assert org_unit_ids_df["org_unit_id"].is_unique, "Duplicate org_unit_ids found!"
 
-    org_unit_ids_df = pd.read_parquet(file_path)
-    org_unit_ids_df = org_unit_ids_df[
-        ["org_unit_id", "LVL_2_NAME", "LVL_3_NAME", "LVL_6_NAME"]
-    ].drop_duplicates()
-    assert org_unit_ids_df["org_unit_id"].is_unique, "Duplicate org_unit_ids found!"
-
-    return org_unit_ids_df
+        return org_unit_ids_df
+    except Exception as e:
+        current_run.log_error(
+            f"Erreur lors de l'extraction des unités organisationnelles: {e}"
+        )
+        raise
 
 
 def create_product_site_df() -> pd.DataFrame:
@@ -117,17 +124,16 @@ def import_target_data() -> pd.DataFrame:
         pd.DataFrame: DataFrame containing the imported target data.
     """
     current_run.log_info("Importation des données cibles traitées...")
-
-    target_data_path = os.path.join(
-        workspace.files_path, outputs_path, "combined_target_data.parquet"
-    )
     try:
+        target_data_path = os.path.join(
+            workspace.files_path, outputs_path, "combined_target_data.parquet"
+        )
         target_df = pd.read_parquet(target_data_path)
+
+        return target_df
     except Exception as e:
         current_run.log_error(f"Erreur de lecture des données cibles: {e}")
-        raise e
-
-    return target_df
+        raise
 
 
 def create_age_product_year_round_df(target_df: pd.DataFrame) -> pd.DataFrame:
@@ -143,12 +149,17 @@ def create_age_product_year_round_df(target_df: pd.DataFrame) -> pd.DataFrame:
     current_run.log_info(
         "Création du DataFrame des combinaisons âge, produit, round, année..."
     )
+    try:
+        age_product_year_round_df = target_df[
+            ["year", "produit", "round", "age"]
+        ].drop_duplicates()
 
-    age_product_year_round_df = target_df[
-        ["year", "produit", "round", "age"]
-    ].drop_duplicates()
-
-    return age_product_year_round_df
+        return age_product_year_round_df
+    except Exception as e:
+        current_run.log_error(
+            f"Erreur lors de la création du DataFrame des combinaisons âge, produit, round, année: {e}"
+        )
+        raise
 
 
 def create_product_status_df() -> pd.DataFrame:
@@ -186,25 +197,38 @@ def create_campaign_period_df() -> pd.DataFrame:
         pd.DataFrame: DataFrame with campaign rounds and periods and order days.
     """
     current_run.log_info("Création du DataFrame des périodes de campagne...")
-
     campaign_round_config_path = os.path.join(
-        workspace.files_path, config_path, "campagne_dates.json"
+        workspace.files_path, config_path, "campagnes_config.txt"
     )
-    try:
-        campaign_round_config = pd.read_json(campaign_round_config_path).to_dict()
-    except Exception as e:
+    if not os.path.exists(campaign_round_config_path):
         current_run.log_error(
-            f"Erreur de lecture du fichier de la configuration des campagnes: {e}"
+            f"Fichier de configuration des campagnes introuvable: {campaign_round_config_path}."
         )
-        raise e
-
+        raise FileNotFoundError
+    campaign_round_config = pd.read_json(campaign_round_config_path).to_dict()
     rows = []
     for key, dates in campaign_round_config.items():
         match = re.match(r"(\d{4})r(\d+)_?(.+)?", key)
         if match:
             year = np.int32(match.group(1))
+            if year < 2024 or year > date.today().year + 1:
+                current_run.log_error(
+                    f"Année de campagne non valide dans la configuration: {year}. L'année de campagne doit être comprise entre 2024 et {date.today().year + 1}."
+                )
+                raise ValueError
+            round = int(match.group(2))
+            if round < 1 or round > 4:
+                current_run.log_warning(
+                    f"Numéro de round de campagne anormal dans la configuration: {round}. Veuillez vérifier si ce numéro de round est correct."
+                )
             round_num = f"round {match.group(2)}"
-            raw_campagne = match.group(3) if match.group(3) else "campagne inconnue"
+
+            raw_campagne = match.group(3)
+            if raw_campagne not in campaign_names_config:
+                current_run.log_error(
+                    f"Nom de campagne non reconnu dans la configuration: {raw_campagne}. Noms de campagnes acceptés: {campaign_names_config}."
+                )
+                raise ValueError
             product = raw_campagne.replace("__", " ").replace("_", " ")
             if not (
                 re.match(r"\d{4}-\d{2}-\d{2}", dates["début"])
@@ -273,9 +297,7 @@ def combine_dfs(
         current_run.log_error(
             f"Entrées non appariées trouvées lors de la fusion des DataFrames produit et site : {unmatched}"
         )
-        raise ValueError(
-            "La fusion des DataFrames produit et site a entraîné des entrées non appariées."
-        )
+        raise ValueError()
     combined_df = combined_df.drop(columns=["_merge"])
 
     # merge with product statuses
@@ -287,9 +309,7 @@ def combine_dfs(
         current_run.log_error(
             f"Entrées non appariées trouvées lors de la fusion des DataFrames produit et statut : {unmatched}"
         )
-        raise ValueError(
-            "La fusion des DataFrames produit et statut a entraîné des entrées non appariées."
-        )
+        raise ValueError()
     combined_df = combined_df.drop(columns=["_merge"])
 
     # merge with campaign periods
@@ -301,16 +321,7 @@ def combine_dfs(
         current_run.log_error(
             f"Entrées non appariées trouvées lors de la fusion du DataFrame des périodes de campagne : {unmatched}"
         )
-        # export to csv for debugging
-        debug_path = os.path.join(
-            workspace.files_path,
-            outputs_path,
-            "debug_unmatched_campaign_periods.csv",
-        )
-        unmatched.to_csv(debug_path, index=False)
-        raise ValueError(
-            "La fusion du DataFrame des périodes de campagne a entraîné des entrées non appariées."
-        )
+        raise ValueError()
 
     combined_df = combined_df.drop(columns=["_merge"])
 
@@ -375,17 +386,22 @@ def save_output(combined_df: pd.DataFrame):
     current_run.log_info(
         "Enregistrement du Dataframe contenant la structure attendue des campagnes..."
     )
-
-    output_path = os.path.join(
-        workspace.files_path,
-        outputs_path,
-        "combined_campaign_data.parquet",
-    )
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    combined_df.to_parquet(output_path, index=False)
-    current_run.log_info(
-        f"Dataframe contenant la structure attendue des campagnes enregistré dans {output_path}."
-    )
+    try:
+        output_path = os.path.join(
+            workspace.files_path,
+            outputs_path,
+            "combined_campaign_data.parquet",
+        )
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        combined_df.to_parquet(output_path, index=False)
+        current_run.log_info(
+            f"Dataframe contenant la structure attendue des campagnes enregistré dans {output_path}."
+        )
+    except Exception as e:
+        current_run.log_error(
+            f"Erreur lors de l'enregistrement du DataFrame combiné: {e}"
+        )
+        raise
 
 
 if __name__ == "__main__":

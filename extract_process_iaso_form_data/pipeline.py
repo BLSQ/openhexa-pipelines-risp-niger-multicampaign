@@ -314,20 +314,20 @@ def import_clean_iaso_org_unit_tree() -> pd.DataFrame:
     current_run.log_info(
         "Importation de l'arbre organisationnel nettoyé depuis IASO..."
     )
-
-    file_path = os.path.join(
-        workspace.files_path,
-        outputs_path,
-        "iaso_org_unit_tree_clean.parquet",
-    )
-
     try:
+        file_path = os.path.join(
+            workspace.files_path,
+            outputs_path,
+            "iaso_org_unit_tree_clean.parquet",
+        )
         iaso_org_unit_tree_clean = pd.read_parquet(file_path)
-    except FileNotFoundError:
-        current_run.log_error(f"Fichier non trouvé : {file_path}")
-        return pd.DataFrame()
 
-    return iaso_org_unit_tree_clean
+        return iaso_org_unit_tree_clean
+    except Exception as e:
+        current_run.log_error(
+            f"Erreur lors de l'importation de l'arbre organisationnel nettoyé : {e}"
+        )
+        raise
 
 
 def retrieve_org_unit_ids(
@@ -347,37 +347,44 @@ def retrieve_org_unit_ids(
         pd.DataFrame: The updated combined DataFrame with org unit IDs.
     """
     current_run.log_info("Récupération des identifiants des unités d'organisation...")
+    try:
+        iaso_org_unit_tree_raw["LVL_6_UID"] = iaso_org_unit_tree_raw.groupby(
+            "LVL_6_NAME"
+        )["LVL_6_UID"].transform("first")
 
-    iaso_org_unit_tree_raw["LVL_6_UID"] = iaso_org_unit_tree_raw.groupby("LVL_6_NAME")[
-        "LVL_6_UID"
-    ].transform("first")
+        uid_to_org_id_dict = iaso_org_unit_tree_clean.set_index("LVL_6_UID").to_dict()[
+            "org_unit_id"
+        ]
+        iaso_org_unit_tree_raw["final_org_unit"] = iaso_org_unit_tree_raw[
+            "LVL_6_UID"
+        ].map(uid_to_org_id_dict)
+        org_unit_to_final_org_unit_dict = iaso_org_unit_tree_raw.set_index(
+            "org_unit_id"
+        ).to_dict()["final_org_unit"]
 
-    uid_to_org_id_dict = iaso_org_unit_tree_clean.set_index("LVL_6_UID").to_dict()[
-        "org_unit_id"
-    ]
-    iaso_org_unit_tree_raw["final_org_unit"] = iaso_org_unit_tree_raw["LVL_6_UID"].map(
-        uid_to_org_id_dict
-    )
-    org_unit_to_final_org_unit_dict = iaso_org_unit_tree_raw.set_index(
-        "org_unit_id"
-    ).to_dict()["final_org_unit"]
-
-    combined_df["org_unit_id"] = combined_df["org_unit_id"].map(
-        org_unit_to_final_org_unit_dict
-    )
-    # remove entries with missing org_unit_id
-    mask_missing_org_unit = combined_df["org_unit_id"].isna()
-    missing_org_unit_entries = combined_df[mask_missing_org_unit]
-    if not missing_org_unit_entries.empty:
-        missing_org_unit_proportion = len(missing_org_unit_entries) / len(combined_df)
-        current_run.log_warning(
-            f"{len(missing_org_unit_entries)} entrées ({missing_org_unit_proportion:.2%}) contiennent des org_unit_id manquants. Ces entrées seront supprimées."
+        combined_df["org_unit_id"] = combined_df["org_unit_id"].map(
+            org_unit_to_final_org_unit_dict
         )
-        combined_df = combined_df[~mask_missing_org_unit].copy()
+        # remove entries with missing org_unit_id
+        mask_missing_org_unit = combined_df["org_unit_id"].isna()
+        missing_org_unit_entries = combined_df[mask_missing_org_unit]
+        if not missing_org_unit_entries.empty:
+            missing_org_unit_proportion = len(missing_org_unit_entries) / len(
+                combined_df
+            )
+            current_run.log_warning(
+                f"{len(missing_org_unit_entries)} entrées ({missing_org_unit_proportion:.2%}) contiennent des org_unit_id manquants. Ces entrées seront supprimées."
+            )
+            combined_df = combined_df[~mask_missing_org_unit].copy()
 
-    combined_df.loc[:, "org_unit_id"] = combined_df["org_unit_id"].astype(np.int64)
+        combined_df.loc[:, "org_unit_id"] = combined_df["org_unit_id"].astype(np.int64)
 
-    return combined_df
+        return combined_df
+    except Exception as e:
+        current_run.log_error(
+            f"Erreur lors de la récupération des identifiants des unités d'organisation : {str(e)}"
+        )
+        raise
 
 
 def clean_combined_df(
@@ -398,82 +405,93 @@ def clean_combined_df(
         pd.DataFrame: The cleaned DataFrame.
     """
     current_run.log_info("Nettoyage du DataFrame combiné...")
+    try:
+        # format period
+        combined_df["period"] = pd.to_datetime(combined_df["period"])
 
-    # format period
-    combined_df["period"] = pd.to_datetime(combined_df["period"])
-
-    # explode multi-campaign entries
-    combined_df["choix_campagne"] = combined_df["choix_campagne"].replace(
-        campaign_name_cleaning_dict
-    )
-    combined_df["choix_campagne"] = combined_df["choix_campagne"].str.split(" ")
-    combined_df = combined_df.explode("choix_campagne").reset_index(drop=True)
-    combined_df["choix_campagne"] = combined_df["choix_campagne"].map(
-        campaign_name_mapping_dict
-    )
-
-    # set values of columns unrelated to a specific campaign to NaN (use cvrg_campaign_map dict to identify columns specific to each campaign)
-    for campaign_name, cols in cols_campaign_map.items():
-        cols_in_df = [c for c in cols if c in combined_df.columns]
-        mask_not_campaign = combined_df["choix_campagne"] != campaign_name
-        combined_df.loc[mask_not_campaign, cols_in_df] = np.nan
-
-    # delete entries with no or unknown campaign assigned (i.e. within the mapping dict)
-    na_campaigns = combined_df[combined_df["choix_campagne"].isna()]
-    invalid_campaigns = combined_df[
-        ~combined_df["choix_campagne"].isin(list(campaign_name_mapping_dict.values()))
-    ]
-    unknown_campaigns = pd.concat([na_campaigns, invalid_campaigns]).drop_duplicates()
-    if not unknown_campaigns.empty:
-        unknown_campaigns_proportion = len(unknown_campaigns) / len(combined_df)
-        current_run.log_warning(
-            f"{len(unknown_campaigns)} entrées ({unknown_campaigns_proportion:.2%}) contiennent des noms de campagne manquant ou invalide ({invalid_campaigns['choix_campagne'].unique().tolist()}). Ces entrées seront supprimées."
+        # explode multi-campaign entries
+        combined_df["choix_campagne"] = combined_df["choix_campagne"].replace(
+            campaign_name_cleaning_dict
         )
-    combined_df = combined_df[
-        combined_df["choix_campagne"].isin(list(campaign_name_mapping_dict.values()))
-    ]
-
-    # check duplicates and remove them keeping the last entry
-    duplicates_count = combined_df.duplicated(
-        subset=["org_unit_id", "period", "choix_campagne"], keep=False
-    ).sum()
-    if duplicates_count > 0:
-        duplicates_proportion = duplicates_count / len(combined_df)
-        current_run.log_warning(
-            f"{duplicates_count} entrées ({duplicates_proportion:.2%}) dupliquées pour la même UUID, org_unit_id, période et campagne après explosion. Les doublons seront supprimés en gardant la dernière entrée."
-        )
-        combined_df = combined_df.sort_values(
-            ["uuid", "org_unit_id", "period", "choix_campagne"]
-        ).drop_duplicates(
-            subset=["uuid", "org_unit_id", "period", "choix_campagne"], keep="last"
+        combined_df["choix_campagne"] = combined_df["choix_campagne"].str.split(" ")
+        combined_df = combined_df.explode("choix_campagne").reset_index(drop=True)
+        combined_df["choix_campagne"] = combined_df["choix_campagne"].map(
+            campaign_name_mapping_dict
         )
 
-    # drop entries that are not in the expected campaign periods
-    expected_periods = expected_data_structure[
-        ["produit", "period", "year", "round"]
-    ].drop_duplicates()
-    expected_periods["choix_campagne"] = expected_periods["produit"].map(
-        campaign_product_name_mapping_dict
-    )
-    expected_periods = expected_periods.drop(columns=["produit"]).drop_duplicates()
-    combined_df = combined_df.merge(
-        expected_periods[["choix_campagne", "period", "year", "round"]],
-        on=["choix_campagne", "period"],
-        how="outer",
-        validate="many_to_one",
-        indicator=True,
-    )
+        # set values of columns unrelated to a specific campaign to NaN (use cvrg_campaign_map dict to identify columns specific to each campaign)
+        for campaign_name, cols in cols_campaign_map.items():
+            cols_in_df = [c for c in cols if c in combined_df.columns]
+            mask_not_campaign = combined_df["choix_campagne"] != campaign_name
+            combined_df.loc[mask_not_campaign, cols_in_df] = np.nan
 
-    date_invalide_mask = combined_df["_merge"] == "left_only"
-    if date_invalide_mask.sum() > 0:
-        proportion_date_invalide = date_invalide_mask.sum() / len(combined_df)
-        current_run.log_warning(
-            f"{date_invalide_mask.sum()} entrées ({proportion_date_invalide:.2%}) ont été supprimées "
-            f"car la période est en dehors de la période de campagne."
+        # delete entries with no or unknown campaign assigned (i.e. within the mapping dict)
+        na_campaigns = combined_df[combined_df["choix_campagne"].isna()]
+        invalid_campaigns = combined_df[
+            ~combined_df["choix_campagne"].isin(
+                list(campaign_name_mapping_dict.values())
+            )
+        ]
+        unknown_campaigns = pd.concat(
+            [na_campaigns, invalid_campaigns]
+        ).drop_duplicates()
+        if not unknown_campaigns.empty:
+            unknown_campaigns_proportion = len(unknown_campaigns) / len(combined_df)
+            current_run.log_warning(
+                f"{len(unknown_campaigns)} entrées ({unknown_campaigns_proportion:.2%}) contiennent des noms de campagne manquant ou invalide ({invalid_campaigns['choix_campagne'].unique().tolist()}). Ces entrées seront supprimées."
+            )
+        combined_df = combined_df[
+            combined_df["choix_campagne"].isin(
+                list(campaign_name_mapping_dict.values())
+            )
+        ]
+
+        # check duplicates and remove them keeping the last entry
+        duplicates_count = combined_df.duplicated(
+            subset=["org_unit_id", "period", "choix_campagne"], keep=False
+        ).sum()
+        if duplicates_count > 0:
+            duplicates_proportion = duplicates_count / len(combined_df)
+            current_run.log_warning(
+                f"{duplicates_count} entrées ({duplicates_proportion:.2%}) dupliquées pour la même UUID, org_unit_id, période et campagne après explosion. Les doublons seront supprimés en gardant la dernière entrée."
+            )
+            combined_df = combined_df.sort_values(
+                ["uuid", "org_unit_id", "period", "choix_campagne"]
+            ).drop_duplicates(
+                subset=["uuid", "org_unit_id", "period", "choix_campagne"], keep="last"
+            )
+
+        # drop entries that are not in the expected campaign periods
+        expected_periods = expected_data_structure[
+            ["produit", "period", "year", "round"]
+        ].drop_duplicates()
+        expected_periods["choix_campagne"] = expected_periods["produit"].map(
+            campaign_product_name_mapping_dict
         )
-    combined_df = combined_df[~date_invalide_mask].drop(columns=["_merge"])
+        expected_periods = expected_periods.drop(columns=["produit"]).drop_duplicates()
+        combined_df = combined_df.merge(
+            expected_periods[["choix_campagne", "period", "year", "round"]],
+            on=["choix_campagne", "period"],
+            how="outer",
+            validate="many_to_one",
+            indicator=True,
+        )
 
-    return combined_df
+        date_invalide_mask = combined_df["_merge"] == "left_only"
+        if date_invalide_mask.sum() > 0:
+            proportion_date_invalide = date_invalide_mask.sum() / len(combined_df)
+            current_run.log_warning(
+                f"{date_invalide_mask.sum()} entrées ({proportion_date_invalide:.2%}) ont été supprimées "
+                f"car la période est en dehors de la période de campagne."
+            )
+        combined_df = combined_df[~date_invalide_mask].drop(columns=["_merge"])
+
+        return combined_df
+    except Exception as e:
+        current_run.log_error(
+            f"Erreur lors du nettoyage du DataFrame combiné : {str(e)}"
+        )
+        raise
 
 
 def save_output(combined_df: pd.DataFrame):
@@ -487,15 +505,23 @@ def save_output(combined_df: pd.DataFrame):
         None
     """
     current_run.log_info("Enregistrement des données combinées du formulaire IASO...")
-
-    output_path = os.path.join(
-        workspace.files_path, "niger_june_24", "outputs", "combined_iaso_data.parquet"
-    )
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    combined_df.to_parquet(output_path, index=False)
-    current_run.log_info(
-        f"Données combinées du formulaire IASO enregistrées dans {output_path}."
-    )
+    try:
+        output_path = os.path.join(
+            workspace.files_path,
+            "niger_june_24",
+            "outputs",
+            "combined_iaso_data.parquet",
+        )
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        combined_df.to_parquet(output_path, index=False)
+        current_run.log_info(
+            f"Données combinées du formulaire IASO enregistrées dans {output_path}."
+        )
+    except Exception as e:
+        current_run.log_error(
+            f"Erreur lors de l'enregistrement des données combinées du formulaire IASO : {str(e)}"
+        )
+        raise
 
 
 if __name__ == "__main__":

@@ -58,3 +58,13 @@ product_status_config = {
         "zéro dose",
     },
 }
+
+campaign_names_config = [
+    "albendazole",
+    "fièvre__jaune",
+    "méningite",
+    "rougeole",
+    "tcv",
+    "vaccin__polio",
+    "vitamine__A",
+]

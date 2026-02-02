@@ -1,3 +1,4 @@
+import io
 import numpy as np
 import pandas as pd
 import requests, json
@@ -220,7 +221,6 @@ class IASOConnectionHandler:
             "latest_form_version",
         ]
         url = f"{self.iaso_connector.url}/api/forms/{form_id}/?fields={','.join(fields_scope_list)}"
-        print(url)
         r = requests.get(url, headers=self.headers)
         form_metadata_dict = json.loads(r.content)
         return form_metadata_dict
@@ -341,7 +341,7 @@ class IASOConnectionHandler:
         r = request_with_explanation(
             url, self.headers, "file recover from IASO Instance for OrgType Info"
         )
-        org_df = pd.read_excel(r.content, engine="openpyxl")
+        org_df = pd.read_excel(io.BytesIO(r.content), engine="openpyxl")
         return org_df
 
     def _generate_ou_treecolnames_dict_from_orgtype_id(
@@ -819,3 +819,9 @@ def org_unit_matching(
         )
 
     return final_df.drop(columns=["match_index"]), spatial
+
+
+def validate_data():
+    """
+    Docstring for validate_data
+    """
