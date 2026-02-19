@@ -490,15 +490,19 @@ def create_stocks_dataset(
 
         df = pd.concat(all_campaign_data, ignore_index=True)
 
-        df = new_cols(
-            df,
-            "categorizer",
-            "category",
-            [
-                produit_categorizer_stocks,
-                product_status_categorizer,
-            ],
-        ).drop(columns=["category"])
+        df = (
+            new_cols(
+                df,
+                "categorizer",
+                "category",
+                [
+                    produit_categorizer_stocks,
+                    product_status_categorizer,
+                ],
+            )
+            .drop(columns=["category"])
+            .rename(columns={"produit_categorizer": "produit"})
+        )
 
         group_cols = [
             "year",
