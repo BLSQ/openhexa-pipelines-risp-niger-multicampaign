@@ -208,8 +208,35 @@ def produit_categorizer(string):
         "nombre_": "rougeole",  # beware
         "fievre_jaune": "fièvre jaune",
         "men5_men5": "méningite",
-        "men5": "méningite",
         "men5_tcv": "tcv",
+    }
+
+    for key in products:
+        if key in string:
+            return products[key]
+
+    return "TOUS"
+
+def produit_categorizer_stocks(string):
+    """
+    Categorizes product types based on the input string.
+
+    Parameters:
+        string (str): The input string containing product information.
+
+    Returns:
+        str: The categorized product type.
+    """
+    products = {
+        "vitamine_a": "vitamine A",
+        "vit_a": "vitamine A",
+        "vpo": "vaccin polio",
+        "polio": "vaccin polio",
+        "albendazole": "albendazole",
+        "depara": "albendazole",
+        "nombre_": "rougeole",  # beware
+        "fievre_jaune": "fièvre jaune",
+        "men5": "méningite",
         "tcv": "tcv",
     }
 

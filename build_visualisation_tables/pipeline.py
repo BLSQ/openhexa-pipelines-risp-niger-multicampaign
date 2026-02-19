@@ -26,6 +26,7 @@ from utils import (
     age_categorizer,
     site_categorizer,
     produit_categorizer,
+    produit_categorizer_stocks,
     vaccination_status_categorizer,
     product_status_categorizer,
     supervision_categorizer,
@@ -172,6 +173,7 @@ def create_coverage_dataset(
         pd.DataFrame: Coverage dataset DataFrame.
     """
     current_run.log_info("Création du tableau de couverture vaccinale...")
+    combined_df = combined_df
     try:
         id_vars = ["period", "round", "year", "org_unit_id"]
         all_campaign_data = []
@@ -493,7 +495,7 @@ def create_stocks_dataset(
             "categorizer",
             "category",
             [
-                produit_categorizer,
+                produit_categorizer_stocks,
                 product_status_categorizer,
             ],
         ).drop(columns=["category"])
