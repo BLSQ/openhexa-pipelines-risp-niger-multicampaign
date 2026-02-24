@@ -173,7 +173,6 @@ def create_coverage_dataset(
         pd.DataFrame: Coverage dataset DataFrame.
     """
     current_run.log_info("Création du tableau de couverture vaccinale...")
-    combined_df = combined_df
     try:
         id_vars = ["period", "round", "year", "org_unit_id"]
         all_campaign_data = []
