@@ -1,22 +1,19 @@
-iaso_playground_connector_slug = {
-    "url": "https://iaso-playground.bluesquare.org",
-    "username": "fernando_di_demo",
-    "password": "13.5	19.5	10.5",
-}
-
-iaso_connector_slug = {
-    "url": "https://iaso.bluesquare.org",
-    "username": "fernando_diniger",
-    "password": "hbe8quh1hjm*cyx6AQH",
-}
-
-iaso_form_id = 1186
+from openhexa.sdk import workspace
+import os
 
 # paths
-outputs_path = "niger_june_24/outputs/"
-target_historical_data_path = "niger_june_24/inputs/cibles/historique/"
-target_other_data_path = "niger_june_24/inputs/cibles/autres"
-temp_path = "niger_june_24/temp/"
+WORKSPACE_PATH = workspace.files_path
+# WORKSPACE_PATH = os.path.join(
+#     os.getcwd(), "process_target_data", "workspace"
+# )  # local only
+OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, "niger_june_24", "outputs")
+TARGETS_HISTORICAL_PATH = os.path.join(
+    WORKSPACE_PATH, "niger_june_24", "inputs", "cibles", "historique"
+)
+TARGET_OTHER_DATA_PATH = os.path.join(
+    WORKSPACE_PATH, "niger_june_24", "inputs", "cibles", "autres"
+)
+TEMP_PATH = os.path.join(WORKSPACE_PATH, "niger_june_24", "temp")
 
 # polio 2024
 target_polio_2024_cols = [
@@ -233,3 +230,21 @@ list_of_valid_campaigns = [
     "albendazole",
     "vitamine A",
 ]
+
+templates_required_cols = [
+    "Pays",
+    "Région",
+    "District Sanitaire",
+    "Commune",
+    "CSI",
+]
+
+campaigns_config_dict = {
+    "albendazole": ["12-23 mois", "24-59 mois"],
+    "vitamine A": ["6-11 mois", "12-24 mois"],
+    "vaccin polio": ["0-11 mois", "12-59 mois"],
+    "rougeole": ["6-11 mois", "12-59 mois"],
+    "fièvre jaune": ["9-11 mois", "12-23 mois", "24-59 mois", "5-14 ans", "5-60 ans"],
+    "méningite": ["1-4 ans", "5-14 ans", "15-19 ans"],
+    "tcv": ["1-4 ans", "5-14 ans", "15-19 ans"],
+}

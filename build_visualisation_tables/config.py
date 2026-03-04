@@ -1,20 +1,12 @@
-# IASO Connector Instances
-iaso_playground_connector_slug = {
-    "url": "https://iaso-playground.bluesquare.org",
-    "username": "fernando_di_demo",
-    "password": "13.5	19.5	10.5",
-}
-
-iaso_connector_slug = {
-    "url": "https://iaso.bluesquare.org",
-    "username": "fernando_diniger",
-    "password": "hbe8quh1hjm*cyx6AQH",
-}
-
-iaso_form_id = 1186
+import os
+from openhexa.sdk import workspace
 
 # paths
-outputs_path = "niger_june_24/outputs/"
+WORKSPACE_PATH = workspace.files_path
+# WORKSPACE_PATH = os.path.join(
+#     os.getcwd(), "build_visualisation_tables", "workspace"
+# )  # local only
+OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, "niger_june_24", "outputs")
 
 # campaign name cleaning and mapping
 campaign_name_cleaning_dict = {
