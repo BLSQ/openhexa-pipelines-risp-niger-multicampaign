@@ -212,18 +212,9 @@ def import_target_data_for_polio_and_rougeole_2025_r1_r2() -> pd.DataFrame:
         "Importation des données de cibles pour la polio et rougeole 2025..."
     )
 
-    file_path = os.path.join(
-        TARGETS_HISTORICAL_PATH,
-        "cible_niger_et_refugies_2025.xlsx",
-    )
-
-    target_polio_rougeole_2025 = pd.read_excel(
-        file_path, header=[0], skiprows=1, usecols=[0, 9, 10]
-    )
     try:
         file_path = os.path.join(
-            workspace.files_path,
-            target_historical_data_path,
+            TARGETS_HISTORICAL_PATH,
             "cible_niger_et_refugies_2025.xlsx",
         )
 
@@ -280,15 +271,16 @@ def import_target_data_for_yellow_fever_2025_2026_r1() -> pd.DataFrame:
     )
     try:
         file_path = os.path.join(
-            workspace.files_path,
-            target_historical_data_path,
+            TARGETS_HISTORICAL_PATH,
             "cible_csi_fj_dosso_tahoua.xlsx",
         )
 
-    file_path = os.path.join(
-        TARGETS_HISTORICAL_PATH,
-        "cible_csi_fj_dosso_tahoua.xlsx",
-    )
+        target_yellow_fever_2025_r1 = pd.read_excel(
+            file_path,
+            header=[0],
+            skiprows=10,
+            usecols=[2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 17],
+        )
 
         target_yellow_fever_2025_r1.columns = target_yellow_fever_2025_2026_columns
         target_yellow_fever_2025_r1 = target_yellow_fever_2025_r1[
@@ -353,14 +345,9 @@ def import_target_data_for_men5_and_tcv_2025_r1_r2() -> pd.DataFrame:
         "Importation des données de cibles pour la campagne Méningite et TCV 2025..."
     )
 
-    file_path = os.path.join(
-        TARGETS_HISTORICAL_PATH,
-        "Cible Men5-TCV CSI.xlsx",
-    )
     try:
         file_path = os.path.join(
-            workspace.files_path,
-            target_historical_data_path,
+            TARGETS_HISTORICAL_PATH,
             "Cible Men5-TCV CSI.xlsx",
         )
 
@@ -393,6 +380,7 @@ def import_target_data_for_men5_and_tcv_2025_r1_r2() -> pd.DataFrame:
         target_men5_tcv_2025_clean["campaign"] = "men5_tcv"
 
         return target_men5_tcv_2025_clean
+
     except Exception as e:
         current_run.log_error(
             f"Erreur lors de l'importation des données de cibles historiques pour la campagne Méningite et TCV 2025 rounds 1 et 2: {e}"
@@ -415,15 +403,13 @@ def import_target_data_for_polio_2026_r1() -> pd.DataFrame:
     )
     try:
         file_path = os.path.join(
-            workspace.files_path,
-            target_historical_data_path,
+            TARGETS_HISTORICAL_PATH,
             "cible_jnv_polio_2025.xlsx",
         )
 
-    file_path = os.path.join(
-        TARGETS_HISTORICAL_PATH,
-        "cible_jnv_polio_2025.xlsx",
-    )
+        target_polio_2026_r1 = pd.read_excel(
+            file_path, header=[0], skiprows=9, usecols=[1, 2, 3, 7]
+        )
 
         target_polio_2026_r1.columns = target_polio_2026_r1_columns
         target_polio_2026_r1 = target_polio_2026_r1.dropna(subset=["LVL_3_NAME"])
@@ -504,21 +490,20 @@ def match_csi_to_org_unit_id(
                 "match_score",
             ]
         ]
-    ]
-    target_df_matched_check.drop_duplicates(inplace=True)
+        target_df_matched_check.drop_duplicates(inplace=True)
 
-    if not os.path.exists(TEMP_PATH):
-        os.makedirs(TEMP_PATH)
+        if not os.path.exists(TEMP_PATH):
+            os.makedirs(TEMP_PATH)
 
-    target_df_matched_check.to_csv(
-        os.path.join(TEMP_PATH, "target_df_matched_check.csv"),
-        index=False,
-    )
-    org_unit_tree_check.drop_duplicates(inplace=True)
-    org_unit_tree_check.to_csv(
-        os.path.join(TEMP_PATH, "org_unit_tree_check.csv"),
-        index=False,
-    )
+        target_df_matched_check.to_csv(
+            os.path.join(TEMP_PATH, "target_df_matched_check.csv"),
+            index=False,
+        )
+        org_unit_tree_check.drop_duplicates(inplace=True)
+        org_unit_tree_check.to_csv(
+            os.path.join(TEMP_PATH, "org_unit_tree_check.csv"),
+            index=False,
+        )
 
         # manually correct matching failures
         for (
@@ -873,9 +858,6 @@ def import_target_data_for_future_campaigns():
     current_run.log_info(
         "Importation et traitement des données non-historiques de cibles..."
     )
-    try:
-        clean_target_path = target_other_data_path.lstrip("/")
-        folder_path = os.path.join(workspace.files_path, clean_target_path)
 
     if not os.path.exists(TARGET_OTHER_DATA_PATH):
         os.makedirs(TARGET_OTHER_DATA_PATH)
@@ -903,28 +885,31 @@ def import_target_data_for_future_campaigns():
                 if not (file.endswith(".xlsx") and not file.startswith("~$")):
                     continue
 
-                if not year_match:
+                campaign_round_match = re.search(r"Cibles_(.+)_(r\d+)\.xlsx", file)
+                if not campaign_round_match:
                     current_run.log_warning(
-                        f"Dossier ignoré (pas d'année) : {folder_name}"
+                        f"Format de nommage invalide : '{file}' dans '{folder_name}'. "
+                        "Format attendu: 'Cibles_<campagne>_r<round>.xlsx'"
                     )
                     continue
 
-                year = int(year_match.group(0))
-                subfolder_path = os.path.join(subdir, folder_name)
+                campaign = campaign_round_match.group(1)
+                round_code = campaign_round_match.group(2)
 
-                for file in os.listdir(subfolder_path):
-                    if not (file.endswith(".xlsx") and not file.startswith("~$")):
-                        current_run.log_warning(
-                            f"Fichier ignoré (format invalide) : {file} dans '{folder_name}'. Le format attendu est un fichier Excel (.xlsx)."
-                        )
+                if campaign not in list_of_valid_campaigns:
+                    current_run.log_warning(
+                        f"Campagne invalide '{campaign}' détectée dans '{file}'. "
+                        f"Valeurs autorisées : {', '.join(list_of_valid_campaigns)}"
+                    )
+                    continue
 
-                    campaign_round_match = re.search(r"Cibles_(.+)_(r\d+)\.xlsx", file)
-                    if not campaign_round_match:
-                        current_run.log_error(
-                            f"Format de nommage invalide : '{file}' dans '{folder_name}'. "
-                            "Format attendu: 'Cibles_<campagne>_r<round>.xlsx'"
-                        )
-                        raise ValueError()
+                file_path = os.path.join(subfolder_path, file)
+                try:
+                    df = pd.read_excel(file_path, engine="openpyxl")
+
+                    if df.empty:
+                        current_run.log_warning(f"Le fichier {file} est vide.")
+                        continue
 
                     required_org_unit_cols = templates_required_cols
                     if not all(col in df.columns for col in required_org_unit_cols):
@@ -942,34 +927,54 @@ def import_target_data_for_future_campaigns():
                             f"Colonnes spécifiques manquantes pour la campagne '{campaign}' dans {file}. "
                             f"Attendu: Cible ({' '.join(required_specific_cols)})"
                         )
+                        continue
 
-                        df_melted["age"] = df_melted["age_group"].str.extract(
-                            r"Cible \((.+)\)"
+                    df["LVL_3_NAME"] = df["District Sanitaire"]
+                    df["LVL_6_NAME"] = df["CSI"]
+                    df["year"] = year
+                    df["produit"] = campaign
+                    df["round"] = round_code.replace("r", "round ")
+
+                    id_vars = ["LVL_3_NAME", "LVL_6_NAME", "year", "produit", "round"]
+                    value_vars = [
+                        col for col in df.columns if col.startswith("Cible (")
+                    ]
+
+                    if not value_vars:
+                        current_run.log_warning(
+                            f"Aucune colonne de cible trouvée dans {file}"
                         )
-                        df_melted = df_melted.drop(columns=["age_group"])
+                        continue
 
-                        all_target_data.append(df_melted)
-                        current_run.log_info(f"Importation réussie : {file}")
+                    df_melted = pd.melt(
+                        df,
+                        id_vars=id_vars,
+                        value_vars=value_vars,
+                        var_name="age_group",
+                        value_name="cible",
+                    )
 
-                    except Exception as e:
-                        current_run.log_error(
-                            f"Impossible de lire le fichier {file} : {str(e)}"
-                        )
-                        raise ValueError()
+                    df_melted["age"] = df_melted["age_group"].str.extract(
+                        r"Cible \((.+)\)"
+                    )
+                    df_melted = df_melted.drop(columns=["age_group"])
 
-        if not all_target_data:
-            current_run.log_warning(
-                f"Aucune donnée cible dans le dossier {subfolder_path} n'a été importée."
-            )
-            return pd.DataFrame()
+                    all_target_data.append(df_melted)
+                    current_run.log_info(f"Importation réussie : {file}")
 
-        return pd.concat(all_target_data, ignore_index=True)
+                except Exception as e:
+                    current_run.log_error(
+                        f"Impossible de lire le fichier {file} : {str(e)}"
+                    )
+                    continue
 
-    except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'importation des données non-historiques de cibles: {e}"
+    if not all_target_data:
+        current_run.log_warning(
+            "Aucune donnée cible dans le dossier 'cibles/autres/' n'a été importée."
         )
-        raise ValueError()
+        return pd.DataFrame()
+
+    return pd.concat(all_target_data, ignore_index=True)
 
 
 def save_output(target_data_combined: pd.DataFrame):
