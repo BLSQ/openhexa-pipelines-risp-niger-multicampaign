@@ -129,14 +129,12 @@ def import_target_data() -> pd.DataFrame:
     """
     current_run.log_info("Importation des données cibles traitées...")
 
-    target_data_path = os.path.join(OUTPUTS_PATH, "combined_target_data.parquet")
     try:
-        target_data_path = os.path.join(
-            workspace.files_path, outputs_path, "combined_target_data.parquet"
-        )
+        target_data_path = os.path.join(OUTPUTS_PATH, "combined_target_data.parquet")
         target_df = pd.read_parquet(target_data_path)
 
         return target_df
+
     except Exception as e:
         current_run.log_error(f"Erreur de lecture des données cibles: {e}")
         raise

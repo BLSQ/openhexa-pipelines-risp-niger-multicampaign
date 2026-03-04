@@ -315,15 +315,9 @@ def import_clean_iaso_org_unit_tree() -> pd.DataFrame:
         "Importation de l'arbre organisationnel nettoyé depuis IASO..."
     )
 
-    file_path = os.path.join(
-        OUTPUTS_PATH,
-        "iaso_org_unit_tree_clean.parquet",
-    )
-
     try:
         file_path = os.path.join(
-            workspace.files_path,
-            outputs_path,
+            OUTPUTS_PATH,
             "iaso_org_unit_tree_clean.parquet",
         )
         iaso_org_unit_tree_clean = pd.read_parquet(file_path)

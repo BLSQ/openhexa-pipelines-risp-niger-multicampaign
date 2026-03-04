@@ -837,17 +837,11 @@ def create_dynamic_org_unit_table() -> pd.DataFrame:
     )
     try:
         file_path = os.path.join(
-            workspace.files_path,
-            outputs_path,
+            OUTPUTS_PATH,
             "iaso_org_unit_tree_clean.parquet",
         )
 
-    file_path = os.path.join(
-        OUTPUTS_PATH,
-        "iaso_org_unit_tree_clean.parquet",
-    )
-
-    iaso_org_unit_tree_clean_df = pd.read_parquet(file_path)
+        iaso_org_unit_tree_clean_df = pd.read_parquet(file_path)
 
         spatial_units_choice_0 = iaso_org_unit_tree_clean_df.copy()
 
@@ -873,6 +867,7 @@ def create_dynamic_org_unit_table() -> pd.DataFrame:
         ).reset_index(drop=True)
 
         return spatial_units_combined
+
     except Exception as e:
         current_run.log_error(
             f"Erreur lors de la création du tableau dynamique des unités organisationnelles: {e}"
