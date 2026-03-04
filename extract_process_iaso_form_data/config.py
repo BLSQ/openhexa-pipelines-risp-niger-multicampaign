@@ -1,3 +1,16 @@
+from openhexa.sdk import workspace
+import os
+
+# paths
+WORKSPACE_PATH = workspace.files_path
+# WORKSPACE_PATH = os.path.join(
+#     os.getcwd(), "extract_process_iaso_form_data", "workspace"
+# )  # local only
+OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, "niger_june_24", "outputs")
+IASO_EXTRACTION_PATH = os.path.join(
+    WORKSPACE_PATH, "niger_june_24", "iaso_données_extraites"
+)
+
 # IASO Connector Instances
 iaso_playground_connector_slug = {
     "url": "https://iaso-playground.bluesquare.org",
@@ -12,10 +25,6 @@ iaso_connector_slug = {
 }
 
 iaso_form_id = 1186
-
-# paths
-iaso_extracted_data_path = "niger_june_24/iaso_données_extraites/"
-outputs_path = "niger_june_24/outputs/"
 
 # campaign name cleaning and mapping
 campaign_name_cleaning_dict = {

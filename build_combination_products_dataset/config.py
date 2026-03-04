@@ -1,9 +1,15 @@
-import pandas as pd
+from openhexa.sdk import workspace
+import os
 
 # paths
-outputs_path = "niger_june_24/outputs/"
-config_path = "niger_june_24/config/"
+WORKSPACE_PATH = workspace.files_path
+# WORKSPACE_PATH = os.path.join(
+#     os.getcwd(), "build_combination_products_dataset", "workspace"
+# )  # local only
+OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, "niger_june_24", "outputs")
+CONFIG_PATH = os.path.join(WORKSPACE_PATH, "niger_june_24", "config")
 
+# configs
 product_site_config = {
     "vaccin polio": {
         "ordinaire",

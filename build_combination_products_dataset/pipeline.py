@@ -5,15 +5,18 @@ import numpy as np
 from pathlib import Path
 import re
 from config import (
-    outputs_path,
-    config_path,
+    OUTPUTS_PATH,
+    CONFIG_PATH,
     product_site_config,
     product_status_config,
     sex_types_config,
 )
 
 
-@pipeline("02. Etablissement de la structure des données attendues")
+@pipeline(
+    "build_combination_products_dataset",
+    name="03. Etablissement de la structure des données attendues",
+)
 def build_combination_products_dataset():
     """
     Main pipeline function to build combination campaigns dataset.
@@ -48,20 +51,26 @@ def extract_org_unit_id() -> pd.DataFrame:
         pd.DataFrame: DataFrame with unique 'org_unit_id's.
     """
     current_run.log_info("Extraction des identifiants des unités d'organisation...")
+    try:
+        file_path = os.path.join(
+            OUTPUTS_PATH,
+            "iaso_org_unit_tree_clean.parquet",
+        )
 
-    file_path = os.path.join(
-        workspace.files_path,
-        outputs_path,
-        "iaso_org_unit_tree_clean.parquet",
-    )
+        org_unit_ids_df = pd.read_parquet(file_path)
+        org_unit_ids_df = org_unit_ids_df[
+            ["org_unit_id", "LVL_2_NAME", "LVL_3_NAME", "LVL_6_NAME"]
+        ].drop_duplicates()
+        assert org_unit_ids_df["org_unit_id"].is_unique, (
+            "Les identifiants des unités d'organisation ne sont pas uniques dans le DataFrame."
+        )
 
-    org_unit_ids_df = pd.read_parquet(file_path)
-    org_unit_ids_df = org_unit_ids_df[
-        ["org_unit_id", "LVL_2_NAME", "LVL_3_NAME", "LVL_6_NAME"]
-    ].drop_duplicates()
-    assert org_unit_ids_df["org_unit_id"].is_unique, "Duplicate org_unit_ids found!"
-
-    return org_unit_ids_df
+        return org_unit_ids_df
+    except Exception as e:
+        current_run.log_error(
+            f"Erreur lors de l'extraction des identifiants des unités d'organisation: {e}"
+        )
+        raise
 
 
 def create_product_site_df() -> pd.DataFrame:
@@ -118,9 +127,7 @@ def import_target_data() -> pd.DataFrame:
     """
     current_run.log_info("Importation des données cibles traitées...")
 
-    target_data_path = os.path.join(
-        workspace.files_path, outputs_path, "combined_target_data.parquet"
-    )
+    target_data_path = os.path.join(OUTPUTS_PATH, "combined_target_data.parquet")
     try:
         target_df = pd.read_parquet(target_data_path)
     except Exception as e:
@@ -187,16 +194,14 @@ def create_campaign_period_df() -> pd.DataFrame:
     """
     current_run.log_info("Création du DataFrame des périodes de campagne...")
 
-    campaign_round_config_path = os.path.join(
-        workspace.files_path, config_path, "campagne_dates.json"
-    )
+    campaign_round_config_path = os.path.join(CONFIG_PATH, "campagnes_config.txt")
     try:
         campaign_round_config = pd.read_json(campaign_round_config_path).to_dict()
     except Exception as e:
         current_run.log_error(
-            f"Erreur de lecture du fichier de la configuration des campagnes: {e}"
+            f"Erreur de lecture du fichier de la configuration des campagnes: fichier {campaign_round_config_path} non trouvé"
         )
-        raise e
+        raise
 
     rows = []
     for key, dates in campaign_round_config.items():
@@ -303,8 +308,7 @@ def combine_dfs(
         )
         # export to csv for debugging
         debug_path = os.path.join(
-            workspace.files_path,
-            outputs_path,
+            OUTPUTS_PATH,
             "debug_unmatched_campaign_periods.csv",
         )
         unmatched.to_csv(debug_path, index=False)
@@ -377,8 +381,7 @@ def save_output(combined_df: pd.DataFrame):
     )
 
     output_path = os.path.join(
-        workspace.files_path,
-        outputs_path,
+        OUTPUTS_PATH,
         "combined_campaign_data.parquet",
     )
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)

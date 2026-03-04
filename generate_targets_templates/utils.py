@@ -4,11 +4,9 @@ import requests, json
 
 import re
 import random
-import sqlalchemy as sa
+import io
 
 import datetime
-
-from openhexa.sdk import workspace
 
 from typing import Tuple, Dict, Any, List
 
@@ -341,7 +339,7 @@ class IASOConnectionHandler:
         r = request_with_explanation(
             url, self.headers, "file recover from IASO Instance for OrgType Info"
         )
-        org_df = pd.read_excel(r.content, engine="openpyxl")
+        org_df = pd.read_excel(io.BytesIO(r.content), engine="openpyxl")
         return org_df
 
     def _generate_ou_treecolnames_dict_from_orgtype_id(

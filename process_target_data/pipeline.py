@@ -1,21 +1,16 @@
 import os
 import re
-from openhexa.sdk import current_run, workspace, pipeline
+from openhexa.sdk import current_run, pipeline
 import pandas as pd
 import numpy as np
-from pathlib import Path
 from utils import (
-    IASOConnectionHandler,
     org_unit_matching,
-    pyramid_selector,
 )
 from config import (
-    iaso_connector_slug,
-    iaso_form_id,
-    outputs_path,
-    target_historical_data_path,
-    target_other_data_path,
-    temp_path,
+    OUTPUTS_PATH,
+    TARGETS_HISTORICAL_PATH,
+    TARGET_OTHER_DATA_PATH,
+    TEMP_PATH,
     target_polio_2024_cols,
     polio_2024_dict_districts_cibles_iaso,
     target_polio_rougeole_2025_columns,
@@ -28,16 +23,18 @@ from config import (
     target_polio_2026_r1_columns,
     csi_matching_failed,
     list_of_valid_campaigns,
+    templates_required_cols,
+    campaigns_config_dict,
 )
 
 
-@pipeline(name="01. Import et traitement des données de cibles")
+@pipeline("process_target_data", name="02. Import et traitement des données de cibles")
 def process_target_data():
     """
     Main pipeline function to process target data from various campaigns.
     """
-    iaso_org_unit_tree_df = get_iaso_org_unit_tree()
-    iaso_org_unit_tree_df_clean = clean_iaso_org_unit_tree(iaso_org_unit_tree_df)
+    iaso_org_unit_tree_df = load_data("iaso_org_unit_tree_raw")
+    iaso_org_unit_tree_df_clean = load_data("iaso_org_unit_tree_clean")
 
     # district-level historical target data
     targets_polio_2024_r1_r4 = import_target_data_for_polio_2024_r1_r4()
@@ -107,94 +104,32 @@ def process_target_data():
     save_output(target_data_combined)
 
 
-def get_iaso_org_unit_tree() -> pd.DataFrame:
+def load_data(name: str) -> pd.DataFrame:
     """
-    Retrieve organizational unit tree data from IASO based on a specific form ID.
+    Import data from a specified file in the outputs directory.
+    The file should be in parquet format and the name should be provided without the extension.
 
     Args:
-        None
-
+        name (str): Name of the file to be imported (without extension).
     Returns:
-        pd.DataFrame: DataFrame containing the organizational unit tree data.
+        pd.DataFrame: DataFrame containing the imported data.
     """
-    current_run.log_info(
-        "Extraction des données de l'arbre des unités organisationnelles IASO..."
-    )
+    current_run.log_info(f"Importation du fichier {name}...")
+    try:
+        if not os.path.exists(OUTPUTS_PATH):
+            os.makedirs(OUTPUTS_PATH)
 
-    iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
-    iaso_org_unit_tree_df = iaso_connector_instance.get_ou_tree_dataframe_from_the_form(
-        iaso_form_id
-    )
-
-    # save file to parquet for later use
-    file_path = os.path.join(
-        workspace.files_path,
-        outputs_path,
-        "iaso_org_unit_tree_raw.parquet",
-    )
-    Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-    iaso_org_unit_tree_df.to_parquet(
-        file_path,
-        index=False,
-    )
-    iaso_org_unit_tree_df = pd.read_parquet(file_path)
-    return iaso_org_unit_tree_df
-
-
-def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Clean the org unit tree data by filtering out rejected entries and selecting relevant records.
-
-    Args:
-        iaso_org_unit_tree_df (pd.DataFrame): DataFrame containing the org unit tree data to be cleaned.
-
-    Returns:
-        pd.DataFrame: Cleaned DataFrame with relevant org unit tree data.
-    """
-    current_run.log_info(
-        "Nettoyage des données de l'arbre des unités organisationnelles IASO..."
-    )
-
-    iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df[
-        iaso_org_unit_tree_df["Validé"] != "REJECTED"
-    ]
-    iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
-        iaso_org_unit_tree_df_clean["Source"].isin(["SNIS", "SNIS 2025"])
-    ]
-    iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
-        iaso_org_unit_tree_df_clean["LVL_6_NAME"].str.contains(
-            "CSI", case=False, na=False
+        file_path = os.path.join(
+            OUTPUTS_PATH,
+            f"{name}.parquet",
         )
-    ]
+        df = pd.read_parquet(file_path)
 
-    iaso_org_unit_tree_df_clean["LVL_6_UID"] = iaso_org_unit_tree_df_clean.groupby(
-        "LVL_6_NAME"
-    )["LVL_6_UID"].transform("first")
-    iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean.groupby(
-        "LVL_6_UID", as_index=False
-    ).apply(pyramid_selector, include_groups=False)
+        return df
 
-    iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
-        iaso_org_unit_tree_df_clean["LVL_2_NAME"] != "Niger"
-    ]  # delete 2 incoherent entries
-
-    iaso_org_unit_tree_df_clean["org_unit_id"] = iaso_org_unit_tree_df_clean[
-        "org_unit_id"
-    ].astype(np.int64)
-
-    # save file
-    file_path = os.path.join(
-        workspace.files_path,
-        outputs_path,
-        "iaso_org_unit_tree_clean.parquet",
-    )
-    Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-    iaso_org_unit_tree_df_clean.to_parquet(
-        file_path,
-        index=False,
-    )
-
-    return iaso_org_unit_tree_df_clean
+    except Exception as e:
+        current_run.log_error(f"Erreur lors de l'importation du fichier {name}: {e}")
+        raise
 
 
 def import_target_data_for_polio_2024_r1_r4() -> pd.DataFrame:
@@ -210,49 +145,57 @@ def import_target_data_for_polio_2024_r1_r4() -> pd.DataFrame:
     current_run.log_info(
         "Importation des données de cibles pour la polio 2024 rounds 1 à 4..."
     )
-    file_path = os.path.join(
-        workspace.files_path,
-        target_historical_data_path,
-        "Population JNV JNM ET DEPRARASITAGE.xlsx",
-    )
-    target_polio_2024 = pd.read_excel(
-        file_path, skiprows=6, header=None, usecols=[1, 2, 3, 6, 7, 9, 10]
-    )
+    try:
+        if not os.path.exists(TARGET_OTHER_DATA_PATH):
+            os.makedirs(TARGET_OTHER_DATA_PATH)
 
-    target_polio_2024.columns = target_polio_2024_cols
+        file_path = os.path.join(
+            TARGETS_HISTORICAL_PATH,
+            "Population JNV JNM ET DEPRARASITAGE.xlsx",
+        )
+        target_polio_2024 = pd.read_excel(
+            file_path, skiprows=6, header=None, usecols=[1, 2, 3, 6, 7, 9, 10]
+        )
 
-    target_polio_2024 = target_polio_2024[
-        ~target_polio_2024["LVL_3_NAME"]
-        .str.contains("Région|TOTAL", case=False)
-        .fillna(True)
-    ]
+        target_polio_2024.columns = target_polio_2024_cols
 
-    target_polio_2024["LVL_3_NAME"] = target_polio_2024["LVL_3_NAME"].map(
-        polio_2024_dict_districts_cibles_iaso
-    )
-    target_polio_2024 = pd.melt(
-        target_polio_2024,
-        id_vars="LVL_3_NAME",
-        var_name="full_name",
-        value_name="cible",
-    )
+        target_polio_2024 = target_polio_2024[
+            ~target_polio_2024["LVL_3_NAME"]
+            .str.contains("Région|TOTAL", case=False)
+            .fillna(True)
+        ]
 
-    target_polio_2024["age"] = target_polio_2024["full_name"].str.split(
-        "_", expand=True
-    )[1]
+        target_polio_2024["LVL_3_NAME"] = target_polio_2024["LVL_3_NAME"].map(
+            polio_2024_dict_districts_cibles_iaso
+        )
+        target_polio_2024 = pd.melt(
+            target_polio_2024,
+            id_vars="LVL_3_NAME",
+            var_name="full_name",
+            value_name="cible",
+        )
 
-    # adjust age category 12-59 mois to 12-24 mois for Vit A (this is b/c this age category is found in the IASO data instead of 12-59 mois)
-    target_polio_2024["age"] = np.where(
-        target_polio_2024["full_name"].str.contains("VA_12-59 mois"),
-        "12-24 mois",
-        target_polio_2024["age"],
-    )
+        target_polio_2024["age"] = target_polio_2024["full_name"].str.split(
+            "_", expand=True
+        )[1]
 
-    target_polio_2024["cible"] = target_polio_2024["cible"].astype(int)
-    target_polio_2024["year"] = 2024
-    target_polio_2024["campaign"] = "polio"
+        # adjust age category 12-59 mois to 12-24 mois for Vit A (this is b/c this age category is found in the IASO data instead of 12-59 mois)
+        target_polio_2024["age"] = np.where(
+            target_polio_2024["full_name"].str.contains("VA_12-59 mois"),
+            "12-24 mois",
+            target_polio_2024["age"],
+        )
 
-    return target_polio_2024
+        target_polio_2024["cible"] = target_polio_2024["cible"].astype(int)
+        target_polio_2024["year"] = 2024
+        target_polio_2024["campaign"] = "polio"
+
+        return target_polio_2024
+    except Exception as e:
+        current_run.log_error(
+            f"Erreur lors de l'importation des données de cibles pour la polio 2024: {e}"
+        )
+        raise
 
 
 def import_target_data_for_polio_and_rougeole_2025_r1_r2() -> pd.DataFrame:
@@ -270,8 +213,7 @@ def import_target_data_for_polio_and_rougeole_2025_r1_r2() -> pd.DataFrame:
     )
 
     file_path = os.path.join(
-        workspace.files_path,
-        target_historical_data_path,
+        TARGETS_HISTORICAL_PATH,
         "cible_niger_et_refugies_2025.xlsx",
     )
 
@@ -323,8 +265,7 @@ def import_target_data_for_yellow_fever_2025_2026_r1() -> pd.DataFrame:
     )
 
     file_path = os.path.join(
-        workspace.files_path,
-        target_historical_data_path,
+        TARGETS_HISTORICAL_PATH,
         "cible_csi_fj_dosso_tahoua.xlsx",
     )
 
@@ -392,8 +333,7 @@ def import_target_data_for_men5_and_tcv_2025_r1_r2() -> pd.DataFrame:
     )
 
     file_path = os.path.join(
-        workspace.files_path,
-        target_historical_data_path,
+        TARGETS_HISTORICAL_PATH,
         "Cible Men5-TCV CSI.xlsx",
     )
 
@@ -443,8 +383,7 @@ def import_target_data_for_polio_2026_r1() -> pd.DataFrame:
     )
 
     file_path = os.path.join(
-        workspace.files_path,
-        target_historical_data_path,
+        TARGETS_HISTORICAL_PATH,
         "cible_jnv_polio_2025.xlsx",
     )
 
@@ -527,13 +466,17 @@ def match_csi_to_org_unit_id(
         ]
     ]
     target_df_matched_check.drop_duplicates(inplace=True)
+
+    if not os.path.exists(TEMP_PATH):
+        os.makedirs(TEMP_PATH)
+
     target_df_matched_check.to_csv(
-        os.path.join(workspace.files_path, temp_path, "target_df_matched_check.csv"),
+        os.path.join(TEMP_PATH, "target_df_matched_check.csv"),
         index=False,
     )
     org_unit_tree_check.drop_duplicates(inplace=True)
     org_unit_tree_check.to_csv(
-        os.path.join(workspace.files_path, temp_path, "org_unit_tree_check.csv"),
+        os.path.join(TEMP_PATH, "org_unit_tree_check.csv"),
         index=False,
     )
 
@@ -866,16 +809,18 @@ def import_target_data_for_future_campaigns():
         "Importation et traitement des données non-historiques de cibles..."
     )
 
-    clean_target_path = target_other_data_path.lstrip("/")
-    folder_path = os.path.join(workspace.files_path, clean_target_path)
+    if not os.path.exists(TARGET_OTHER_DATA_PATH):
+        os.makedirs(TARGET_OTHER_DATA_PATH)
 
     all_target_data = []
 
-    if not os.path.exists(folder_path):
-        current_run.log_error(f"Le chemin spécifié n'existe pas : {folder_path}")
+    if not os.path.exists(TARGET_OTHER_DATA_PATH):
+        current_run.log_error(
+            f"Le chemin spécifié n'existe pas : {TARGET_OTHER_DATA_PATH}"
+        )
         return pd.DataFrame()
 
-    for subdir, dirs, files in os.walk(folder_path):
+    for subdir, dirs, files in os.walk(TARGET_OTHER_DATA_PATH):
         for folder_name in dirs:
             year_match = re.search(r"20\d{2}", folder_name)
 
@@ -916,10 +861,21 @@ def import_target_data_for_future_campaigns():
                         current_run.log_warning(f"Le fichier {file} est vide.")
                         continue
 
-                    required_cols = ["District Sanitaire", "CSI"]
-                    if not all(col in df.columns for col in required_cols):
+                    required_org_unit_cols = templates_required_cols
+                    if not all(col in df.columns for col in required_org_unit_cols):
                         current_run.log_error(
-                            f"Colonnes manquantes dans {file}. Attendu: {required_cols}"
+                            f"Colonnes manquantes dans {file}. Attendu: {required_org_unit_cols}"
+                        )
+                        continue
+
+                    # check for presence of specific columns using the campaigns_config_dict (Cible ({age group})) and log error if not present
+                    required_specific_cols = campaigns_config_dict.get(campaign, [])
+                    if not all(
+                        f"Cible ({col})" in df.columns for col in required_specific_cols
+                    ):
+                        current_run.log_error(
+                            f"Colonnes spécifiques manquantes pour la campagne '{campaign}' dans {file}. "
+                            f"Attendu: Cible ({' '.join(required_specific_cols)})"
                         )
                         continue
 
@@ -983,14 +939,15 @@ def save_output(target_data_combined: pd.DataFrame):
     """
     current_run.log_info("Enregistrement des données cibles combinées...")
 
-    output_path = os.path.join(
-        workspace.files_path,
-        outputs_path,
+    if not os.path.exists(OUTPUTS_PATH):
+        os.makedirs(OUTPUTS_PATH)
+
+    file_path = os.path.join(
+        OUTPUTS_PATH,
         "combined_target_data.parquet",
     )
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    target_data_combined.to_parquet(output_path, index=False)
-    current_run.log_info(f"Données cibles combinées enregistrées dans {output_path}.")
+    target_data_combined.to_parquet(file_path, index=False)
+    current_run.log_info(f"Données cibles combinées enregistrées dans {file_path}.")
 
 
 if __name__ == "__main__":

@@ -2,13 +2,13 @@ import datetime
 import os
 import pandas as pd
 import numpy as np
-from openhexa.sdk import current_run, workspace, pipeline
+from openhexa.sdk import current_run, pipeline
 from pathlib import Path
 from config import (
+    OUTPUTS_PATH,
+    IASO_EXTRACTION_PATH,
     iaso_connector_slug,
     iaso_form_id,
-    iaso_extracted_data_path,
-    outputs_path,
     campaign_name_cleaning_dict,
     campaign_name_mapping_dict,
     campaign_product_name_mapping_dict,
@@ -19,7 +19,10 @@ from utils import (
 )
 
 
-@pipeline("03. Extraction et traitement des données du formulaire IASO")
+@pipeline(
+    "extract_process_iaso_form_data",
+    name="04. Extraction et traitement des données du formulaire IASO",
+)
 def extract_process_iaso_form_data():
     """
     Main pipeline function to extract and process IASO form data.
@@ -77,10 +80,9 @@ def extract_iaso_data_for_current_month() -> None:
             )
             return
 
-        clean_extract_path = iaso_extracted_data_path.lstrip("/")
         file_name = f"multicampaign_df_{current_period_str}_raw.feather"
 
-        file_path = os.path.join(workspace.files_path, clean_extract_path, file_name)
+        file_path = os.path.join(IASO_EXTRACTION_PATH, file_name)
         Path(file_path).parent.mkdir(parents=True, exist_ok=True)
 
         current_df.to_feather(file_path)
@@ -115,9 +117,9 @@ def extract_iaso_data_for_other_months() -> None:
         current_run.log_error(f"Échec de l'initialisation du connecteur IASO: {e}")
         return
 
-    clean_extract_path = iaso_extracted_data_path.lstrip("/")
-    folder_path = os.path.join(workspace.files_path, clean_extract_path)
-    existing_files = os.listdir(folder_path) if os.path.exists(folder_path) else []
+    existing_files = (
+        os.listdir(IASO_EXTRACTION_PATH) if os.path.exists(IASO_EXTRACTION_PATH) else []
+    )
 
     for year in range(2024, current_year + 1):
         for month in range(1, 13):
@@ -150,7 +152,7 @@ def extract_iaso_data_for_other_months() -> None:
                     continue
 
                 # Save the file
-                file_path = os.path.join(folder_path, expected_file_name)
+                file_path = os.path.join(IASO_EXTRACTION_PATH, expected_file_name)
                 Path(file_path).parent.mkdir(parents=True, exist_ok=True)
 
                 month_df.to_feather(file_path)
@@ -175,8 +177,7 @@ def import_expected_data_structure() -> pd.DataFrame:
     )
 
     output_path = os.path.join(
-        workspace.files_path,
-        outputs_path,
+        OUTPUTS_PATH,
         "combined_campaign_data.parquet",
     )
 
@@ -199,20 +200,20 @@ def combine_historical_and_current_data() -> pd.DataFrame:
     Combine les données historiques et la période actuelle dans un seul DataFrame
     avec gestion des doublons et validation de la structure.
     """
-    clean_path = iaso_extracted_data_path.lstrip("/")
-    folder_path = os.path.join(workspace.files_path, clean_path)
 
     # 1. Vérification de l'existence du dossier
-    if not os.path.exists(folder_path):
-        current_run.log_error(f"Le dossier de données n'existe pas : {folder_path}")
+    if not os.path.exists(IASO_EXTRACTION_PATH):
+        current_run.log_error(
+            f"Le dossier de données n'existe pas : {IASO_EXTRACTION_PATH}"
+        )
         return pd.DataFrame()
 
     dataframes_list = []
 
     # 2. Collecte efficace des fichiers
-    for file in os.listdir(folder_path):
+    for file in os.listdir(IASO_EXTRACTION_PATH):
         if file.endswith(".feather") and not file.startswith("~$"):
-            file_path = os.path.join(folder_path, file)
+            file_path = os.path.join(IASO_EXTRACTION_PATH, file)
 
             try:
                 current_run.log_info(f"Lecture de : {file}")
@@ -289,8 +290,7 @@ def import_raw_iaso_org_unit_tree() -> pd.DataFrame:
     current_run.log_info("Importation de l'arbre organisationnel brut depuis IASO...")
 
     file_path = os.path.join(
-        workspace.files_path,
-        outputs_path,
+        OUTPUTS_PATH,
         "iaso_org_unit_tree_raw.parquet",
     )
     try:
@@ -316,8 +316,7 @@ def import_clean_iaso_org_unit_tree() -> pd.DataFrame:
     )
 
     file_path = os.path.join(
-        workspace.files_path,
-        outputs_path,
+        OUTPUTS_PATH,
         "iaso_org_unit_tree_clean.parquet",
     )
 
@@ -488,13 +487,11 @@ def save_output(combined_df: pd.DataFrame):
     """
     current_run.log_info("Enregistrement des données combinées du formulaire IASO...")
 
-    output_path = os.path.join(
-        workspace.files_path, "niger_june_24", "outputs", "combined_iaso_data.parquet"
-    )
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    combined_df.to_parquet(output_path, index=False)
+    file_path = os.path.join(OUTPUTS_PATH, "combined_iaso_data.parquet")
+    Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+    combined_df.to_parquet(file_path, index=False)
     current_run.log_info(
-        f"Données combinées du formulaire IASO enregistrées dans {output_path}."
+        f"Données combinées du formulaire IASO enregistrées dans {file_path}."
     )
 
 

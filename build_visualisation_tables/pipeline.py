@@ -4,7 +4,7 @@ import numpy as np
 import sqlalchemy as sa
 from openhexa.sdk import current_run, workspace, pipeline
 from config import (
-    outputs_path,
+    OUTPUTS_PATH,
     cvrg_campaign_map,
     district_level_target_keys,
     district_level_group_keys,
@@ -34,7 +34,10 @@ from utils import (
 )
 
 
-@pipeline("04. Construction des tableaux pour la visualisation")
+@pipeline(
+    "build_visualisation_tables",
+    name="05. Construction des tableaux pour la visualisation",
+)
 def build_visualisation_tables():
     """
     Main pipeline function to build visualisation tables.
@@ -91,8 +94,7 @@ def import_iaso_combined_data() -> pd.DataFrame:
     """
     current_run.log_info("Importation des données combinées du formulaire IASO...")
     file_path = os.path.join(
-        workspace.files_path,
-        outputs_path,
+        OUTPUTS_PATH,
         "combined_iaso_data.parquet",
     )
     combined_df = pd.read_parquet(file_path)
@@ -111,8 +113,7 @@ def import_target_data() -> pd.DataFrame:
     """
     current_run.log_info("Importation des données cibles...")
     file_path = os.path.join(
-        workspace.files_path,
-        outputs_path,
+        OUTPUTS_PATH,
         "combined_target_data.parquet",
     )
     target_df = pd.read_parquet(file_path)
@@ -133,8 +134,7 @@ def import_combined_campaign_data() -> pd.DataFrame:
         "Importation du Dataframe contenant la structure attendue des données de campagne..."
     )
     file_path = os.path.join(
-        workspace.files_path,
-        outputs_path,
+        OUTPUTS_PATH,
         "combined_campaign_data.parquet",
     )
     combined_campaign_data_df = pd.read_parquet(file_path)
@@ -769,8 +769,7 @@ def create_dynamic_org_unit_table() -> pd.DataFrame:
     )
 
     file_path = os.path.join(
-        workspace.files_path,
-        outputs_path,
+        OUTPUTS_PATH,
         "iaso_org_unit_tree_clean.parquet",
     )
 

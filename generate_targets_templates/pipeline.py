@@ -1,8 +1,7 @@
-from openhexa.sdk import current_run, pipeline, workspace
+from openhexa.sdk import current_run, pipeline
 import os
 import pandas as pd
 import numpy as np
-from pathlib import Path
 from utils import (
     IASOConnectionHandler,
     pyramid_selector,
@@ -10,20 +9,27 @@ from utils import (
 from config import (
     iaso_connector_slug,
     iaso_form_id,
-    outputs_path,
-    templates_path,
+    OUTPUTS_PATH,
+    TEMPLATES_PATH,
+    rename_dict,
+    campaigns_config_dict,
 )
 
 
-@pipeline("generate_targets_templates")
+@pipeline(
+    "generate_targets_templates",
+    name="01. Création des fichiers templates pour les cibles",
+)
 def generate_targets_templates():
-    """Write your pipeline orchestration here.
-
-    Pipeline functions should only call tasks and should never perform IO operations or expensive computations.
+    """
+    This pipeline generates target templates for each campaign type based on the organizational unit tree
+    data from IASO. It retrieves the org unit tree data, cleans it, creates template files for each campaign
+    type, and saves the cleaned org unit tree data for future use.
     """
     iaso_org_unit_tree_df = get_iaso_org_unit_tree()
     iaso_org_unit_tree_df_clean = clean_iaso_org_unit_tree(iaso_org_unit_tree_df)
-    x
+    create_template_files(iaso_org_unit_tree_df_clean)
+    save_org_unit_tree(iaso_org_unit_tree_df_clean)
 
 
 def get_iaso_org_unit_tree() -> pd.DataFrame:
@@ -46,17 +52,16 @@ def get_iaso_org_unit_tree() -> pd.DataFrame:
     )
 
     # save file to parquet for later use
-    file_path = os.path.join(
-        workspace.files_path,
-        outputs_path,
-        "iaso_org_unit_tree_raw.parquet",
-    )
-    Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+    if not os.path.exists(OUTPUTS_PATH):
+        os.makedirs(OUTPUTS_PATH)
+
     iaso_org_unit_tree_df.to_parquet(
-        file_path,
+        os.path.join(OUTPUTS_PATH, "iaso_org_unit_tree_raw.parquet"),
         index=False,
     )
-    iaso_org_unit_tree_df = pd.read_parquet(file_path)
+    iaso_org_unit_tree_df = pd.read_parquet(
+        os.path.join(OUTPUTS_PATH, "iaso_org_unit_tree_raw.parquet")
+    )
     return iaso_org_unit_tree_df
 
 
@@ -114,6 +119,40 @@ def create_template_files(org_unit_df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame containing the template files for each organizational unit.
     """
+    current_run.log_info(
+        "Création des fichiers templates pour chaque unité organisationnelle..."
+    )
+    try:
+        org_unit_df_restricted = org_unit_df[
+            ["LVL_2_NAME", "LVL_3_NAME", "LVL_4_NAME", "LVL_6_NAME"]
+        ].copy()
+        org_unit_df_restricted["Pays"] = "Niger"
+        org_unit_df_restricted = org_unit_df_restricted[
+            ["Pays", "LVL_2_NAME", "LVL_3_NAME", "LVL_4_NAME", "LVL_6_NAME"]
+        ]
+        org_unit_df_restricted = org_unit_df_restricted.rename(columns=rename_dict)
+        org_unit_df_restricted = org_unit_df_restricted.sort_values(
+            by=["Pays", "Région", "District Sanitaire", "Commune", "CSI"]
+        )
+
+        if not os.path.exists(TEMPLATES_PATH):
+            os.makedirs(TEMPLATES_PATH)
+
+        for campaign_type, age_groups in campaigns_config_dict.items():
+            df = org_unit_df_restricted.copy()
+            for age_group in age_groups:
+                df[f"Cible {age_group}"] = ""
+            df.to_csv(
+                os.path.join(TEMPLATES_PATH, f"Cibles_{campaign_type}_template.csv"),
+                index=False,
+                encoding="utf-8-sig",
+            )
+        current_run.log_info(
+            f"Fichiers templates créés avec succès dans le dossier {TEMPLATES_PATH}"
+        )
+    except Exception as e:
+        current_run.log_error(f"Erreur lors de la création des fichiers templates: {e}")
+        raise
 
 
 def save_org_unit_tree(iaso_org_unit_tree_df_clean: pd.DataFrame):
@@ -128,11 +167,10 @@ def save_org_unit_tree(iaso_org_unit_tree_df_clean: pd.DataFrame):
     """
     current_run.log_info("Enregistrement des données cibles combinées...")
     try:
-        folder_path = os.path.join(workspace.files_path, outputs_path)
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
+        if not os.path.exists(OUTPUTS_PATH):
+            os.makedirs(OUTPUTS_PATH)
         file_path = os.path.join(
-            folder_path,
+            OUTPUTS_PATH,
             "iaso_org_unit_tree_clean.parquet",
         )
 
