@@ -1,3 +1,4 @@
+from datetime import date
 import os
 from openhexa.sdk import current_run, workspace, pipeline
 import pandas as pd
@@ -10,6 +11,7 @@ from config import (
     product_site_config,
     product_status_config,
     sex_types_config,
+    campaign_names_config,
 )
 
 
@@ -129,12 +131,15 @@ def import_target_data() -> pd.DataFrame:
 
     target_data_path = os.path.join(OUTPUTS_PATH, "combined_target_data.parquet")
     try:
+        target_data_path = os.path.join(
+            workspace.files_path, outputs_path, "combined_target_data.parquet"
+        )
         target_df = pd.read_parquet(target_data_path)
+
+        return target_df
     except Exception as e:
         current_run.log_error(f"Erreur de lecture des données cibles: {e}")
-        raise e
-
-    return target_df
+        raise
 
 
 def create_age_product_year_round_df(target_df: pd.DataFrame) -> pd.DataFrame:
@@ -150,12 +155,17 @@ def create_age_product_year_round_df(target_df: pd.DataFrame) -> pd.DataFrame:
     current_run.log_info(
         "Création du DataFrame des combinaisons âge, produit, round, année..."
     )
+    try:
+        age_product_year_round_df = target_df[
+            ["year", "produit", "round", "age"]
+        ].drop_duplicates()
 
-    age_product_year_round_df = target_df[
-        ["year", "produit", "round", "age"]
-    ].drop_duplicates()
-
-    return age_product_year_round_df
+        return age_product_year_round_df
+    except Exception as e:
+        current_run.log_error(
+            f"Erreur lors de la création du DataFrame des combinaisons âge, produit, round, année: {e}"
+        )
+        raise
 
 
 def create_product_status_df() -> pd.DataFrame:
@@ -208,8 +218,24 @@ def create_campaign_period_df() -> pd.DataFrame:
         match = re.match(r"(\d{4})r(\d+)_?(.+)?", key)
         if match:
             year = np.int32(match.group(1))
+            if year < 2024 or year > date.today().year + 1:
+                current_run.log_error(
+                    f"Année de campagne non valide dans la configuration: {year}. L'année de campagne doit être comprise entre 2024 et {date.today().year + 1}."
+                )
+                raise ValueError
+            round = int(match.group(2))
+            if round < 1 or round > 4:
+                current_run.log_warning(
+                    f"Numéro de round de campagne anormal dans la configuration: {round}. Veuillez vérifier si ce numéro de round est correct."
+                )
             round_num = f"round {match.group(2)}"
-            raw_campagne = match.group(3) if match.group(3) else "campagne inconnue"
+
+            raw_campagne = match.group(3)
+            if raw_campagne not in campaign_names_config:
+                current_run.log_error(
+                    f"Nom de campagne non reconnu dans la configuration: {raw_campagne}. Noms de campagnes acceptés: {campaign_names_config}."
+                )
+                raise ValueError
             product = raw_campagne.replace("__", " ").replace("_", " ")
             if not (
                 re.match(r"\d{4}-\d{2}-\d{2}", dates["début"])
@@ -278,9 +304,7 @@ def combine_dfs(
         current_run.log_error(
             f"Entrées non appariées trouvées lors de la fusion des DataFrames produit et site : {unmatched}"
         )
-        raise ValueError(
-            "La fusion des DataFrames produit et site a entraîné des entrées non appariées."
-        )
+        raise ValueError()
     combined_df = combined_df.drop(columns=["_merge"])
 
     # merge with product statuses
@@ -292,9 +316,7 @@ def combine_dfs(
         current_run.log_error(
             f"Entrées non appariées trouvées lors de la fusion des DataFrames produit et statut : {unmatched}"
         )
-        raise ValueError(
-            "La fusion des DataFrames produit et statut a entraîné des entrées non appariées."
-        )
+        raise ValueError()
     combined_df = combined_df.drop(columns=["_merge"])
 
     # merge with campaign periods
