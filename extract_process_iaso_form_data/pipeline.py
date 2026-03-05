@@ -21,7 +21,7 @@ from utils import (
 
 @pipeline(
     "extract_process_iaso_form_data",
-    name="04. Extraction et traitement des données du formulaire IASO",
+    name="multi-campagne - 04. Extraction et traitement des données du formulaire IASO",
 )
 def extract_process_iaso_form_data():
     """

@@ -18,7 +18,7 @@ from config import (
 
 @pipeline(
     "generate_targets_templates",
-    name="01. Création des fichiers templates pour les cibles",
+    name="multi-campagne - 01. Création des fichiers templates pour les cibles",
 )
 def generate_targets_templates():
     """

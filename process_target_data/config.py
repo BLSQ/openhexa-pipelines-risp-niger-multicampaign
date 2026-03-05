@@ -6,14 +6,15 @@ WORKSPACE_PATH = workspace.files_path
 # WORKSPACE_PATH = os.path.join(
 #     os.getcwd(), "process_target_data", "workspace"
 # )  # local only
-OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, "niger_june_24", "outputs")
+PROJECT_FOLDER = "multi-campagne"
+OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "outputs")
 TARGETS_HISTORICAL_PATH = os.path.join(
-    WORKSPACE_PATH, "niger_june_24", "inputs", "cibles", "historique"
+    WORKSPACE_PATH, PROJECT_FOLDER, "inputs", "cibles", "historique"
 )
 TARGET_OTHER_DATA_PATH = os.path.join(
-    WORKSPACE_PATH, "niger_june_24", "inputs", "cibles", "autres"
+    WORKSPACE_PATH, PROJECT_FOLDER, "inputs", "cibles", "autres"
 )
-TEMP_PATH = os.path.join(WORKSPACE_PATH, "niger_june_24", "temp")
+TEMP_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "temp")
 
 # polio 2024
 target_polio_2024_cols = [
