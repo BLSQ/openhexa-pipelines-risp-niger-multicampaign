@@ -1,6 +1,6 @@
 from datetime import date
 import os
-from openhexa.sdk import current_run, workspace, pipeline
+from openhexa.sdk import current_run, pipeline
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -17,7 +17,7 @@ from config import (
 
 @pipeline(
     "build_combination_products_dataset",
-    name="03. Etablissement de la structure des données attendues",
+    name="multi-campagne - 03. Etablissement de la structure des données attendues",
 )
 def build_combination_products_dataset():
     """

@@ -28,7 +28,10 @@ from config import (
 )
 
 
-@pipeline("process_target_data", name="02. Import et traitement des données de cibles")
+@pipeline(
+    "process_target_data",
+    name="multi-campagne - 02. Import et traitement des données de cibles",
+)
 def process_target_data():
     """
     Main pipeline function to process target data from various campaigns.
@@ -146,8 +149,8 @@ def import_target_data_for_polio_2024_r1_r4() -> pd.DataFrame:
         "Importation des données de cibles pour la polio 2024 rounds 1 à 4..."
     )
     try:
-        if not os.path.exists(TARGET_OTHER_DATA_PATH):
-            os.makedirs(TARGET_OTHER_DATA_PATH)
+        if not os.path.exists(TARGETS_HISTORICAL_PATH):
+            os.makedirs(TARGETS_HISTORICAL_PATH)
 
         file_path = os.path.join(
             TARGETS_HISTORICAL_PATH,

@@ -9,7 +9,7 @@ import time
 
 @pipeline(
     "orchestrate_pipelines_flow",
-    name="00 - Lancement séquentiel des pipelines multi-campagnes",
+    name="multi-campagne - 00. - Lancement séquentiel des pipelines multi-campagnes",
 )
 def orchestrate_pipelines_flow():
     """
@@ -22,39 +22,39 @@ def orchestrate_pipelines_flow():
 
 
 def get_hexa_connection():
-    connection = workspace.custom_connection("multi-campaign-workspace")
-    RISP_MULTICAMPAIGN_TOKEN = connection.token
+    connection = workspace.custom_connection("risp-ner-campagnes-connection")
+    RISP_NER_CAMPAIGN_TOKEN = connection.token
     hexa = OpenHEXAClient("https://app.openhexa.org")
-    hexa.authenticate(with_token=RISP_MULTICAMPAIGN_TOKEN)
+    hexa.authenticate(with_token=RISP_NER_CAMPAIGN_TOKEN)
     current_run.log_info("Connecté à OpenHEXA")
     return hexa
 
 
 def define_actions():
     return {
-        "01-creation-des-fichiers-templates-pour-les-cibles": {
+        "multi-campagne-01-creation-des-fichiers-templates-pour-les-cibles": {
             "type": "pipeline",
-            "url": "https://api.openhexa.org/pipelines/ZjRkYzBiZWQtOTg1Yi00ZmIzLThlYWEtNzFhNDQ0YTUwZjQwOjF2eG1ZbTpvcTBTeUdRZTQ1YVFLSjN2VWwzcXl2OWpJT1ZsRUxDWEpMSHY0cVB4QTU0/run",
+            "url": "https://api.openhexa.org/pipelines/MGUyMjAwYWUtMTA1ZS00NjU1LWE3MjMtYjViNTg5MDUwNmQ2OjF2eHBnQjpsTGdjNGs1VUlUakpMdjMzdU05RFBsVVlBLTZZYVhucTlPRktOanZpUzRB/run",
             "params": {},
         },
-        "02-import-et-traitement-des-donnees-de-cibles": {
+        "multi-campagne-02-import-et-traitement-des-donnees-de-cibles": {
             "type": "pipeline",
-            "url": "https://api.openhexa.org/pipelines/Zjk3ZTE0OWYtMDgxNi00MDllLWE0ZjEtMDMxMWYwZDM4ZmI3OjF2eG1aQjplSkltOUpwTmtqM2VZdGFwUnRQUDk3b0VHS2RHelVWdTNMYmgzUUY2YjI0/run",
+            "url": "https://api.openhexa.org/pipelines/NGI1NWNiNTYtZmU0ZS00ODE2LWE4YjMtMGM5NzA2MTNmYmFhOjF2eHBoNzpELUstZ0h1N1BfcUZfc2pjVFhPUnB2Q0pJV25faFdpVXY0UUpMUnJvLXRZ/run",
             "params": {},
         },
-        "03-etablissement-de-la-structure-des-donnees-attendues": {
+        "multi-campagne-03-etablissement-de-la-structure-des-donnees-attendues": {
             "type": "pipeline",
-            "url": "https://api.openhexa.org/pipelines/OGI2YmRiOTUtZjQyOS00NzgzLThkMGUtZWRhZDdjOTE1YjY4OjF2eG1aczpHRnR0R2tsNmFNS0lrUVYzbS1MN25Xcm1ZS1N2UGgxYTIxLVBTdFZHeWFZ/run",
+            "url": "https://api.openhexa.org/pipelines/NWVhNDVlNGYtNDVkMi00NTc1LTk3OWQtZGNjMjMzNjlmYzk4OjF2eHBoUzpkX1VtRnM3V013NFRyQ0czX19YaVE3clNWSzFFcTRHdmVSNERIWmE5WVo4/run",
             "params": {},
         },
-        "04-extraction-et-traitement-des-donnees-du-formulaire-iaso": {
+        "multi-campagne-04-extraction-et-traitement-des-donnees-du-formulaire-iaso": {
             "type": "pipeline",
-            "url": "https://api.openhexa.org/pipelines/MGMxYjJhNGUtMzU1ZC00MDEwLWFmYmMtZGQ2ZTA1NzJjM2UzOjF2eG1hUjpNb3lFWEtVOFpMbzlZUU16V3ZTX0ZMdEdDeFpzSUhQZEFLWTJfNGtyY3RZ/run",
+            "url": "https://api.openhexa.org/pipelines/M2UzMWEwYWMtOTNmMC00NTI3LWI4NzYtZDBjYTZkMzVlMjUwOjF2eHBobjo3S1hxR1d5Um5uWHJ0RVZzZEV3ai0zb2s5Sm9uUmxRX2htNFhJNUdYVEU4/run",
             "params": {},
         },
-        "05-construction-des-tableaux-pour-la-visualisation": {
+        "multi-campagne-05-construction-des-tableaux-pour-la-visualisation": {
             "type": "pipeline",
-            "url": "https://api.openhexa.org/pipelines/M2FlZjkxMDItMzMxOC00ZGY4LTk4NzItYjExZjUyZjA2MjcwOjF2eG1iNzprVW8tQlo1VTNYRF9OYTQtLWR0VHN6TTBfMllCcjh0eGZRZXpKNlVOYVh3/run",
+            "url": "https://api.openhexa.org/pipelines/Yzc1Mzk0OWUtNjNmZS00ZWI0LTk1MTEtOGJlNmJkYmQzMzA3OjF2eHBpNzpRY1hCaldvaVlJQ1NRVnBwckw0ZXhjUTFnQ0lSLURnTmhpeUt0VEZqd0tj/run",
             "params": {},
         },
     }

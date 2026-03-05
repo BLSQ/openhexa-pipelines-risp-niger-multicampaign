@@ -11,13 +11,14 @@ iaso_connector_slug = {
 iaso_form_id = 1186
 
 # paths
+PROJECT_FOLDER = "multi-campagne"
 WORKSPACE_PATH = workspace.files_path
 # WORKSPACE_PATH = os.path.join(
 #     os.getcwd(), "generate_targets_templates", "workspace"
 # )  # local only
-OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, "niger_june_24", "outputs")
+OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "outputs")
 TEMPLATES_PATH = os.path.join(
-    WORKSPACE_PATH, "niger_june_24", "inputs", "cibles", "autres", "templates"
+    WORKSPACE_PATH, PROJECT_FOLDER, "inputs", "cibles", "autres", "templates"
 )
 
 # cols
