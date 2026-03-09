@@ -28,13 +28,3 @@ rename_dict = {
     "LVL_4_NAME": "Commune",
     "LVL_6_NAME": "CSI",
 }
-
-campaigns_config_dict = {
-    "albendazole": ["12-23 mois", "24-59 mois"],
-    "vitamine A": ["6-11 mois", "12-24 mois"],
-    "vaccin polio": ["0-11 mois", "12-59 mois"],
-    "rougeole": ["6-11 mois", "12-59 mois"],
-    "fièvre jaune": ["9-11 mois", "12-23 mois", "24-59 mois", "5-14 ans", "5-60 ans"],
-    "méningite": ["1-4 ans", "5-14 ans", "15-19 ans"],
-    "tcv": ["1-4 ans", "5-14 ans", "15-19 ans"],
-}

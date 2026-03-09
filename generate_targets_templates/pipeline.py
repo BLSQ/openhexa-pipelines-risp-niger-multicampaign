@@ -1,4 +1,4 @@
-from openhexa.sdk import current_run, pipeline
+from openhexa.sdk import current_run, parameter, pipeline
 import os
 import pandas as pd
 import numpy as np
@@ -12,7 +12,6 @@ from config import (
     OUTPUTS_PATH,
     TEMPLATES_PATH,
     rename_dict,
-    campaigns_config_dict,
 )
 
 
@@ -20,7 +19,96 @@ from config import (
     "generate_targets_templates",
     name="multi-campagne - 01. Création des fichiers templates pour les cibles",
 )
-def generate_targets_templates():
+@parameter(
+    "campaign",
+    name="Campagne",
+    help="Sélectionnez le type de campagne",
+    type=str,
+    required=True,
+    choices=["Polio", "Rougeole", "Méningite", "TCV", "Fièvre jaune"],
+    default="Polio",
+)
+@parameter(
+    "year",
+    name="Année",
+    help="Veuillez entrer l'année de la campagne (2026, 2027, etc.)",
+    type=int,
+    required=True,
+    default=2026,
+)
+@parameter(
+    "round",
+    name="Round",
+    help="Veuillez entrer le round de la campagne (1, 2, etc.)",
+    type=int,
+    required=True,
+    default=2,
+)
+@parameter(
+    "aggregation_level",
+    name="Niveau d'agrégation",
+    help="Niveau d'agrégation pour les cibles",
+    type=str,
+    required=True,
+    choices=["CSI", "District"],
+    default="CSI",
+)
+@parameter(
+    "age_range",
+    name="Tranches d'âges",
+    help="Veuillez entrer les tranches d'âges applicables aux cibles",
+    type=str,
+    multiple=True,
+    required=True,
+    choices=[
+        "0-11 mois",
+        "6-11 mois",
+        "9-11 mois",
+        "12-23 mois",
+        "12-24 mois",
+        "12-59 mois",
+        "24-59 mois",
+        "1-4 ans",
+        "5-14 ans",
+        "15-19 ans",
+        "15-60 ans",
+    ],
+    default=["0-11 mois", "12-59 mois"],
+)
+@parameter(
+    "site_type",
+    name="Type de site",
+    help="Veuillez entrer le(s) type(s) de site applicable aux cibles",
+    type=str,
+    multiple=True,
+    required=False,
+    choices=[
+        "Ordinaire",
+        "Spécial",
+        "Frontalier",
+        "Transfrontalier : étranger",
+        "Transfrontalier : Niger",
+    ],
+    default=["Ordinaire"],
+)
+@parameter(
+    "strategy_type",
+    name="Type de stratégie",
+    help="Veuillez entrer le(s) type(s) de stratégie applicable aux cibles",
+    type=str,
+    multiple=True,
+    required=False,
+    choices=["Fixe", "Avancée", "Mobile"],
+)
+def generate_targets_templates(
+    campaign: str,
+    year: int,
+    round: int,
+    aggregation_level: str,
+    age_range: list,
+    site_type: list = None,
+    strategy_type: list = None,
+):
     """
     This pipeline generates target templates for each campaign type based on the organizational unit tree
     data from IASO. It retrieves the org unit tree data, cleans it, creates template files for each campaign
@@ -28,7 +116,16 @@ def generate_targets_templates():
     """
     iaso_org_unit_tree_df = get_iaso_org_unit_tree()
     iaso_org_unit_tree_df_clean = clean_iaso_org_unit_tree(iaso_org_unit_tree_df)
-    create_template_files(iaso_org_unit_tree_df_clean)
+    create_template_files(
+        iaso_org_unit_tree_df_clean,
+        campaign,
+        year,
+        round,
+        aggregation_level,
+        age_range,
+        site_type,
+        strategy_type,
+    )
     save_org_unit_tree(iaso_org_unit_tree_df_clean)
 
 
@@ -46,19 +143,19 @@ def get_iaso_org_unit_tree() -> pd.DataFrame:
         "Extraction des données de l'arbre des unités organisationnelles IASO..."
     )
 
-    iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
-    iaso_org_unit_tree_df = iaso_connector_instance.get_ou_tree_dataframe_from_the_form(
-        iaso_form_id
-    )
+    # iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
+    # iaso_org_unit_tree_df = iaso_connector_instance.get_ou_tree_dataframe_from_the_form(
+    #     iaso_form_id
+    # )
 
-    # save file to parquet for later use
-    if not os.path.exists(OUTPUTS_PATH):
-        os.makedirs(OUTPUTS_PATH)
+    # # save file to parquet for later use
+    # if not os.path.exists(OUTPUTS_PATH):
+    #     os.makedirs(OUTPUTS_PATH)
 
-    iaso_org_unit_tree_df.to_parquet(
-        os.path.join(OUTPUTS_PATH, "iaso_org_unit_tree_raw.parquet"),
-        index=False,
-    )
+    # iaso_org_unit_tree_df.to_parquet(
+    #     os.path.join(OUTPUTS_PATH, "iaso_org_unit_tree_raw.parquet"),
+    #     index=False,
+    # )
     iaso_org_unit_tree_df = pd.read_parquet(
         os.path.join(OUTPUTS_PATH, "iaso_org_unit_tree_raw.parquet")
     )
@@ -109,7 +206,16 @@ def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFram
     return iaso_org_unit_tree_df_clean
 
 
-def create_template_files(org_unit_df: pd.DataFrame) -> pd.DataFrame:
+def create_template_files(
+    org_unit_df: pd.DataFrame,
+    campaign: str,
+    year: int,
+    round: int,
+    aggregation_level: str,
+    age_range: list,
+    site_type: list = None,
+    strategy_type: list = None,
+) -> pd.DataFrame:
     """
     Create template files for each organizational unit based on the cleaned org unit tree data.
 
@@ -123,35 +229,44 @@ def create_template_files(org_unit_df: pd.DataFrame) -> pd.DataFrame:
         "Création des fichiers templates pour chaque unité organisationnelle..."
     )
     try:
-        org_unit_df_restricted = org_unit_df[
-            ["LVL_2_NAME", "LVL_3_NAME", "LVL_4_NAME", "LVL_6_NAME"]
-        ].copy()
-        org_unit_df_restricted["Pays"] = "Niger"
-        org_unit_df_restricted = org_unit_df_restricted[
-            ["Pays", "LVL_2_NAME", "LVL_3_NAME", "LVL_4_NAME", "LVL_6_NAME"]
-        ]
-        org_unit_df_restricted = org_unit_df_restricted.rename(columns=rename_dict)
-        org_unit_df_restricted = org_unit_df_restricted.sort_values(
-            by=["Pays", "Région", "District Sanitaire", "Commune", "CSI"]
-        )
+        cols = ["LVL_2_NAME", "LVL_3_NAME", "LVL_4_NAME", "LVL_6_NAME"]
+        df = org_unit_df[cols].copy()
+        df.insert(0, "Pays", "Niger")
+        df = df.rename(columns=rename_dict)
 
-        if not os.path.exists(TEMPLATES_PATH):
-            os.makedirs(TEMPLATES_PATH)
+        if aggregation_level == "District":
+            if "CSI" in df.columns:
+                df = df.drop(columns=["CSI"])
+            df = df.drop_duplicates()
 
-        for campaign_type, age_groups in campaigns_config_dict.items():
-            df = org_unit_df_restricted.copy()
-            for age_group in age_groups:
-                df[f"Cible {age_group}"] = ""
-            df.to_csv(
-                os.path.join(TEMPLATES_PATH, f"Cibles_{campaign_type}_template.csv"),
-                index=False,
-                encoding="utf-8-sig",
-            )
-        current_run.log_info(
-            f"Fichiers templates créés avec succès dans le dossier {TEMPLATES_PATH}"
+        df = df.sort_values(by=list(df.columns))
+
+        suffixes = (site_type or []) + (strategy_type or [])
+        if not suffixes:
+            suffixes = [""]
+
+        new_cols_list = []
+        for age in age_range:
+            for suffix in suffixes:
+                col_name = f"Cible {age}_{suffix}".strip("_ ")
+                if col_name not in df.columns and col_name not in new_cols_list:
+                    new_cols_list.append(col_name)
+        new_columns_df = pd.DataFrame(
+            {col: "" for col in new_cols_list}, index=df.index
         )
+        df = pd.concat([df, new_columns_df], axis=1)
+
+        os.makedirs(TEMPLATES_PATH, exist_ok=True)
+        filename = f"Cibles_{campaign}_{year}_round {round}_{aggregation_level.lower()}_template.csv"
+        file_path = os.path.join(TEMPLATES_PATH, filename)
+
+        df.to_csv(file_path, index=False, encoding="utf-8-sig")
+
+        current_run.log_info(f"Fichier template généré avec succès: {file_path}")
+        return df
+
     except Exception as e:
-        current_run.log_error(f"Erreur lors de la création des fichiers templates: {e}")
+        current_run.log_error(f"Erreur lors de la création du fichier template: {e}")
         raise
 
 
