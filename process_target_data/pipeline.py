@@ -1,5 +1,6 @@
 import os
 import re
+from isort import file
 from openhexa.sdk import current_run, pipeline
 import pandas as pd
 import numpy as np
@@ -22,9 +23,12 @@ from config import (
     target_men5_tcv_2025_columns_dict,
     target_polio_2026_r1_columns,
     csi_matching_failed,
-    list_of_valid_campaigns,
-    templates_required_cols,
-    campaigns_config_dict,
+    templates_required_cols_csi,
+    templates_required_cols_district,
+    campaign_rename_dict,
+    site_strategy_types_dict,
+    cols_for_melting,
+    csi_district_rename_dict,
 )
 
 
@@ -80,10 +84,16 @@ def process_target_data():
     target_polio_2026_r1 = add_rounds_and_products(target_polio_2026_r1)
 
     # future target data
-    future_target_data = import_target_data_for_future_campaigns()
-    if not future_target_data.empty:
-        future_target_data = match_csi_to_org_unit_id(
-            future_target_data, iaso_org_unit_tree_df_clean
+    all_target_data_csi_combined, all_target_data_district_combined = (
+        import_target_data_for_future_campaigns()
+    )
+    if not all_target_data_csi_combined.empty:
+        all_target_data_csi_combined = match_csi_to_org_unit_id(
+            all_target_data_csi_combined, iaso_org_unit_tree_df_clean
+        )
+    if not all_target_data_district_combined.empty:
+        all_target_data_district_combined = match_district_to_org_unit_id(
+            all_target_data_district_combined, iaso_org_unit_tree_df_clean
         )
 
     # combine all target data
@@ -94,7 +104,8 @@ def process_target_data():
             target_yellow_fever_2025_2026_r1,
             target_men5_tcv_2025_r1_r2,
             target_polio_2026_r1,
-            future_target_data,
+            all_target_data_csi_combined,
+            all_target_data_district_combined,
         ]
     )
 
@@ -763,6 +774,132 @@ def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
     return target_df_expanded
 
 
+def process_dataframe(df: pd.DataFrame, aggregation_type: str, meta: dict):
+    """
+    This function processes the input DataFrame by melting it from wide to long format,
+    extracting age and site/strategy information, and cleaning up the resulting DataFrame.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame to be processed.
+        aggregation_type (str): The type of aggregation, either "csi" or "district".
+        meta (dict): A dictionary containing metadata about the DataFrame, such as the source file name.
+
+    Returns:
+        pd.DataFrame: The processed DataFrame in long format with extracted age and site/strategy information.
+    """
+    id_vars = cols_for_melting.copy()
+    if aggregation_type == "csi":
+        id_vars.insert(1, "CSI")
+
+    required = (
+        templates_required_cols_csi
+        if aggregation_type == "csi"
+        else templates_required_cols_district
+    )
+    if not all(col in df.columns for col in required):
+        raise ValueError(f"Colonnes manquantes. Attendu: {required}")
+
+    value_vars = [col for col in df.columns if col.startswith("Cible ")]
+
+    df_melted = pd.melt(
+        df,
+        id_vars=id_vars,
+        value_vars=value_vars,
+        var_name="age_site_strategy",
+        value_name="cible",
+    )
+
+    regex_extract = r"Cible (\d+-\d+ (?:mois|ans))(?:_(.+))?"
+    extracted = df_melted["age_site_strategy"].str.extract(regex_extract)
+
+    df_melted["age"] = extracted[0]
+    df_melted["site_strategy"] = extracted[1].replace(site_strategy_types_dict)
+    df_melted.drop(columns=["age_site_strategy"], inplace=True)
+    df_melted = df_melted.rename(columns=csi_district_rename_dict)
+
+    return df_melted
+
+
+def import_target_data_for_future_campaigns():
+    """
+    Placeholder function for importing target data for future campaigns.
+
+    Args:
+        None
+
+    Returns:
+        pd.DataFrame: DataFrame containing the target data for future campaigns.
+    """
+    current_run.log_info("Importation et traitement des données non-historiques...")
+
+    if not os.path.exists(TARGET_OTHER_DATA_PATH):
+        os.makedirs(TARGET_OTHER_DATA_PATH)
+        return pd.DataFrame(), pd.DataFrame()
+
+    all_data = {"csi": [], "district": []}
+
+    file_pattern = re.compile(r"Cibles_(.+)_(\d{4})_(r\d+)_(csi|district)\.csv")
+
+    current_run.log_info(
+        "Importation et traitement des données non-historiques de cibles..."
+    )
+
+    # loop through each file
+    for entry in os.scandir(TARGET_OTHER_DATA_PATH):
+        if not (
+            entry.is_file()
+            and entry.name.endswith(".csv")
+            and not entry.name.startswith("~$")
+        ):
+            continue
+
+        match = file_pattern.match(entry.name)
+        if not match:
+            current_run.log_warning(f"Format de nommage invalide : '{entry.name}'")
+            continue
+
+        campaign, year, round_code, agg = match.groups()
+
+        if campaign not in campaign_rename_dict:
+            current_run.log_warning(f"Campagne invalide '{campaign}' dans {entry.name}")
+            continue
+
+        try:
+            df = pd.read_csv(entry.path)
+            if df.empty:
+                continue
+
+            df["year"] = int(year)
+            df["produit"] = campaign_rename_dict.get(campaign, campaign)
+            df["round"] = round_code.replace("r", "round ")
+
+            processed_df = process_dataframe(df, agg, {"file": entry.name})
+            all_data[agg].append(processed_df)
+
+            current_run.log_info(f"Fichier {entry.name} traité.")
+
+        except Exception as e:
+            current_run.log_error(f"Erreur sur {entry.name} : {str(e)}")
+
+    # combine results
+    df_csi = (
+        pd.concat(all_data["csi"], ignore_index=True)
+        if all_data["csi"]
+        else pd.DataFrame()
+    )
+    df_dist = (
+        pd.concat(all_data["district"], ignore_index=True)
+        if all_data["district"]
+        else pd.DataFrame()
+    )
+
+    current_run.log_info(
+        f"Importation des fichiers de cibles non-historiques terminée: CSI: {len(all_data['csi'])}, District: {len(all_data['district'])}"
+    )
+
+    return df_csi, df_dist
+
+
 def combine_target_data(
     dfs: list[pd.DataFrame],
 ) -> pd.DataFrame:
@@ -846,138 +983,6 @@ def clean_org_unit_id(
             f"Erreur lors du processus de récupération des identifiants des unités d'organisation: {e}"
         )
         raise
-
-
-def import_target_data_for_future_campaigns():
-    """
-    Placeholder function for importing target data for future campaigns.
-
-    Args:
-        None
-
-    Returns:
-        pd.DataFrame: DataFrame containing the target data for future campaigns.
-    """
-    current_run.log_info(
-        "Importation et traitement des données non-historiques de cibles..."
-    )
-
-    if not os.path.exists(TARGET_OTHER_DATA_PATH):
-        os.makedirs(TARGET_OTHER_DATA_PATH)
-
-    all_target_data = []
-
-    if not os.path.exists(TARGET_OTHER_DATA_PATH):
-        current_run.log_error(
-            f"Le chemin spécifié n'existe pas : {TARGET_OTHER_DATA_PATH}"
-        )
-        return pd.DataFrame()
-
-    for subdir, dirs, files in os.walk(TARGET_OTHER_DATA_PATH):
-        for folder_name in dirs:
-            year_match = re.search(r"20\d{2}", folder_name)
-
-            if not year_match:
-                current_run.log_info(f"Dossier ignoré (pas d'année) : {folder_name}")
-                continue
-
-            year = int(year_match.group(0))
-            subfolder_path = os.path.join(subdir, folder_name)
-
-            for file in os.listdir(subfolder_path):
-                if not (file.endswith(".xlsx") and not file.startswith("~$")):
-                    continue
-
-                campaign_round_match = re.search(r"Cibles_(.+)_(r\d+)\.xlsx", file)
-                if not campaign_round_match:
-                    current_run.log_warning(
-                        f"Format de nommage invalide : '{file}' dans '{folder_name}'. "
-                        "Format attendu: 'Cibles_<campagne>_r<round>.xlsx'"
-                    )
-                    continue
-
-                campaign = campaign_round_match.group(1)
-                round_code = campaign_round_match.group(2)
-
-                if campaign not in list_of_valid_campaigns:
-                    current_run.log_warning(
-                        f"Campagne invalide '{campaign}' détectée dans '{file}'. "
-                        f"Valeurs autorisées : {', '.join(list_of_valid_campaigns)}"
-                    )
-                    continue
-
-                file_path = os.path.join(subfolder_path, file)
-                try:
-                    df = pd.read_excel(file_path, engine="openpyxl")
-
-                    if df.empty:
-                        current_run.log_warning(f"Le fichier {file} est vide.")
-                        continue
-
-                    required_org_unit_cols = templates_required_cols
-                    if not all(col in df.columns for col in required_org_unit_cols):
-                        current_run.log_error(
-                            f"Colonnes manquantes dans {file}. Attendu: {required_org_unit_cols}"
-                        )
-                        continue
-
-                    # check for presence of specific columns using the campaigns_config_dict (Cible ({age group})) and log error if not present
-                    required_specific_cols = campaigns_config_dict.get(campaign, [])
-                    if not all(
-                        f"Cible ({col})" in df.columns for col in required_specific_cols
-                    ):
-                        current_run.log_error(
-                            f"Colonnes spécifiques manquantes pour la campagne '{campaign}' dans {file}. "
-                            f"Attendu: Cible ({' '.join(required_specific_cols)})"
-                        )
-                        continue
-
-                    df["LVL_3_NAME"] = df["District Sanitaire"]
-                    df["LVL_6_NAME"] = df["CSI"]
-                    df["year"] = year
-                    df["produit"] = campaign
-                    df["round"] = round_code.replace("r", "round ")
-
-                    id_vars = ["LVL_3_NAME", "LVL_6_NAME", "year", "produit", "round"]
-                    value_vars = [
-                        col for col in df.columns if col.startswith("Cible (")
-                    ]
-
-                    if not value_vars:
-                        current_run.log_warning(
-                            f"Aucune colonne de cible trouvée dans {file}"
-                        )
-                        continue
-
-                    df_melted = pd.melt(
-                        df,
-                        id_vars=id_vars,
-                        value_vars=value_vars,
-                        var_name="age_group",
-                        value_name="cible",
-                    )
-
-                    df_melted["age"] = df_melted["age_group"].str.extract(
-                        r"Cible \((.+)\)"
-                    )
-                    df_melted = df_melted.drop(columns=["age_group"])
-
-                    all_target_data.append(df_melted)
-                    current_run.log_info(f"Importation réussie : {file}")
-
-                except Exception as e:
-                    current_run.log_error(
-                        f"Impossible de lire le fichier {file} : {str(e)}"
-                    )
-                    continue
-
-    if not all_target_data:
-        current_run.log_warning(
-            "Aucune donnée cible dans le dossier 'cibles/autres/' n'a été importée."
-        )
-        return pd.DataFrame()
-
-    return pd.concat(all_target_data, ignore_index=True)
 
 
 def save_output(target_data_combined: pd.DataFrame):

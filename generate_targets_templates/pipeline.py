@@ -2,9 +2,11 @@ from openhexa.sdk import current_run, parameter, pipeline
 import os
 import pandas as pd
 import numpy as np
+from itertools import combinations
 from utils import (
     IASOConnectionHandler,
     pyramid_selector,
+    parse_age_to_months,
 )
 from config import (
     iaso_connector_slug,
@@ -25,8 +27,15 @@ from config import (
     help="Sélectionnez le type de campagne",
     type=str,
     required=True,
-    choices=["Polio", "Rougeole", "Méningite", "TCV", "Fièvre jaune"],
-    default="Polio",
+    choices=[
+        "Polio",
+        "Rougeole",
+        "Méningite",
+        "TCV",
+        "Fièvre jaune",
+        "Albendazole",
+        "Vitamine A",
+    ],
 )
 @parameter(
     "year",
@@ -34,7 +43,6 @@ from config import (
     help="Veuillez entrer l'année de la campagne (2026, 2027, etc.)",
     type=int,
     required=True,
-    default=2026,
 )
 @parameter(
     "round",
@@ -42,7 +50,6 @@ from config import (
     help="Veuillez entrer le round de la campagne (1, 2, etc.)",
     type=int,
     required=True,
-    default=2,
 )
 @parameter(
     "aggregation_level",
@@ -51,7 +58,6 @@ from config import (
     type=str,
     required=True,
     choices=["CSI", "District"],
-    default="CSI",
 )
 @parameter(
     "age_range",
@@ -73,7 +79,6 @@ from config import (
         "15-19 ans",
         "15-60 ans",
     ],
-    default=["0-11 mois", "12-59 mois"],
 )
 @parameter(
     "site_type",
@@ -89,7 +94,6 @@ from config import (
         "Transfrontalier : étranger",
         "Transfrontalier : Niger",
     ],
-    default=["Ordinaire"],
 )
 @parameter(
     "strategy_type",
@@ -114,6 +118,7 @@ def generate_targets_templates(
     data from IASO. It retrieves the org unit tree data, cleans it, creates template files for each campaign
     type, and saves the cleaned org unit tree data for future use.
     """
+    inspect_params(year, round, age_range, site_type, strategy_type)
     iaso_org_unit_tree_df = get_iaso_org_unit_tree()
     iaso_org_unit_tree_df_clean = clean_iaso_org_unit_tree(iaso_org_unit_tree_df)
     create_template_files(
@@ -206,6 +211,54 @@ def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFram
     return iaso_org_unit_tree_df_clean
 
 
+def inspect_params(
+    year,
+    round,
+    age_range,
+    site_type,
+    strategy_type,
+):
+    """
+    This function runs checks on the parmater choices for year, round, age, site, and strategy
+    """
+    current_run.log_info("Vérification des choix des paramètres...")
+
+    # year must be a reasonable integer between 2026 and 2100
+    if not isinstance(year, int) or year < 2026 or year > 2100:
+        current_run.log_error(
+            "Le paramètre 'Année' doit être un entier entre 2026 et 2100."
+        )
+        raise
+
+    # round must be a strictly positive integer
+    if not isinstance(round, int) or round <= 0:
+        current_run.log_error(
+            "Le paramètre 'Round' doit être un entier strictement positif."
+        )
+        raise
+
+    # age groups cannot overlap
+    ranges = {c: parse_age_to_months(c) for c in age_range}
+    overlaps = []
+    for (name1, range1), (name2, range2) in combinations(ranges.items(), 2):
+        if range1[0] < range2[1] and range1[1] > range2[0]:
+            overlaps.append((name1, name2))
+    if overlaps:
+        current_run.log_error("Chevauchement(s) de catégories d'âge détecté(s):")
+        for a, b in overlaps:
+            current_run.log_error(f" - '{a}' chevauche avec '{b}'")
+        raise
+
+    # site and strategy cannot coexist
+    if site_type and strategy_type:
+        current_run.log_error(
+            "Les paramètres 'Type de site' et 'Type de stratégie' ne peuvent pas être utilisés simultanément."
+        )
+        raise
+
+    current_run.log_info("Choix des paramètres vérifiés: il n'y a pas d'erreur.")
+
+
 def create_template_files(
     org_unit_df: pd.DataFrame,
     campaign: str,
@@ -236,7 +289,7 @@ def create_template_files(
 
         if aggregation_level == "District":
             if "CSI" in df.columns:
-                df = df.drop(columns=["CSI"])
+                df = df.drop(columns=["CSI", "Commune"])
             df = df.drop_duplicates()
 
         df = df.sort_values(by=list(df.columns))
@@ -257,10 +310,12 @@ def create_template_files(
         df = pd.concat([df, new_columns_df], axis=1)
 
         os.makedirs(TEMPLATES_PATH, exist_ok=True)
-        filename = f"Cibles_{campaign}_{year}_round {round}_{aggregation_level.lower()}_template.csv"
+        filename = f"Cibles_{campaign}_{year}_r{round}_{aggregation_level.lower()}_template.csv"
         file_path = os.path.join(TEMPLATES_PATH, filename)
 
         df.to_csv(file_path, index=False, encoding="utf-8-sig")
+
+        current_run.add_file_output(file_path)
 
         current_run.log_info(f"Fichier template généré avec succès: {file_path}")
         return df

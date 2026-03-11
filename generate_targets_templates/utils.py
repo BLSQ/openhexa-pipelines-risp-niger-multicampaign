@@ -817,3 +817,20 @@ def org_unit_matching(
         )
 
     return final_df.drop(columns=["match_index"]), spatial
+
+
+def parse_age_to_months(age_str):
+    """Converts 'X-Y mois/ans' to a (min_months, max_months) tuple."""
+    match = re.search(r"(\d+)-(\d+)\s+(mois|ans)", age_str)
+    if not match:
+        return None
+
+    start, end, unit = match.groups()
+    multiplier = 12 if unit == "ans" else 1
+
+    # We treat 'ans' as inclusive of the full year (e.g., 4 ans = up to 59.9 months)
+    # Adjusting 'end' for years to cover the full duration:
+    start_m = int(start) * multiplier
+    end_m = (int(end) + 1) * multiplier if unit == "ans" else int(end)
+
+    return start_m, end_m

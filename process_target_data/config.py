@@ -3,9 +3,9 @@ import os
 
 # paths
 WORKSPACE_PATH = workspace.files_path
-WORKSPACE_PATH = os.path.join(
-    os.getcwd(), "process_target_data", "workspace"
-)  # local only
+# WORKSPACE_PATH = os.path.join(
+#     os.getcwd(), "process_target_data", "workspace"
+# )  # local only
 PROJECT_FOLDER = "multi-campagne"
 OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "outputs")
 TARGETS_HISTORICAL_PATH = os.path.join(
@@ -222,17 +222,17 @@ csi_matching_failed = {
     "zinder sabongarizinder": "zinder sabongari",  # 3764862
 }
 
-list_of_valid_campaigns = [
-    "vaccin polio",
-    "rougeole",
-    "fièvre jaune",
-    "méningite",
-    "tcv",
-    "albendazole",
-    "vitamine A",
-]
+campaign_rename_dict = {
+    "Polio": "vaccin polio",
+    "Rougeole": "rougeole",
+    "Fièvre jaune": "fièvre jaune",
+    "Méningite": "méningite",
+    "TCV": "tcv",
+    "Albendazole": "albendazole",
+    "Vitamine A": "vitamine A",
+}
 
-templates_required_cols = [
+templates_required_cols_csi = [
     "Pays",
     "Région",
     "District Sanitaire",
@@ -240,12 +240,26 @@ templates_required_cols = [
     "CSI",
 ]
 
-campaigns_config_dict = {
-    "albendazole": ["12-23 mois", "24-59 mois"],
-    "vitamine A": ["6-11 mois", "12-24 mois"],
-    "vaccin polio": ["0-11 mois", "12-59 mois"],
-    "rougeole": ["6-11 mois", "12-59 mois"],
-    "fièvre jaune": ["9-11 mois", "12-23 mois", "24-59 mois", "5-14 ans", "5-60 ans"],
-    "méningite": ["1-4 ans", "5-14 ans", "15-19 ans"],
-    "tcv": ["1-4 ans", "5-14 ans", "15-19 ans"],
+templates_required_cols_district = [
+    "Pays",
+    "Région",
+    "District Sanitaire",
+]
+
+site_strategy_types_dict = {
+    "Ordinaire": "ordinaire",
+    "Spécial": "spécial",
+    "Frontalier": "frontalier",
+    "Transfrontalier : étranger": "transfrontalier : étranger",
+    "Transfrontalier : Niger": "transfrontalier : Niger",
+    "Fixe": "fixe",
+    "Avancée": "avancé",
+    "Mobile": "mobile",
+}
+
+cols_for_melting = ["District Sanitaire", "year", "produit", "round"]
+
+csi_district_rename_dict = {
+    "District Sanitaire": "LVL_3_NAME",
+    "CSI": "LVL_6_NAME",
 }
