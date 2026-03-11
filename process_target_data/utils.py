@@ -161,9 +161,3 @@ def org_unit_matching(
         )
 
     return final_df.drop(columns=["match_index"]), spatial
-
-
-def validate_data():
-    """
-    Docstring for validate_data
-    """

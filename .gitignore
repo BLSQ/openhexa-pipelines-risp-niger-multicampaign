@@ -1,0 +1,6 @@
+.vscode/
+*.yaml
+**/workspace/
+**/__pycache__/**
+*.ipynb
+*.parquet
