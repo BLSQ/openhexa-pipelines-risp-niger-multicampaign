@@ -37,7 +37,7 @@ def org_unit_matching(
         spatial_unit_df (pd.DataFrame): DataFrame containing the org unit IDs for each combination of LVL 2, LVL 3, LVL 4, LVL 5 and LVL 6 names.
 
     Returns:
-        pd.DataFrame: target_df with matched organization units and their corresponding org unit IDs.
+        pd.DataFrame: target_df with matched organization units and their corresponding org unit IDs
     """
     # 1. Preparation
     rename_map = {

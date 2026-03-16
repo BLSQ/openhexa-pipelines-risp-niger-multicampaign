@@ -21,7 +21,7 @@ from config import (
 )
 def build_combination_products_dataset():
     """
-    Main pipeline function to build combination campaigns dataset.
+    Main pipeline function to build combination campaigns dataset
     """
     org_unit_ids_df = extract_org_unit_id()
     product_site_df = create_product_site_df()

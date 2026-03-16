@@ -4,25 +4,17 @@ import os
 # paths
 PROJECT_FOLDER = "multi-campagne"
 WORKSPACE_PATH = workspace.files_path
-# WORKSPACE_PATH = os.path.join(
-#     os.getcwd(), "extract_process_iaso_form_data", "workspace"
-# )  # local only
 OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "outputs")
 IASO_EXTRACTION_PATH = os.path.join(
     WORKSPACE_PATH, PROJECT_FOLDER, "iaso_données_extraites"
 )
 
 # IASO Connector Instances
-iaso_playground_connector_slug = {
-    "url": "https://iaso-playground.bluesquare.org",
-    "username": "fernando_di_demo",
-    "password": "13.5	19.5	10.5",
-}
-
+connection = workspace.get_connection("iaso-pev-niger")
 iaso_connector_slug = {
-    "url": "https://iaso.bluesquare.org",
-    "username": "fernando_diniger",
-    "password": "hbe8quh1hjm*cyx6AQH",
+    "url": connection.url,
+    "username": connection.username,
+    "password": connection.password,
 }
 
 iaso_form_id = 1186

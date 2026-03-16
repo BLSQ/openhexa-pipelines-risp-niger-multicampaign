@@ -4,9 +4,6 @@ import os
 # paths
 PROJECT_FOLDER = "multi-campagne"
 WORKSPACE_PATH = workspace.files_path
-# WORKSPACE_PATH = os.path.join(
-#     os.getcwd(), "build_combination_products_dataset", "workspace"
-# )  # local only
 OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "outputs")
 CONFIG_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "config")
 

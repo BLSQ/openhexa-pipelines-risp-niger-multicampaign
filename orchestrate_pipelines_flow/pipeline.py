@@ -13,7 +13,7 @@ import time
 )
 def orchestrate_pipelines_flow():
     """
-    This pipeline orchestrates the execution of the Multi-campaign pipelines in sequence.
+    This pipeline orchestrates the execution of the Multi-campaign pipelines in sequence
     """
     hexa = get_hexa_connection()
     actions = define_actions()

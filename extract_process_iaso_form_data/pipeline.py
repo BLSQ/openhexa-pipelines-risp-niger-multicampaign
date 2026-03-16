@@ -25,7 +25,7 @@ from utils import (
 )
 def extract_process_iaso_form_data():
     """
-    Main pipeline function to extract and process IASO form data.
+    Main pipeline function to extract and process IASO form data
     """
     # data imports
     iaso_org_unit_tree_clean = import_clean_iaso_org_unit_tree()

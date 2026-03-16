@@ -37,7 +37,7 @@ from config import (
 )
 def process_target_data():
     """
-    Main pipeline function to process target data from various campaigns.
+    Main pipeline function to process target data from various campaigns
     """
     iaso_org_unit_tree_df = load_data("iaso_org_unit_tree_raw")
     iaso_org_unit_tree_df_clean = load_data("iaso_org_unit_tree_clean")

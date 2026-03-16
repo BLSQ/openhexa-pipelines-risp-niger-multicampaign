@@ -91,7 +91,7 @@ def import_iaso_combined_data() -> pd.DataFrame:
         None
 
     Returns:
-        pd.DataFrame: Combined historical data from all feather files.
+        pd.DataFrame: Combined historical data from all feather files
     """
     current_run.log_info("Importation des données combinées du formulaire IASO...")
     file_path = os.path.join(
