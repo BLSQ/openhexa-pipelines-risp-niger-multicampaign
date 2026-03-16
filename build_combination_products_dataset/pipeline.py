@@ -17,7 +17,7 @@ from config import (
 
 @pipeline(
     "build_combination_products_dataset",
-    name="multi-campagne - 03. Etablissement de la structure des données attendues",
+    name="multi-campagne - Etablissement de la structure des données attendues",
 )
 def build_combination_products_dataset():
     """

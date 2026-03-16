@@ -37,7 +37,7 @@ from utils import (
 
 @pipeline(
     "build_visualisation_tables",
-    name="multi-campagne - 05. Construction des tableaux pour la visualisation",
+    name="multi-campagne - Construction des tableaux pour la visualisation",
 )
 def build_visualisation_tables():
     """

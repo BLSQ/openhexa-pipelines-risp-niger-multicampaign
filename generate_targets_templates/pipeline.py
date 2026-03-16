@@ -19,7 +19,7 @@ from config import (
 
 @pipeline(
     "generate_targets_templates",
-    name="multi-campagne - 01. Création des fichiers templates pour les cibles",
+    name="multi-campagne - 01 - Pipeline de création de fichier template pour les cibles",
 )
 @parameter(
     "campaign",
@@ -148,19 +148,19 @@ def get_iaso_org_unit_tree() -> pd.DataFrame:
         "Extraction des données de l'arbre des unités organisationnelles IASO..."
     )
 
-    # iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
-    # iaso_org_unit_tree_df = iaso_connector_instance.get_ou_tree_dataframe_from_the_form(
-    #     iaso_form_id
-    # )
+    iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
+    iaso_org_unit_tree_df = iaso_connector_instance.get_ou_tree_dataframe_from_the_form(
+        iaso_form_id
+    )
 
-    # # save file to parquet for later use
-    # if not os.path.exists(OUTPUTS_PATH):
-    #     os.makedirs(OUTPUTS_PATH)
+    # save file to parquet for later use
+    if not os.path.exists(OUTPUTS_PATH):
+        os.makedirs(OUTPUTS_PATH)
 
-    # iaso_org_unit_tree_df.to_parquet(
-    #     os.path.join(OUTPUTS_PATH, "iaso_org_unit_tree_raw.parquet"),
-    #     index=False,
-    # )
+    iaso_org_unit_tree_df.to_parquet(
+        os.path.join(OUTPUTS_PATH, "iaso_org_unit_tree_raw.parquet"),
+        index=False,
+    )
     iaso_org_unit_tree_df = pd.read_parquet(
         os.path.join(OUTPUTS_PATH, "iaso_org_unit_tree_raw.parquet")
     )
