@@ -1,6 +1,5 @@
 import os
 import re
-from isort import file
 from openhexa.sdk import current_run, pipeline
 import pandas as pd
 import numpy as np
@@ -34,7 +33,7 @@ from config import (
 
 @pipeline(
     "process_target_data",
-    name="multi-campagne - 02. Import et traitement des données de cibles",
+    name="multi-campagne - Import et traitement des données de cibles",
 )
 def process_target_data():
     """
