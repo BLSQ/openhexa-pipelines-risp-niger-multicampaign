@@ -116,7 +116,7 @@ def generate_targets_templates(
     """
     This pipeline generates target templates for each campaign type based on the organizational unit tree
     data from IASO. It retrieves the org unit tree data, cleans it, creates template files for each campaign
-    type, and saves the cleaned org unit tree data for future use.
+    type, and saves the cleaned org unit tree data for future use
     """
     inspect_params(year, round, age_range, site_type, strategy_type)
     iaso_org_unit_tree_df = get_iaso_org_unit_tree()

@@ -3,9 +3,6 @@ import os
 
 # paths
 WORKSPACE_PATH = workspace.files_path
-# WORKSPACE_PATH = os.path.join(
-#     os.getcwd(), "process_target_data", "workspace"
-# )  # local only
 PROJECT_FOLDER = "multi-campagne"
 OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "outputs")
 TARGETS_HISTORICAL_PATH = os.path.join(

@@ -21,7 +21,7 @@ def request_explanatory_decorator(function):
             return r
         except requests.exceptions.RequestException as e:
             print(
-                f"It seem that some error occured during: {process_message}",
+                f"It seem that some error occured during: {process_message}.",
                 r.status_code,
                 e,
             )

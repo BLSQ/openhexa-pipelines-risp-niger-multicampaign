@@ -23,7 +23,6 @@ def age_categorizer(string):
         "e_9_": "9-11 mois",
         "e_12_": "12-59 mois",
         "9_11_mois": "9-11 mois",
-        "12_24_mois": "12-24 mois",
         "5_14_ans": "5-14 ans",
         "15_60_ans": "15-60 ans",
         "1_4_ans": "1-4 ans",
@@ -100,6 +99,7 @@ def produit_categorizer(string):
             return products[key]
 
     return "TOUS"
+
 
 def produit_categorizer_stocks(string):
     """

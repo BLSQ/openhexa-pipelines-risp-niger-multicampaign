@@ -35,16 +35,12 @@ def request_explanatory_decorator(function):
         """
         try:
             r = function(url, headers)
-            # Check if response is successful
             r.raise_for_status()
-
-            # Check if content exists
             if not r.text:
                 print("ERROR: Empty response body")
             elif not r.text.strip():
                 print("ERROR: Response contains only whitespace")
             else:
-                # Try to parse JSON
                 r.json()
                 return r
         except requests.exceptions.HTTPError as e:
@@ -176,8 +172,6 @@ def outlier_generator(values: np.ndarray) -> np.ndarray:
 
 
 def numbers_per_param(
-    # param: str,
-    # constraint_positive: bool,
     param_required: bool,
     size_picked: float,
     stability_picked: float,
@@ -189,8 +183,6 @@ def numbers_per_param(
     Generates a list of numbers based on specified parameters.
 
     Parameters:
-        param (str): The parameter name.
-        constraint_positive (bool): If True, ensures generated numbers are positive.
         param_required (bool): If True, ensures that a number is always generated.
         size_picked (float): The mean value for the normal distribution.
         stability_picked (float): The standard deviation factor for the normal distribution.
@@ -201,22 +193,9 @@ def numbers_per_param(
     Returns:
         list: A list of generated numbers for each period.
     """
-
     raw_values = np.random.default_rng().normal(
         loc=size_picked, scale=size_picked * stability_picked, size=len(periods)
     )
-    # choices = ['normal', 'poisson', 'exponential']
-
-    # generator_choice = random.choices(choices, k=1)[0]
-    # if generator_choice == 'normal':
-    #     raw_values = np.random.default_rng().normal(loc=size_picked,
-    #                                         scale=size_picked*stability_picked,
-    #                                         size=len(periods))
-    # elif generator_choice == 'poisson':
-    #     raw_values = np.random.default_rng().poisson(lam=size_picked, size=len(periods))
-
-    # elif generator_choice == 'exponential':
-    #     raw_values = np.random.default_rng().exponential(scale=size_picked*stability_picked, size=len(periods))
     values = outlier_generator(raw_values)
     if integer_value:
         values = values.round(0)
@@ -632,9 +611,6 @@ class IASOConnectionHandler:
         Returns:
             List[pd.DataFrame]: A list of dataframes containing the extracted instance information.
         """
-        # ['uuid', 'form_id','org_unit_id','org_unit_created_at','org_unit_updated_at','form_name', 'created_at', 'updated_at',
-        #'period','status', 'latitude', 'longitude', 'altitude', 'form_name']
-
         self.instance_info_cols = [
             "uuid",
             "form_id",
@@ -644,12 +620,7 @@ class IASOConnectionHandler:
             "period",
             "status",
         ]
-        ins_uuid = instance_json["uuid"]
-        ins_form_id = instance_json["form_id"]
         instance_normalized_df = pd.json_normalize(instance_json, sep="_")
-        instance_info_cols_sub = [
-            _ for _ in instance_normalized_df.columns if _ in self.instance_info_cols
-        ]
         full_cols_sub = [
             _
             for _ in instance_normalized_df.columns
@@ -658,11 +629,6 @@ class IASOConnectionHandler:
             in self.form_content_form_structure_base_columns_list
         ]
         instance_full_df = instance_normalized_df[full_cols_sub]
-
-        # instance_submission_info_df = instance_normalized_df[instance_info_cols_sub]
-        # instance_file_content_df = pd.json_normalize(instance_json['file_content'])
-        # instance_file_content_df = instance_file_content_df.assign(uuid=ins_uuid)
-        # instance_full_df=instance_file_content_df.merge(instance_submission_info_df)
 
         return instance_full_df
 
@@ -716,31 +682,13 @@ class IASOConnectionHandler:
             Dict[str, Any]: A dictionary containing the extracted JSON data.
         """
         instances_endpoint = f"{self.iaso_connector.url}/api/instances/"
-
-        # # Time Filtering of the query
-        # dateFrom = pd.to_datetime(dateFrom, format='%Y-%m-%d').date()
-        # dateTo = pd.to_datetime(dateTo, format='%Y-%m-%d').date()
-        # modificationDateFrom = pd.to_datetime(modificationDateFrom, format='%Y-%m-%d').date()
-        # modificationDateTo = pd.to_datetime(modificationDateTo, format='%Y-%m-%d').date()
-
-        # format_date_from = f"&dateFrom={self.dateFrom}" if not pd.isna(self.dateFrom) else ""
-        # format_date_to = f"&dateTo={self.dateTo}" if not pd.isna(self.dateTo) else ""
-        # format_modif_date_from = f"&modificationDateFrom={self.modificationDateFrom}" if not pd.isna(self.modificationDateFrom) else ""
-        # format_modif_date_to = f"&modificationDateTo={self.modificationDateTo}" if not pd.isna(self.modificationDateTo) else ""
-
-        # format_period = "".join([format_date_from, format_date_to, format_modif_date_from, format_modif_date_to])
-
-        form_endpoint = instances_endpoint + f"?form_ids={form_id}"  # + format_period
-        base_full_endpoint = form_endpoint + f"&limit={limit_batch}"  # + format_period
+        form_endpoint = instances_endpoint + f"?form_ids={form_id}"
+        base_full_endpoint = form_endpoint + f"&limit={limit_batch}"
 
         if dateFrom:
-            base_full_endpoint = (
-                base_full_endpoint + f"&dateFrom={dateFrom}"
-            )  # + format_period
+            base_full_endpoint = base_full_endpoint + f"&dateFrom={dateFrom}"
         if dateTo:
-            base_full_endpoint = (
-                base_full_endpoint + f"&dateTo={dateTo}"
-            )  # + format_period
+            base_full_endpoint = base_full_endpoint + f"&dateTo={dateTo}"
 
         r = request_with_explanation(
             base_full_endpoint,

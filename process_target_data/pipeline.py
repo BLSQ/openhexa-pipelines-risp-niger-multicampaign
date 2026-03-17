@@ -3,6 +3,7 @@ import re
 from openhexa.sdk import current_run, pipeline
 import pandas as pd
 import numpy as np
+from polars import col
 from utils import (
     org_unit_matching,
 )
@@ -37,7 +38,7 @@ from config import (
 )
 def process_target_data():
     """
-    Main pipeline function to process target data from various campaigns.
+    Main pipeline function to process target data from various campaigns
     """
     iaso_org_unit_tree_df = load_data("iaso_org_unit_tree_raw")
     iaso_org_unit_tree_df_clean = load_data("iaso_org_unit_tree_clean")
@@ -798,6 +799,19 @@ def process_dataframe(df: pd.DataFrame, aggregation_type: str, meta: dict):
     if not all(col in df.columns for col in required):
         raise ValueError(f"Colonnes manquantes. Attendu: {required}")
 
+    regex_pattern = r"^Cible (\d+-\d+ (?:mois|ans))(?:_(.+))?$"
+    extra_cols = [col for col in df.columns if col not in required]
+    extra_cols = [col for col in extra_cols if col not in ["year", "produit", "round"]]
+    invalid_format_cols = [
+        col for col in extra_cols if not re.match(regex_pattern, col)
+    ]
+
+    if invalid_format_cols:
+        raise ValueError(
+            f"Format de colonne invalide détecté : {invalid_format_cols}. "
+            "Les colonnes de données doivent suivre le format: 'Cible [age] mois/ans' ou 'Cible [age] mois/ans_[site/strategie]'"
+        )
+
     value_vars = [col for col in df.columns if col.startswith("Cible ")]
 
     df_melted = pd.melt(
@@ -854,19 +868,45 @@ def import_target_data_for_future_campaigns():
 
         match = file_pattern.match(entry.name)
         if not match:
-            current_run.log_warning(f"Format de nommage invalide : '{entry.name}'")
-            continue
+            current_run.log_error(f"Format de nommage invalide : '{entry.name}'")
+            raise ValueError(f"Format de nommage invalide : '{entry.name}'")
 
         campaign, year, round_code, agg = match.groups()
 
         if campaign not in campaign_rename_dict:
-            current_run.log_warning(f"Campagne invalide '{campaign}' dans {entry.name}")
-            continue
+            current_run.log_error(f"Campagne invalide '{campaign}' dans {entry.name}")
+            raise ValueError(f"Campagne invalide '{campaign}' dans {entry.name}")
 
         try:
             df = pd.read_csv(entry.path)
+
+            # run checks
             if df.empty:
-                continue
+                current_run.log_error(
+                    f"Le fichier {entry.name} est vide. Veuillez vérifier le contenu du fichier."
+                )
+                raise ValueError(f"Le fichier {entry.name} est vide.")
+
+            target_cols = [col for col in df.columns if col.startswith("Cible ")]
+
+            if not target_cols:
+                current_run.log_error(
+                    f"Aucune colonne commençant par 'Cible ' dans {entry.name}."
+                )
+                raise ValueError(
+                    f"Aucune colonne de cible trouvée dans le fichier {entry.name}."
+                )
+
+            for col in target_cols:
+                non_empty_values = df[col].dropna()
+                check_numeric = pd.to_numeric(non_empty_values, errors="coerce")
+                if check_numeric.isna().any():
+                    current_run.log_error(
+                        f"Le fichier {entry.name} contient des valeurs non numériques dans la colonne {col}."
+                    )
+                    raise ValueError(
+                        f"Valeurs non numériques trouvées dans la colonne {col} du fichier {entry.name}."
+                    )
 
             df["year"] = int(year)
             df["produit"] = campaign_rename_dict.get(campaign, campaign)
@@ -879,6 +919,7 @@ def import_target_data_for_future_campaigns():
 
         except Exception as e:
             current_run.log_error(f"Erreur sur {entry.name} : {str(e)}")
+            raise ValueError(f"Erreur sur {entry.name} : {str(e)}")
 
     # combine results
     df_csi = (
@@ -921,7 +962,7 @@ def combine_target_data(
         current_run.log_error(
             f"Erreur lors de la combinaison des données de cibles: {e}"
         )
-        raise
+        raise ValueError(f"Erreur lors de la combinaison des données de cibles: {e}")
 
 
 def clean_org_unit_id(
