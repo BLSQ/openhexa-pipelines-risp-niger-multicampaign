@@ -203,11 +203,16 @@ def create_campaign_period_df() -> pd.DataFrame:
     current_run.log_info("Création du DataFrame des périodes de campagne...")
 
     campaign_round_config_path = os.path.join(CONFIG_PATH, "campagnes_config.txt")
+    if not os.path.exists(campaign_round_config_path):
+        current_run.log_error(
+            f"Erreur de lecture du fichier de la configuration des campagnes: fichier {campaign_round_config_path} non trouvé"
+        )
+        raise
     try:
         campaign_round_config = pd.read_json(campaign_round_config_path).to_dict()
     except Exception as e:
         current_run.log_error(
-            f"Erreur de lecture du fichier de la configuration des campagnes: fichier {campaign_round_config_path} non trouvé"
+            f"Erreur de lecture du fichier de la configuration des campagnes: veuillez vérifier le format du fichier {campaign_round_config_path}."
         )
         raise
 
@@ -240,9 +245,9 @@ def create_campaign_period_df() -> pd.DataFrame:
                 and re.match(r"\d{4}-\d{2}-\d{2}", dates["fin"])
             ):
                 current_run.log_error(
-                    f"Format de date invalide pour la campagne {key}: {dates}. Cette campagne sera ignorée."
+                    f"Format de date invalide pour la campagne {key}: {dates}. Veuillez vérifier que les dates de début et de fin sont au format AAAA-MM-JJ."
                 )
-                continue
+                raise ValueError
             date_series = pd.date_range(start=dates["début"], end=dates["fin"])
             for i, day in enumerate(date_series, start=1):
                 rows.append(
