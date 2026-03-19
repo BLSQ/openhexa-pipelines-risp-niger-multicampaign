@@ -2,14 +2,7 @@ from openhexa.sdk import workspace
 import os
 
 # configs
-connection = workspace.get_connection("iaso-pev-niger")
-iaso_connector_slug = {
-    "url": connection.url,
-    "username": connection.username,
-    "password": connection.password,
-}
-
-iaso_form_id = 1186
+org_unit_DB_name = "org_units_pyramid"
 
 # paths
 PROJECT_FOLDER = "multi-campagne"
@@ -21,8 +14,8 @@ TEMPLATES_PATH = os.path.join(
 
 # cols
 rename_dict = {
-    "LVL_2_NAME": "Région",
-    "LVL_3_NAME": "District Sanitaire",
-    "LVL_4_NAME": "Commune",
-    "LVL_6_NAME": "CSI",
+    "level_4_name": "Région",
+    "level_3_name": "District Sanitaire",
+    "level_2_name": "Commune",
+    "name": "CSI",
 }
