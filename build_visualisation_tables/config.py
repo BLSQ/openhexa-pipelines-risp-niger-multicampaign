@@ -4,6 +4,7 @@ from openhexa.sdk import workspace
 # paths
 PROJECT_FOLDER = "multi-campagne"
 WORKSPACE_PATH = workspace.files_path
+# WORKSPACE_PATH = os.path.join(os.getcwd(), "build_visualisation_tables", "workspace")
 OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "outputs")
 
 # campaign name cleaning and mapping
@@ -139,18 +140,6 @@ cvrg_rougeole_cols = (
         "nombre_dose_12_fixe",
         "nombre_vacine_12_fixe",
     ]
-    # + [  # Lionel: why do we add these columns for rougeole coverage (they are specific to Polio)? Check with Fernando
-    #     "zero_dose_vpo_0_11_mois_fois_site_ordinaire",
-    #     "zero_dose_vpo_0_11_mois_fois_site_speciaux",
-    #     "zero_dose_vpo_0_11_mois_fois_site_speciaux_postefron",
-    #     "zero_dose_vpo_0_11_mois_fois_site_trans_front_cote_front",
-    #     "zero_dose_vpo_0_11_mois_fois_site_trans_front_cote_niger",
-    #     "zero_dose_vpo_12_59_mois_fois_site_ordinaire",
-    #     "zero_dose_vpo_12_59_mois_fois_site_speciaux",
-    #     "zero_dose_vpo_12_59_mois_fois_site_speciaux_postefron",
-    #     "zero_dose_vpo_12_59_mois_fois_site_trans_front_cote_front",
-    #     "zero_dose_vpo_12_59_mois_fois_site_trans_front_cote_niger",
-    # ]
     + [
         "nombre_zero_dose_6_avance",
         "nombre_vacine_6_avance",

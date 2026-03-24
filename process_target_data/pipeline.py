@@ -1,89 +1,37 @@
 import os
 import re
-from openhexa.sdk import current_run, pipeline
+from openhexa.sdk import current_run, pipeline, workspace
 import pandas as pd
 import numpy as np
-from polars import col
 from utils import (
     org_unit_matching,
 )
 from config import (
     OUTPUTS_PATH,
-    TARGETS_HISTORICAL_PATH,
     TARGET_OTHER_DATA_PATH,
     TEMP_PATH,
-    target_polio_2024_cols,
-    polio_2024_dict_districts_cibles_iaso,
-    target_polio_rougeole_2025_columns,
-    age_adjustment_rougeole,
-    age_adjustment_albendazole,
-    age_adjustment_vitA,
-    target_yellow_fever_2025_2026_columns,
-    target_yellow_fever_2025_2026_age_ranges,
-    target_men5_tcv_2025_columns_dict,
-    target_polio_2026_r1_columns,
-    csi_matching_failed,
     templates_required_cols_csi,
     templates_required_cols_district,
     campaign_rename_dict,
-    site_strategy_types_dict,
     cols_for_melting,
     csi_district_rename_dict,
+    csi_matching_failed,
 )
 
 
 @pipeline(
     "process_target_data",
-    name="multi-campagne - Import et traitement des données de cibles",
+    name="multi-campagne - 02 Pipeline d'importation et traitement des données de cibles",
 )
 def process_target_data():
     """
     Main pipeline function to process target data from various campaigns
     """
+    # load org unit tree data
     iaso_org_unit_tree_df = load_data("iaso_org_unit_tree_raw")
     iaso_org_unit_tree_df_clean = load_data("iaso_org_unit_tree_clean")
 
-    # district-level historical target data
-    targets_polio_2024_r1_r4 = import_target_data_for_polio_2024_r1_r4()
-    targets_polio_2024_r1_r4 = match_district_to_org_unit_id(
-        targets_polio_2024_r1_r4, iaso_org_unit_tree_df_clean
-    )
-    targets_polio_2024_r1_r4 = add_rounds_and_products(targets_polio_2024_r1_r4)
-
-    target_polio_rougeole_2025_r1_r2 = (
-        import_target_data_for_polio_and_rougeole_2025_r1_r2()
-    )
-    target_polio_rougeole_2025_r1_r2 = match_district_to_org_unit_id(
-        target_polio_rougeole_2025_r1_r2, iaso_org_unit_tree_df_clean
-    )
-    target_polio_rougeole_2025_r1_r2 = add_rounds_and_products(
-        target_polio_rougeole_2025_r1_r2
-    )
-
-    # csi-level historical target data
-    target_yellow_fever_2025_2026_r1 = (
-        import_target_data_for_yellow_fever_2025_2026_r1()
-    )
-    target_yellow_fever_2025_2026_r1 = match_csi_to_org_unit_id(
-        target_yellow_fever_2025_2026_r1, iaso_org_unit_tree_df_clean
-    )
-    target_yellow_fever_2025_2026_r1 = add_rounds_and_products(
-        target_yellow_fever_2025_2026_r1
-    )
-
-    target_men5_tcv_2025_r1_r2 = import_target_data_for_men5_and_tcv_2025_r1_r2()
-    target_men5_tcv_2025_r1_r2 = match_csi_to_org_unit_id(
-        target_men5_tcv_2025_r1_r2, iaso_org_unit_tree_df_clean
-    )
-    target_men5_tcv_2025_r1_r2 = add_rounds_and_products(target_men5_tcv_2025_r1_r2)
-
-    target_polio_2026_r1 = import_target_data_for_polio_2026_r1()
-    target_polio_2026_r1 = match_csi_to_org_unit_id(
-        target_polio_2026_r1, iaso_org_unit_tree_df_clean
-    )
-    target_polio_2026_r1 = add_rounds_and_products(target_polio_2026_r1)
-
-    # future target data
+    # process target data from templates
     all_target_data_csi_combined, all_target_data_district_combined = (
         import_target_data_for_future_campaigns()
     )
@@ -96,17 +44,27 @@ def process_target_data():
             all_target_data_district_combined, iaso_org_unit_tree_df_clean
         )
 
+    # load historical target data
+    historical_target_data = load_data("combined_historical_target_data")
+
     # combine all target data
-    target_data_combined = combine_target_data(
+    target_data_configured_combined = combine_target_data(
         [
-            targets_polio_2024_r1_r4,
-            target_polio_rougeole_2025_r1_r2,
-            target_yellow_fever_2025_2026_r1,
-            target_men5_tcv_2025_r1_r2,
-            target_polio_2026_r1,
             all_target_data_csi_combined,
             all_target_data_district_combined,
         ]
+    )
+
+    target_data_combined = combine_target_data(
+        [
+            target_data_configured_combined,
+            historical_target_data,
+        ]
+    )
+
+    # add campaign rounds for configured target data
+    target_data_combined = add_round_info_to_configured_target_data(
+        target_data_combined
     )
 
     # clean up org unit
@@ -115,7 +73,9 @@ def process_target_data():
     )
 
     # save
-    save_output(target_data_combined)
+    save_file(target_data_configured_combined, "combined_configured_target_data")
+    save_file(target_data_combined, "combined_target_data")
+    export_to_dataset(target_data_combined, "combined_target_data")
 
 
 def load_data(name: str) -> pd.DataFrame:
@@ -138,7 +98,7 @@ def load_data(name: str) -> pd.DataFrame:
             f"{name}.parquet",
         )
         df = pd.read_parquet(file_path)
-
+        current_run.log_info(f"Fichier importé avec succès: {file_path}")
         return df
 
     except Exception as e:
@@ -146,322 +106,178 @@ def load_data(name: str) -> pd.DataFrame:
         raise
 
 
-def import_target_data_for_polio_2024_r1_r4() -> pd.DataFrame:
+def process_dataframe(df: pd.DataFrame, aggregation_type: str, meta: dict):
     """
-    Import target data for Polio 2024 rounds 1 to 4
+    This function processes the input DataFrame by melting it from wide to long format,
+    extracting age and site/strategy information, and cleaning up the resulting DataFrame.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame to be processed.
+        aggregation_type (str): The type of aggregation, either "csi" or "district".
+        meta (dict): A dictionary containing metadata about the DataFrame, such as the source file name.
+
+    Returns:
+        pd.DataFrame: The processed DataFrame in long format with extracted age and site/strategy information.
+    """
+    id_vars = cols_for_melting.copy()
+    if aggregation_type == "csi":
+        id_vars.insert(1, "CSI")
+
+    required = (
+        templates_required_cols_csi
+        if aggregation_type == "csi"
+        else templates_required_cols_district
+    )
+    if not all(col in df.columns for col in required):
+        raise ValueError(f"Colonnes manquantes. Attendu: {required}")
+
+    regex_pattern = r"^Cible (\d+-\d+ (?:mois|ans))$"
+    extra_cols = [col for col in df.columns if col not in required]
+    extra_cols = [col for col in extra_cols if col not in ["year", "produit"]]
+    invalid_format_cols = [
+        col for col in extra_cols if not re.match(regex_pattern, col)
+    ]
+
+    if invalid_format_cols:
+        raise ValueError(
+            f"Format de colonne invalide détecté : {invalid_format_cols}. "
+            "Les colonnes de données doivent suivre le format: 'Cible [age] mois/ans'"
+        )
+
+    value_vars = [col for col in df.columns if col.startswith("Cible ")]
+
+    df_melted = pd.melt(
+        df,
+        id_vars=id_vars,
+        value_vars=value_vars,
+        var_name="age",
+        value_name="cible",
+    )
+
+    extracted = df_melted["age"].str.extract(regex_pattern)
+
+    df_melted["age"] = extracted[0]
+    df_melted = df_melted.rename(columns=csi_district_rename_dict)
+
+    return df_melted
+
+
+def import_target_data_for_future_campaigns():
+    """
+    Placeholder function for importing target data for future campaigns.
 
     Args:
         None
 
     Returns:
-        pd.DataFrame: DataFrame containing the target data for Polio 2024 rounds 1 to 4
+        pd.DataFrame: DataFrame containing the target data for future campaigns.
     """
     current_run.log_info(
-        "Importation des données de cibles pour la polio 2024 rounds 1 à 4..."
+        "Importation et traitement des données de cibles générées par les fichiers templates..."
     )
     try:
-        if not os.path.exists(TARGETS_HISTORICAL_PATH):
-            os.makedirs(TARGETS_HISTORICAL_PATH)
+        if not os.path.exists(TARGET_OTHER_DATA_PATH):
+            os.makedirs(TARGET_OTHER_DATA_PATH)
+            return pd.DataFrame(), pd.DataFrame()
 
-        file_path = os.path.join(
-            TARGETS_HISTORICAL_PATH,
-            "Population JNV JNM ET DEPRARASITAGE.xlsx",
+        all_data = {"csi": [], "district": []}
+
+        file_pattern = re.compile(r"Cibles_([^_]+)_(\d{4})_(.+)\.xlsx")
+
+        for entry in os.scandir(TARGET_OTHER_DATA_PATH):
+            if not (
+                entry.is_file()
+                and entry.name.endswith(".xlsx")
+                and not entry.name.startswith("~$")
+            ):
+                continue
+
+            match = file_pattern.match(entry.name)
+            if not match:
+                current_run.log_error(f"Format de nommage invalide : '{entry.name}'")
+                raise ValueError(f"Format de nommage invalide : '{entry.name}'")
+
+            # Extract groups based on file name convention e.g. Cibles_Rougeole_2026_agadez_diffa_dosso_csi.xlsx
+            campaign_raw, year, middle_part = match.groups()
+            parts = middle_part.split("_")
+            agg = parts[-1].lower()
+
+            if campaign_raw not in campaign_rename_dict:
+                current_run.log_error(
+                    f"Campagne invalide '{campaign_raw}' dans {entry.name}"
+                )
+                raise ValueError(
+                    f"Campagne invalide '{campaign_raw}' dans {entry.name}"
+                )
+
+            # Ensure the aggregation level is one we expect (csi or district)
+            if agg not in all_data:
+                current_run.log_error(
+                    f"Niveau d'agrégation '{agg}' non supporté dans {entry.name}"
+                )
+                raise ValueError(
+                    f"Niveau d'agrégation '{agg}' doit être 'csi' ou 'district'."
+                )
+
+            try:
+                df = pd.read_excel(entry.path)
+
+                if df.empty:
+                    current_run.log_error(f"Le fichier {entry.name} est vide.")
+                    raise ValueError(f"Le fichier {entry.name} est vide.")
+
+                target_cols = [col for col in df.columns if col.startswith("Cible ")]
+
+                if not target_cols:
+                    current_run.log_error(
+                        f"Aucune colonne de cible trouvée dans le fichier {entry.name}."
+                    )
+                    raise
+
+                # Validate numeric data
+                for col in target_cols:
+                    non_empty_values = df[col].dropna()
+                    check_numeric = pd.to_numeric(non_empty_values, errors="coerce")
+                    if check_numeric.isna().any():
+                        current_run.log_error(
+                            f"Le fichier {entry.name} contient des valeurs non numériques dans la colonne {col}."
+                        )
+                        raise
+
+                # Metadata assignment
+                df["year"] = int(year)
+                df["produit"] = campaign_rename_dict.get(campaign_raw, campaign_raw)
+
+                processed_df = process_dataframe(df, agg, {"file": entry.name})
+                all_data[agg].append(processed_df)
+
+                current_run.log_info(f"Fichier {entry.name} traité.")
+
+            except Exception as e:
+                current_run.log_error(f"Erreur sur {entry.name} : {str(e)}")
+                raise ValueError(f"Erreur sur {entry.name} : {str(e)}")
+
+        # Combine results
+        df_csi = (
+            pd.concat(all_data["csi"], ignore_index=True)
+            if all_data["csi"]
+            else pd.DataFrame()
         )
-        target_polio_2024 = pd.read_excel(
-            file_path, skiprows=6, header=None, usecols=[1, 2, 3, 6, 7, 9, 10]
-        )
-
-        target_polio_2024.columns = target_polio_2024_cols
-
-        target_polio_2024 = target_polio_2024[
-            ~target_polio_2024["LVL_3_NAME"]
-            .str.contains("Région|TOTAL", case=False)
-            .fillna(True)
-        ]
-
-        target_polio_2024["LVL_3_NAME"] = target_polio_2024["LVL_3_NAME"].map(
-            polio_2024_dict_districts_cibles_iaso
-        )
-        target_polio_2024 = pd.melt(
-            target_polio_2024,
-            id_vars="LVL_3_NAME",
-            var_name="full_name",
-            value_name="cible",
-        )
-
-        target_polio_2024["age"] = target_polio_2024["full_name"].str.split(
-            "_", expand=True
-        )[1]
-
-        # adjust age category 12-59 mois to 12-24 mois for Vit A (this is b/c this age category is found in the IASO data instead of 12-59 mois)
-        target_polio_2024["age"] = np.where(
-            target_polio_2024["full_name"].str.contains("VA_12-59 mois"),
-            "12-24 mois",
-            target_polio_2024["age"],
-        )
-
-        target_polio_2024["cible"] = target_polio_2024["cible"].astype(int)
-        target_polio_2024["year"] = 2024
-        target_polio_2024["campaign"] = "polio"
-
-        return target_polio_2024
-    except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'importation des données de cibles pour la polio 2024: {e}"
-        )
-        raise
-
-
-def import_target_data_for_polio_and_rougeole_2025_r1_r2() -> pd.DataFrame:
-    """
-    Import target data for polio and rougeole campaigns for year 2025 rounds 1 and 2
-
-    Args:
-        None
-
-    Returns:
-        pd.DataFrame: DataFrame containing the target data for polio and rougeole campaigns year 2025 rounds 1 and 2
-    """
-    current_run.log_info(
-        "Importation des données de cibles pour la polio et rougeole 2025..."
-    )
-
-    try:
-        file_path = os.path.join(
-            TARGETS_HISTORICAL_PATH,
-            "cible_niger_et_refugies_2025.xlsx",
-        )
-
-        target_polio_rougeole_2025 = pd.read_excel(
-            file_path, header=[0], skiprows=1, usecols=[0, 9, 10]
-        )
-
-        target_polio_rougeole_2025.columns = target_polio_rougeole_2025_columns
-
-        target_polio_rougeole_2025 = target_polio_rougeole_2025.dropna(
-            subset=["LVL_3_NAME"]
-        )
-        target_polio_rougeole_2025 = target_polio_rougeole_2025[
-            ~target_polio_rougeole_2025["LVL_3_NAME"]
-            .str.contains("Région|TOTAL|Refugie", case=False)
-            .fillna(True)
-        ]
-        target_polio_rougeole_2025 = pd.melt(
-            target_polio_rougeole_2025,
-            id_vars="LVL_3_NAME",
-            var_name="age",
-            value_name="cible",
-        ).fillna(0)
-
-        target_polio_rougeole_2025["LVL_3_NAME"] = target_polio_rougeole_2025[
-            "LVL_3_NAME"
-        ].map(polio_2024_dict_districts_cibles_iaso)
-        target_polio_rougeole_2025["cible"] = target_polio_rougeole_2025[
-            "cible"
-        ].astype(int)
-        target_polio_rougeole_2025["year"] = 2025
-        target_polio_rougeole_2025["campaign"] = "polio_rougeole"
-
-        return target_polio_rougeole_2025
-    except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'importation des données historiques de cibles pour les campagnes polio 2025 rounds 1-2 et rougeole 2025 round 1: {e}"
-        )
-        raise
-
-
-def import_target_data_for_yellow_fever_2025_2026_r1() -> pd.DataFrame:
-    """
-    Import target data for yellow fever campaign for year 2025 and 2026 rounds 1 for the regions of Dosso and Tahoua
-
-    Args:
-        None
-
-    Returns:
-        pd.DataFrame: DataFrame containing the target data for yellow fever campaign year 2025 and 2026 rounds 1 for the regions of Dosso and Tahoua
-    """
-    current_run.log_info(
-        "Importation des données de cibles historiques pour la campagne fièvre jaune 2025/2026 rounds 1..."
-    )
-    try:
-        file_path = os.path.join(
-            TARGETS_HISTORICAL_PATH,
-            "cible_csi_fj_dosso_tahoua.xlsx",
+        df_dist = (
+            pd.concat(all_data["district"], ignore_index=True)
+            if all_data["district"]
+            else pd.DataFrame()
         )
 
-        target_yellow_fever_2025_r1 = pd.read_excel(
-            file_path,
-            header=[0],
-            skiprows=10,
-            usecols=[2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 17],
+        current_run.log_info(
+            f"Importation terminée: CSI: {len(all_data['csi'])}, District: {len(all_data['district'])}"
         )
 
-        target_yellow_fever_2025_r1.columns = target_yellow_fever_2025_2026_columns
-        target_yellow_fever_2025_r1 = target_yellow_fever_2025_r1[
-            ~target_yellow_fever_2025_r1["LVL_3_NAME"].str.contains("Total")
-        ]
-        target_yellow_fever_2025_r1 = target_yellow_fever_2025_r1[
-            ~(target_yellow_fever_2025_r1["LVL_6_NAME"] == "DS")
-        ]
-
-        for age in target_yellow_fever_2025_2026_age_ranges:
-            target_yellow_fever_2025_r1[age] = (
-                target_yellow_fever_2025_r1[age + "_urban"]
-                + target_yellow_fever_2025_r1[age + "_avancee"]
-                + target_yellow_fever_2025_r1[age + "_mobile"]
-            )
-            target_yellow_fever_2025_r1[age] = target_yellow_fever_2025_r1[age].astype(
-                int
-            )
-        target_yellow_fever_2025_r1_clean = target_yellow_fever_2025_r1[
-            ["LVL_3_NAME", "LVL_6_NAME"] + target_yellow_fever_2025_2026_age_ranges
-        ]
-        target_yellow_fever_2025_r1_clean = pd.melt(
-            target_yellow_fever_2025_r1_clean,
-            id_vars=["LVL_3_NAME", "LVL_6_NAME"],
-            var_name="age",
-            value_name="cible",
-        ).fillna(0)
-
-        target_yellow_fever_2025_r1_clean["cible"] = target_yellow_fever_2025_r1_clean[
-            "cible"
-        ].astype(int)
-        target_yellow_fever_2025_r1_clean["year"] = 2025
-        target_yellow_fever_2025_r1_clean["campaign"] = "fièvre jaune"
-
-        target_yellow_fever_2026_r1_clean = target_yellow_fever_2025_r1_clean.copy()
-        target_yellow_fever_2026_r1_clean["year"] = 2026
-
-        target_yellow_fever_2025_2026_r1 = pd.concat(
-            [target_yellow_fever_2025_r1_clean, target_yellow_fever_2026_r1_clean],
-            ignore_index=True,
-        )
-
-        return target_yellow_fever_2025_2026_r1
-    except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'importation des données de cibles pour la fièvre jaune 2025 et 2026 rounds 1: {e}"
-        )
-        raise
-
-
-def import_target_data_for_men5_and_tcv_2025_r1_r2() -> pd.DataFrame:
-    """
-    Import target data for men5 and tcv campaigns for year 2025 rounds 1 and 2
-
-    Args:
-        None
-
-    Returns:
-        pd.DataFrame: DataFrame containing the target data for yellow fever campaign year 2025 rounds 1 and 2
-    """
-    current_run.log_info(
-        "Importation des données de cibles pour la campagne Méningite et TCV 2025..."
-    )
-
-    try:
-        file_path = os.path.join(
-            TARGETS_HISTORICAL_PATH,
-            "Cible Men5-TCV CSI.xlsx",
-        )
-
-        target_men5_tcv_2025 = pd.read_excel(
-            file_path,
-            skiprows=3,
-            usecols=[1, 2, 4, 5, 6],
-        )
-
-        target_men5_tcv_2025.columns = [
-            target_men5_tcv_2025_columns_dict[col]
-            for col in target_men5_tcv_2025_columns_dict
-        ]
-
-        target_men5_tcv_2025_clean = pd.melt(
-            target_men5_tcv_2025,
-            id_vars=["LVL_3_NAME", "LVL_6_NAME"],
-            value_vars=["1-4 ans", "5-14 ans", "15-19 ans"],
-            var_name="age",
-            value_name="cible",
-        )
-
-        target_men5_tcv_2025_clean["cible"] = target_men5_tcv_2025_clean[
-            "cible"
-        ].astype(int)
-        target_men5_tcv_2025_clean["year"] = 2025
-        target_men5_tcv_2025_clean = target_men5_tcv_2025_clean[
-            ["LVL_3_NAME", "LVL_6_NAME", "age", "cible", "year"]
-        ].drop_duplicates()
-        target_men5_tcv_2025_clean["campaign"] = "men5_tcv"
-
-        return target_men5_tcv_2025_clean
+        return df_csi, df_dist
 
     except Exception as e:
         current_run.log_error(
-            f"Erreur lors de l'importation des données de cibles historiques pour la campagne Méningite et TCV 2025 rounds 1 et 2: {e}"
-        )
-        raise
-
-
-def import_target_data_for_polio_2026_r1() -> pd.DataFrame:
-    """
-    Import target data for polio campaign for year 2026 round 1
-
-    Args:
-        None
-
-    Returns:
-        pd.DataFrame: DataFrame containing the target data for polio campaign year 2026 round 1
-    """
-    current_run.log_info(
-        "Importation des données de cibles historiques pour la campagne de polio 2026 round 1..."
-    )
-    try:
-        file_path = os.path.join(
-            TARGETS_HISTORICAL_PATH,
-            "cible_jnv_polio_2025.xlsx",
-        )
-
-        target_polio_2026_r1 = pd.read_excel(
-            file_path, header=[0], skiprows=9, usecols=[1, 2, 3, 7]
-        )
-
-        target_polio_2026_r1.columns = target_polio_2026_r1_columns
-        target_polio_2026_r1 = target_polio_2026_r1.dropna(subset=["LVL_3_NAME"])
-        target_polio_2026_r1 = target_polio_2026_r1.dropna(subset=["cible"])
-
-        target_polio_2026_r1 = target_polio_2026_r1[
-            ~target_polio_2026_r1["LVL_3_NAME"].str.contains("Total")
-        ]
-        target_polio_2026_r1 = target_polio_2026_r1[
-            ~(target_polio_2026_r1["LVL_6_NAME"] == "DS")
-        ]
-
-        target_polio_2026_r1["cible"] = target_polio_2026_r1["cible"].astype(int)
-        target_polio_2026_r1["0-11 mois"] = (
-            target_polio_2026_r1["cible"] * 0.119140832
-        ).round(0)
-        target_polio_2026_r1["12-59 mois"] = (
-            target_polio_2026_r1["cible"] * 0.880859168
-        ).round(0)
-        target_polio_2026_r1 = target_polio_2026_r1.dropna(subset=["LVL_6_NAME"])
-        target_polio_2026_r1.drop(["cible", "LVL_2_NAME"], axis=1, inplace=True)
-
-        target_polio_2026_r1_clean = pd.melt(
-            target_polio_2026_r1,
-            id_vars=["LVL_3_NAME", "LVL_6_NAME"],
-            var_name="age",
-            value_name="cible",
-        ).fillna(0)
-
-        target_polio_2026_r1_clean["cible"] = target_polio_2026_r1_clean[
-            "cible"
-        ].astype(int)
-        target_polio_2026_r1_clean["year"] = 2026
-        target_polio_2026_r1_clean["campaign"] = "polio"
-        return target_polio_2026_r1_clean
-    except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'importation des données de cibles historiques pour la campagne de polio 2026 round 1: {e}"
+            f"Erreur lors de l'importation des données de cibles : {e}"
         )
         raise
 
@@ -628,318 +444,6 @@ def match_district_to_org_unit_id(
         raise
 
 
-def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Create rounds for the target data.
-
-    Args:
-        target_df (pd.DataFrame): DataFrame containing the target data.
-
-    Returns:
-        pd.DataFrame: DataFrame with rounds added.
-    """
-    current_run.log_info("Ajout des rounds et des produits aux données de cibles...")
-
-    # polio 2024
-    if target_df["campaign"].iloc[0] == "polio" and target_df["year"].iloc[0] == 2024:
-        rounds = ["round 1", "round 2", "round 3", "round 4"]
-        target_df_expanded = pd.DataFrame(
-            np.repeat(target_df.values, len(rounds), axis=0),
-            columns=target_df.columns,
-        )
-        target_df_expanded["round"] = rounds * (len(target_df))
-        target_df_expanded["produit"] = np.where(
-            target_df_expanded["full_name"].str.contains("VPO"),
-            "vaccin polio",
-            np.where(
-                target_df_expanded["full_name"].str.contains("VA"),
-                "vitamine A",
-                np.where(
-                    target_df_expanded["full_name"].str.contains("AL"),
-                    "albendazole",
-                    "produit inconnu",
-                ),
-            ),
-        )
-        target_df_expanded = target_df_expanded.drop(["full_name", "campaign"], axis=1)
-
-    # rougeole and polio 2025
-    elif (
-        target_df["campaign"].iloc[0] == "polio_rougeole"
-        and target_df["year"].iloc[0] == 2025
-    ):
-        rounds = ["round 1", "round 2"]
-        target_df_expanded = pd.DataFrame(
-            np.repeat(target_df.values, len(rounds), axis=0),
-            columns=target_df.columns,
-        )
-        target_df_expanded["round"] = rounds * (len(target_df))
-
-        target_df_expanded_rougeole = target_df_expanded.copy()
-        target_df_expanded_rougeole["produit"] = "rougeole"
-        target_df_expanded_rougeole["age"] = target_df_expanded_rougeole["age"].replace(
-            age_adjustment_rougeole
-        )
-        target_df_expanded_rougeole = target_df_expanded_rougeole[
-            target_df_expanded_rougeole["round"] == "round 1"
-        ]
-
-        target_df_expanded_polio = target_df_expanded.copy()
-        target_df_expanded_polio["produit"] = "vaccin polio"
-
-        target_df_expanded_albendazole = target_df_expanded.copy()
-        target_df_expanded_albendazole["produit"] = "albendazole"
-        target_df_expanded_albendazole["age"] = target_df_expanded_albendazole[
-            "age"
-        ].replace(age_adjustment_albendazole)
-
-        target_df_expanded_vitA = target_df_expanded.copy()
-        target_df_expanded_vitA["produit"] = "vitamine A"
-        target_df_expanded_vitA["age"] = target_df_expanded_vitA["age"].replace(
-            age_adjustment_vitA
-        )
-
-        target_df_expanded = pd.concat(
-            [
-                target_df_expanded_rougeole,
-                target_df_expanded_polio,
-                target_df_expanded_albendazole,
-                target_df_expanded_vitA,
-            ],
-            ignore_index=True,
-        )
-        target_df_expanded = target_df_expanded.drop("campaign", axis=1)
-
-    # yellow fever 2025/2026
-    elif (
-        target_df["campaign"].iloc[0] == "fièvre jaune"
-        and target_df["year"].iloc[0] == 2025
-    ):
-        rounds = ["round 1"]
-        target_df_expanded = pd.DataFrame(
-            np.repeat(target_df.values, len(rounds), axis=0),
-            columns=target_df.columns,
-        )
-        target_df_expanded["round"] = rounds * (len(target_df))
-        target_df_expanded["produit"] = "fièvre jaune"
-        target_df_expanded = target_df_expanded.drop("campaign", axis=1)
-
-    elif (
-        target_df["campaign"].iloc[0] == "fièvre jaune"
-        and target_df["year"].iloc[0] == 2026
-    ):
-        rounds = ["round 1"]
-        target_df_expanded = pd.DataFrame(
-            np.repeat(target_df.values, len(rounds), axis=0),
-            columns=target_df.columns,
-        )
-        target_df_expanded["round"] = rounds * (len(target_df))
-        target_df_expanded["produit"] = "fièvre jaune"
-        target_df_expanded = target_df_expanded.drop("campaign", axis=1)
-
-    # men5 and tcv 2025
-    elif (
-        target_df["campaign"].iloc[0] == "men5_tcv"
-        and target_df["year"].iloc[0] == 2025
-    ):
-        rounds = ["round 1", "round 2"]
-        target_df_expanded = pd.DataFrame(
-            np.repeat(target_df.values, len(rounds), axis=0),
-            columns=target_df.columns,
-        )
-        target_df_expanded["round"] = rounds * (len(target_df))
-        target_df_expanded_men5 = target_df_expanded.copy()
-        target_df_expanded_men5["produit"] = "méningite"
-        target_df_expanded_tcv = target_df_expanded.copy()
-        target_df_expanded_tcv["produit"] = "tcv"
-        target_df_expanded = pd.concat(
-            [target_df_expanded_men5, target_df_expanded_tcv],
-            ignore_index=True,
-        )
-        target_df_expanded = target_df_expanded.drop("campaign", axis=1)
-
-    # polio 2026 round 1
-    elif target_df["campaign"].iloc[0] == "polio" and target_df["year"].iloc[0] == 2026:
-        target_df_expanded = target_df.copy()
-        target_df_expanded["round"] = "round 1"
-        target_df_expanded["produit"] = "vaccin polio"
-        target_df_expanded = target_df_expanded.drop("campaign", axis=1)
-
-    else:
-        current_run.log_error(
-            "Combinaison campagne et année inconnue. Impossible d'ajouter les rounds et les produits."
-        )
-        return target_df
-
-    return target_df_expanded
-
-
-def process_dataframe(df: pd.DataFrame, aggregation_type: str, meta: dict):
-    """
-    This function processes the input DataFrame by melting it from wide to long format,
-    extracting age and site/strategy information, and cleaning up the resulting DataFrame.
-
-    Args:
-        df (pd.DataFrame): The input DataFrame to be processed.
-        aggregation_type (str): The type of aggregation, either "csi" or "district".
-        meta (dict): A dictionary containing metadata about the DataFrame, such as the source file name.
-
-    Returns:
-        pd.DataFrame: The processed DataFrame in long format with extracted age and site/strategy information.
-    """
-    id_vars = cols_for_melting.copy()
-    if aggregation_type == "csi":
-        id_vars.insert(1, "CSI")
-
-    required = (
-        templates_required_cols_csi
-        if aggregation_type == "csi"
-        else templates_required_cols_district
-    )
-    if not all(col in df.columns for col in required):
-        raise ValueError(f"Colonnes manquantes. Attendu: {required}")
-
-    regex_pattern = r"^Cible (\d+-\d+ (?:mois|ans))(?:_(.+))?$"
-    extra_cols = [col for col in df.columns if col not in required]
-    extra_cols = [col for col in extra_cols if col not in ["year", "produit", "round"]]
-    invalid_format_cols = [
-        col for col in extra_cols if not re.match(regex_pattern, col)
-    ]
-
-    if invalid_format_cols:
-        raise ValueError(
-            f"Format de colonne invalide détecté : {invalid_format_cols}. "
-            "Les colonnes de données doivent suivre le format: 'Cible [age] mois/ans' ou 'Cible [age] mois/ans_[site/strategie]'"
-        )
-
-    value_vars = [col for col in df.columns if col.startswith("Cible ")]
-
-    df_melted = pd.melt(
-        df,
-        id_vars=id_vars,
-        value_vars=value_vars,
-        var_name="age_site_strategy",
-        value_name="cible",
-    )
-
-    regex_extract = r"Cible (\d+-\d+ (?:mois|ans))(?:_(.+))?"
-    extracted = df_melted["age_site_strategy"].str.extract(regex_extract)
-
-    df_melted["age"] = extracted[0]
-    df_melted["site_strategy"] = extracted[1].replace(site_strategy_types_dict)
-    df_melted.drop(columns=["age_site_strategy"], inplace=True)
-    df_melted = df_melted.rename(columns=csi_district_rename_dict)
-
-    return df_melted
-
-
-def import_target_data_for_future_campaigns():
-    """
-    Placeholder function for importing target data for future campaigns.
-
-    Args:
-        None
-
-    Returns:
-        pd.DataFrame: DataFrame containing the target data for future campaigns.
-    """
-    current_run.log_info("Importation et traitement des données non-historiques...")
-
-    if not os.path.exists(TARGET_OTHER_DATA_PATH):
-        os.makedirs(TARGET_OTHER_DATA_PATH)
-        return pd.DataFrame(), pd.DataFrame()
-
-    all_data = {"csi": [], "district": []}
-
-    file_pattern = re.compile(r"Cibles_(.+)_(\d{4})_(r\d+)_(csi|district)\.csv")
-
-    current_run.log_info(
-        "Importation et traitement des données non-historiques de cibles..."
-    )
-
-    # loop through each file
-    for entry in os.scandir(TARGET_OTHER_DATA_PATH):
-        if not (
-            entry.is_file()
-            and entry.name.endswith(".csv")
-            and not entry.name.startswith("~$")
-        ):
-            continue
-
-        match = file_pattern.match(entry.name)
-        if not match:
-            current_run.log_error(f"Format de nommage invalide : '{entry.name}'")
-            raise ValueError(f"Format de nommage invalide : '{entry.name}'")
-
-        campaign, year, round_code, agg = match.groups()
-
-        if campaign not in campaign_rename_dict:
-            current_run.log_error(f"Campagne invalide '{campaign}' dans {entry.name}")
-            raise ValueError(f"Campagne invalide '{campaign}' dans {entry.name}")
-
-        try:
-            df = pd.read_csv(entry.path)
-
-            # run checks
-            if df.empty:
-                current_run.log_error(
-                    f"Le fichier {entry.name} est vide. Veuillez vérifier le contenu du fichier."
-                )
-                raise ValueError(f"Le fichier {entry.name} est vide.")
-
-            target_cols = [col for col in df.columns if col.startswith("Cible ")]
-
-            if not target_cols:
-                current_run.log_error(
-                    f"Aucune colonne commençant par 'Cible ' dans {entry.name}."
-                )
-                raise ValueError(
-                    f"Aucune colonne de cible trouvée dans le fichier {entry.name}."
-                )
-
-            for col in target_cols:
-                non_empty_values = df[col].dropna()
-                check_numeric = pd.to_numeric(non_empty_values, errors="coerce")
-                if check_numeric.isna().any():
-                    current_run.log_error(
-                        f"Le fichier {entry.name} contient des valeurs non numériques dans la colonne {col}."
-                    )
-                    raise ValueError(
-                        f"Valeurs non numériques trouvées dans la colonne {col} du fichier {entry.name}."
-                    )
-
-            df["year"] = int(year)
-            df["produit"] = campaign_rename_dict.get(campaign, campaign)
-            df["round"] = round_code.replace("r", "round ")
-
-            processed_df = process_dataframe(df, agg, {"file": entry.name})
-            all_data[agg].append(processed_df)
-
-            current_run.log_info(f"Fichier {entry.name} traité.")
-
-        except Exception as e:
-            current_run.log_error(f"Erreur sur {entry.name} : {str(e)}")
-            raise ValueError(f"Erreur sur {entry.name} : {str(e)}")
-
-    # combine results
-    df_csi = (
-        pd.concat(all_data["csi"], ignore_index=True)
-        if all_data["csi"]
-        else pd.DataFrame()
-    )
-    df_dist = (
-        pd.concat(all_data["district"], ignore_index=True)
-        if all_data["district"]
-        else pd.DataFrame()
-    )
-
-    current_run.log_info(
-        f"Importation des fichiers de cibles non-historiques terminée: CSI: {len(all_data['csi'])}, District: {len(all_data['district'])}"
-    )
-
-    return df_csi, df_dist
-
-
 def combine_target_data(
     dfs: list[pd.DataFrame],
 ) -> pd.DataFrame:
@@ -1017,6 +521,11 @@ def clean_org_unit_id(
 
         target_data_combined.drop(columns=["final_org_unit_id", "_merge"], inplace=True)
 
+        # drop LVL_2_NAME col (not needed)
+        target_data_combined = target_data_combined.drop(
+            columns=["LVL_2_NAME"], errors="ignore"
+        )
+
         return target_data_combined
     except Exception as e:
         current_run.log_error(
@@ -1025,27 +534,164 @@ def clean_org_unit_id(
         raise
 
 
-def save_output(target_data_combined: pd.DataFrame):
+def add_round_info_to_configured_target_data(
+    target_data_combined: pd.DataFrame,
+) -> pd.DataFrame:
     """
-    Save the combined target data to a parquet file.
+    Add round information to the combined target data for the configured campaigns, assuming that
+    the target data applies to all rounds of the campaign, except if there already exist round information
+    in the historical data for the campaign.
 
     Args:
         target_data_combined (pd.DataFrame): DataFrame containing the combined target data.
 
     Returns:
+        pd.DataFrame: DataFrame with added round information for the configured campaigns.
+    """
+    current_run.log_info(
+        "Ajout des informations de rounds pour les campagnes configurées..."
+    )
+    target_data_combined_historical = target_data_combined[
+        target_data_combined["round"].notna()
+    ]
+    target_data_combined_configured = target_data_combined[
+        target_data_combined["round"].isna()
+    ]
+
+    # if there already exist round info for the same combination of year-produit in the historical data,
+    # create new rounds upto 10 rounds starting from the max round number in the historical data for this
+    # combination. Otherwise, assign round 1 to 10 to the target data of the configured campaigns.
+    target_data_combined_historical["round_num"] = (
+        target_data_combined_historical["round"].str.extract(r"round (\d+)").astype(int)
+    )
+    max_rounds_historical = (
+        target_data_combined_historical.groupby(["year", "produit"])["round_num"]
+        .max()
+        .reset_index()
+    )
+    max_rounds_historical["round_start"] = max_rounds_historical["round_num"] + 1
+    max_rounds_historical["round_end"] = 10
+
+    target_data_combined_configured = target_data_combined_configured.merge(
+        max_rounds_historical[["year", "produit", "round_start", "round_end"]],
+        on=["year", "produit"],
+        how="left",
+    )
+
+    target_data_combined_configured["round"] = target_data_combined_configured.apply(
+        lambda row: [
+            f"round {i}"
+            for i in range(int(row["round_start"]), int(row["round_end"]) + 1)
+        ]
+        if not pd.isna(row["round_start"])
+        else [f"round {i}" for i in range(1, 11)],
+        axis=1,
+    )
+    target_data_combined_configured = target_data_combined_configured.explode(
+        "round"
+    ).reset_index(drop=True)
+    target_data_combined_configured = target_data_combined_configured.drop(
+        columns=["round_start", "round_end"]
+    )
+    target_data_combined = pd.concat(
+        [target_data_combined_historical, target_data_combined_configured],
+        ignore_index=True,
+    )
+    target_data_combined = target_data_combined.drop(
+        columns=["round_num"], errors="ignore"
+    )
+
+    return target_data_combined
+
+
+def save_file(df: pd.DataFrame, file_name: str) -> None:
+    """
+    Save the cleaned org unit tree data to a parquet file.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing the cleaned org unit tree data.
+        file_name (str): Name of the file to save the DataFrame as.
+
+    Returns:
         None
     """
-    current_run.log_info("Enregistrement des données cibles combinées...")
+    current_run.log_info("Enregistrement du fichier dans l'espace de travail...")
+    try:
+        if not os.path.exists(OUTPUTS_PATH):
+            os.makedirs(OUTPUTS_PATH)
+        file_path = os.path.join(
+            OUTPUTS_PATH,
+            f"{file_name}.parquet",
+        )
 
+        df.to_parquet(
+            file_path,
+            index=False,
+        )
+        current_run.log_info(f"Fichier enregistré avec succès: {file_path}")
+    except Exception as e:
+        current_run.log_error(f"Erreur lors de l'enregistrement du fichier: {e}")
+        raise e
+
+
+def export_to_dataset(df: pd.DataFrame, dataset_name: str) -> None:
+    """
+    Exports a DataFrame to an OpenHexa dataset in multiple formats (xlsx, parquet, csv).
+
+    Args:
+        df (pd.DataFrame): The configuration dataframe to export.
+        dataset_name (str): The name of the OpenHexa dataset.
+    """
+    current_run.log_info(
+        f"Préparation de l'exportation vers le dataset : {dataset_name}..."
+    )
+    dataset_slug = dataset_name.lower().strip().replace(" ", "-").replace("_", "-")
+    # 1. Manage Dataset Existence
+    try:
+        dataset = workspace.get_dataset(dataset_slug)
+        current_run.log_info(f"Dataset existant trouvé : {dataset_slug}")
+    except Exception:
+        current_run.log_info(f"Dataset {dataset_name} non trouvé. Création en cours...")
+        dataset = workspace.create_dataset(
+            name=dataset_name,
+            description="Données de configuration de campagne (multi-formats)",
+        )
+
+    # 2. Define Versioning
+    latest_version = dataset.latest_version
+    version_number = int(latest_version.name.lstrip("v")) + 1 if latest_version else 1
+    new_version_name = f"v{version_number}"
+
+    # 3. Create Local Files (Temporary Storage)
+    # Ensure the config directory exists
     if not os.path.exists(OUTPUTS_PATH):
         os.makedirs(OUTPUTS_PATH)
 
-    file_path = os.path.join(
-        OUTPUTS_PATH,
-        "combined_target_data.parquet",
+    # Define the file paths
+    base_path = os.path.join(OUTPUTS_PATH, dataset_name)
+    files_to_upload = {
+        "parquet": f"{base_path}.parquet",
+        "xlsx": f"{base_path}.xlsx",
+        "csv": f"{base_path}.csv",
+    }
+
+    # Save the dataframe in different formats
+    df.to_parquet(files_to_upload["parquet"], index=False)
+    df.to_excel(files_to_upload["xlsx"], index=False)
+    df.to_csv(files_to_upload["csv"], index=False)
+
+    # 4. Upload to Dataset Version
+    version = dataset.create_version(new_version_name)
+
+    for format_type, file_path in files_to_upload.items():
+        version.add_file(file_path, os.path.basename(file_path))
+        current_run.log_info(
+            f"Fichier {format_type} ajouté à la version {new_version_name}"
+        )
+
+    current_run.log_info(
+        f"Exportation terminée avec succès pour {dataset_name} ({new_version_name})"
     )
-    target_data_combined.to_parquet(file_path, index=False)
-    current_run.log_info(f"Données cibles combinées enregistrées dans {file_path}.")
 
 
 if __name__ == "__main__":

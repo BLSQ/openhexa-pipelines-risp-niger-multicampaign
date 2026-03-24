@@ -4,20 +4,10 @@ import os
 # paths
 PROJECT_FOLDER = "multi-campagne"
 WORKSPACE_PATH = workspace.files_path
+# WORKSPACE_PATH = os.path.join(
+#     os.getcwd(), "process_iaso_form_data", "workspace"
+# )  # local only
 OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "outputs")
-IASO_EXTRACTION_PATH = os.path.join(
-    WORKSPACE_PATH, PROJECT_FOLDER, "iaso_données_extraites"
-)
-
-# IASO Connector Instances
-connection = workspace.get_connection("iaso-pev-niger")
-iaso_connector_slug = {
-    "url": connection.url,
-    "username": connection.username,
-    "password": connection.password,
-}
-
-iaso_form_id = 1186
 
 # campaign name cleaning and mapping
 campaign_name_cleaning_dict = {
@@ -55,18 +45,6 @@ iaso_df_common_cols = [
 # coverage table
 cvrg_polio_cols = (
     [
-        "vitamine_a_12_24_mois_site_ordinaire",
-        "vitamine_a_12_24_mois_site_speciaux",
-        "vitamine_a_12_24_mois_site_speciaux_autre",
-        "vitamine_a_12_24_mois_site_speciaux_deplace_int",
-        "vitamine_a_12_24_mois_site_speciaux_gares",
-        "vitamine_a_12_24_mois_site_speciaux_marche",
-        "vitamine_a_12_24_mois_site_speciaux_nomad",
-        "vitamine_a_12_24_mois_site_speciaux_point_eau",
-        "vitamine_a_12_24_mois_site_speciaux_postefron",
-        "vitamine_a_12_24_mois_site_speciaux_refugie",
-        "vitamine_a_12_24_mois_site_trans_front_cote_front",
-        "vitamine_a_12_24_mois_site_trans_front_cote_niger",
         "vitamine_a_6_11_mois_site_ordinaire",
         "vitamine_a_6_11_mois_site_speciaux",
         "vitamine_a_6_11_mois_site_speciaux_autre",
@@ -79,6 +57,18 @@ cvrg_polio_cols = (
         "vitamine_a_6_11_mois_site_speciaux_refugie",
         "vitamine_a_6_11_mois_site_trans_front_cote_front",
         "vitamine_a_6_11_mois_site_trans_front_cote_niger",
+        "vitamine_a_12_24_mois_site_ordinaire",
+        "vitamine_a_12_24_mois_site_speciaux",
+        "vitamine_a_12_24_mois_site_speciaux_autre",
+        "vitamine_a_12_24_mois_site_speciaux_deplace_int",
+        "vitamine_a_12_24_mois_site_speciaux_gares",
+        "vitamine_a_12_24_mois_site_speciaux_marche",
+        "vitamine_a_12_24_mois_site_speciaux_nomad",
+        "vitamine_a_12_24_mois_site_speciaux_point_eau",
+        "vitamine_a_12_24_mois_site_speciaux_postefron",
+        "vitamine_a_12_24_mois_site_speciaux_refugie",
+        "vitamine_a_12_24_mois_site_trans_front_cote_front",
+        "vitamine_a_12_24_mois_site_trans_front_cote_niger",
     ]
     + [
         "zero_dose_vpo_0_11_mois_fois_site_ordinaire",
@@ -106,27 +96,27 @@ cvrg_polio_cols = (
     ]
     + [
         "depara_12_23_site_ordinaire",
+        "depara_12_23_site_speciaux_gares",
+        "depara_12_23_site_speciaux_marche",
+        "depara_12_23_site_speciaux_point_eau",
+        "depara_12_23_site_speciaux_nomad",
+        "depara_12_23_site_speciaux_deplace_int",
+        "depara_12_23_site_speciaux_refugie",
+        "depara_12_23_site_speciaux_autre",
+        "depara_12_23_site_trans_front_cote_niger",
+        "depara_12_23_site_trans_front_cote_front",
+        "depara_12_23_site_speciaux_postefron",
         "depara_24_59_site_ordinaire",
         "depara_24_59_site_speciaux",
-        "depara_12_23_site_speciaux_gares",
         "depara_24_59_site_speciaux_gares",
-        "depara_12_23_site_speciaux_marche",
         "depara_24_59_site_speciaux_marche",
-        "depara_12_23_site_speciaux_point_eau",
         "depara_24_59_site_speciaux_point_eau",
-        "depara_12_23_site_speciaux_nomad",
         "depara_24_59_site_speciaux_nomad",
-        "depara_12_23_site_speciaux_deplace_int",
         "depara_24_59_site_speciaux_deplace_int",
-        "depara_12_23_site_speciaux_refugie",
         "depara_24_59_site_speciaux_refugie",
-        "depara_12_23_site_speciaux_autre",
         "depara_24_59_site_speciaux_autre",
-        "depara_12_23_site_trans_front_cote_niger",
         "depara_24_59_site_trans_front_cote_niger",
-        "depara_12_23_site_trans_front_cote_front",
         "depara_24_59_site_trans_front_cote_front",
-        "depara_12_23_site_speciaux_postefron",
         "depara_24_59_site_speciaux_postefron",
     ]
 )
@@ -162,18 +152,6 @@ cvrg_rougeole_cols = (
         "nombre_dose_12_fixe",
         "nombre_vacine_12_fixe",
     ]
-    # + [  # Lionel: why do we add these columns for rougeole coverage (they are specific to Polio)? Check with Fernando
-    #     "zero_dose_vpo_0_11_mois_fois_site_ordinaire",
-    #     "zero_dose_vpo_0_11_mois_fois_site_speciaux",
-    #     "zero_dose_vpo_0_11_mois_fois_site_speciaux_postefron",
-    #     "zero_dose_vpo_0_11_mois_fois_site_trans_front_cote_front",
-    #     "zero_dose_vpo_0_11_mois_fois_site_trans_front_cote_niger",
-    #     "zero_dose_vpo_12_59_mois_fois_site_ordinaire",
-    #     "zero_dose_vpo_12_59_mois_fois_site_speciaux",
-    #     "zero_dose_vpo_12_59_mois_fois_site_speciaux_postefron",
-    #     "zero_dose_vpo_12_59_mois_fois_site_trans_front_cote_front",
-    #     "zero_dose_vpo_12_59_mois_fois_site_trans_front_cote_niger",
-    # ]
     + [
         "nombre_zero_dose_6_avance",
         "nombre_vacine_6_avance",

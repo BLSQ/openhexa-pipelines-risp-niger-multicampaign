@@ -44,9 +44,9 @@ def build_visualisation_tables():
     Main pipeline function to build visualisation tables.
     """
     # data imports
-    combined_df = import_iaso_combined_data()
-    target_df = import_target_data()
-    combined_campaign_data_df = import_combined_campaign_data()
+    combined_df = load_data("combined_iaso_data")
+    target_df = load_data("combined_target_data")
+    combined_campaign_data_df = load_data("combined_campaign_data")
 
     # create datasets
     cvrg_total, cvrg_df = create_coverage_dataset(
@@ -81,6 +81,34 @@ def build_visualisation_tables():
     write_to_db(products_filter_table, "ner_vaccination_products_filter_table")
     write_to_db(combination_filter_table, "ner_vaccination_combination_filter_table")
     write_to_db(spatial_units_combined, "ner_spatial_units")
+
+
+def load_data(name: str) -> pd.DataFrame:
+    """
+    Import data from a specified file in the outputs directory.
+    The file should be in parquet format and the name should be provided without the extension.
+
+    Args:
+        name (str): Name of the file to be imported (without extension).
+    Returns:
+        pd.DataFrame: DataFrame containing the imported data.
+    """
+    current_run.log_info(f"Importation du fichier {name}...")
+    try:
+        if not os.path.exists(OUTPUTS_PATH):
+            os.makedirs(OUTPUTS_PATH)
+
+        file_path = os.path.join(
+            OUTPUTS_PATH,
+            f"{name}.parquet",
+        )
+        df = pd.read_parquet(file_path)
+        current_run.log_info(f"Fichier importé avec succès: {file_path}")
+        return df
+
+    except Exception as e:
+        current_run.log_error(f"Erreur lors de l'importation du fichier {name}: {e}")
+        raise
 
 
 def import_iaso_combined_data() -> pd.DataFrame:

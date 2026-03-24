@@ -1,0 +1,5 @@
+workspace/
+workspace.yaml
+*.ipynb
+*.parquet
+*.gpkg

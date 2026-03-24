@@ -1,4 +1,3 @@
-import numpy as np
 import pandas as pd
 
 
@@ -55,8 +54,8 @@ def site_categorizer(string):
         "site_speciaux_postefron": "frontalier",
         "site_trans_front_cote_front": "transfrontalier : étranger",
         "site_trans_front_cote_niger": "transfrontalier : Niger",
-        "site_speciaux_deplace_int": "déplacés internes",
-        "site_speciaux_refugie": "réfugiés",
+        "site_speciaux_deplace_int": "spécial",
+        "site_speciaux_refugie": "spécial",
         "site_speciaux": "spécial",
         "site_speciaux_autre": "spécial",
         "fixe": "fixe",

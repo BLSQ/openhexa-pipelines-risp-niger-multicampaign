@@ -1,5 +1,3 @@
-"""Template for newly generated pipelines."""
-
 from openhexa.sdk import current_run, pipeline, workspace
 import requests
 import papermill as pm
@@ -9,7 +7,7 @@ import time
 
 @pipeline(
     "orchestrate_pipelines_flow",
-    name="multi-campagne - 02 - Pipeline de sauvegarde des données multi-campagnes dans la DB",
+    name="multi-campagne - 04 - Pipeline de sauvegarde des données multi-campagnes dans la DB",
 )
 def orchestrate_pipelines_flow():
     """
@@ -32,19 +30,19 @@ def get_hexa_connection():
 
 def define_actions():
     return {
-        "multi-campagne-import-et-traitement-des-donnees-de-cibles": {
-            "type": "pipeline",
-            "url": "https://api.openhexa.org/pipelines/MjI4NzA4ODQtZjQzMy00OGZmLTkyOTUtOWVmZWZjZDY2MWZlOjF3MTNXOTpRMnFoS2d3ck1QVjRQRERrZ3pOdUtYYktUSlU5RkhwN2VFOUhUWmwzUzcw/run",
-            "params": {},
-        },
         "multi-campagne-etablissement-de-la-structure-des-donnees-attendues": {
             "type": "pipeline",
             "url": "https://api.openhexa.org/pipelines/ZjIzYzgyMzctODk2Ni00OWQ2LWFlYmQtZmQxNWJiNjQ1OTM1OjF3MTNXdDpYZFlncVI5cUVRMTRUNHJMNmJJaWNuR2ZadkU0eUFobXUtMG9NUU1Cd0Rn/run",
             "params": {},
         },
-        "multi-campagne-extraction-et-traitement-des-donnees-du-formulaire-iaso": {
+        "multi-campagne-extraction-des-donnees-du-formulaire-iaso": {
             "type": "pipeline",
-            "url": "https://api.openhexa.org/pipelines/NDgzMzcyMDMtNjFlNS00NzYxLTk2YjQtMWIxZWU0MDc3NWJkOjF3MTNYSzpMSHRHWERsMFhtTnFnTVRmTjBQWnlzQzVWVU5TRE1ibU9CTjNkZVhNVDlj/run",
+            "url": "https://api.openhexa.org/pipelines/MTJhMzU0MzItMGIyZS00NTRmLTgzYzItZTljOGZkZmI3M2M1OjF3NTRESDpHYlJ3Qm04VG1rSklsYjNrVkZKZVhOZ05QbUJWZm5ZR2w2MG5rUE16M3Zr/run",
+            "params": {},
+        },
+        "multi-campagne-traitement-des-donnees-du-formulaire-iaso": {
+            "type": "pipeline",
+            "url": "https://api.openhexa.org/pipelines/MTExOGRjZWEtMjZhOS00OTI1LTk4NWYtODM5YWYzNjk1YjZkOjF3NTRFVjprNm5tdFJFcHVMaWNQRTVVLTB4MlQyQXpJUnJ0MFNkWlpsTlZXRzRWc3Nv/run",
             "params": {},
         },
         "multi-campagne-construction-des-tableaux-pour-la-visualisation": {
