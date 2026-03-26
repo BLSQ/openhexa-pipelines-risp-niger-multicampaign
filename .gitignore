@@ -1,6 +1,8 @@
+# ignore these files and folders
 .vscode/
 *.yaml
 **/workspace/
 **/__pycache__/**
 *.ipynb
 *.parquet
+*.gpkg

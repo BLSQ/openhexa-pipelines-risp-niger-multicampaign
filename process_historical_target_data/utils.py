@@ -4,19 +4,13 @@ from fuzzywuzzy import fuzz, process
 import unicodedata
 
 
-def normalize_string(text: str) -> str:
+def normalize_string(text):
     """
     Normalizes a string:
-        - Lowercase & Accent removal
-        - Removes suffixes even if glued to text (e.g., 'CSITagadofet' -> 'tagadofet')
-        - Removes special characters
-        - Collapses internal spaces
-
-    Args:
-        text (str): The string to normalize.
-
-    Returns:
-        str: The normalized string.
+    - Lowercase & Accent removal
+    - Removes suffixes even if glued to text (e.g., 'CSITagadofet' -> 'tagadofet')
+    - Removes special characters
+    - Collapses internal spaces
     """
     if not isinstance(text, str):
         return ""

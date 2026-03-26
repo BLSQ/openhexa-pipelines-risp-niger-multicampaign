@@ -1,5 +1,3 @@
-"""Template for newly generated pipelines."""
-
 from openhexa.sdk import current_run, pipeline, workspace
 import requests
 import papermill as pm
@@ -9,11 +7,11 @@ import time
 
 @pipeline(
     "orchestrate_pipelines_flow",
-    name="multi-campagne - 02 - Pipeline de sauvegarde des données multi-campagnes dans la DB",
+    name="multi-campagne - 04 - Pipeline de sauvegarde des données multi-campagnes dans la DB",
 )
 def orchestrate_pipelines_flow():
     """
-    This pipeline orchestrates the execution of the Multi-campaign pipelines in sequence.
+    This pipeline orchestrates the execution of the Multi-campaign pipelines in sequence
     """
     hexa = get_hexa_connection()
     actions = define_actions()
@@ -22,6 +20,15 @@ def orchestrate_pipelines_flow():
 
 
 def get_hexa_connection():
+    """
+    Establish a connection to the OpenHEXA platform using a custom workspace connection.
+
+    Args:
+        None
+
+    Returns:
+        OpenHEXAClient: An authenticated OpenHEXA client instance.
+    """
     connection = workspace.custom_connection("risp-ner-campagnes-connection")
     RISP_NER_CAMPAIGN_TOKEN = connection.token
     hexa = OpenHEXAClient("https://app.openhexa.org")
@@ -30,21 +37,30 @@ def get_hexa_connection():
     return hexa
 
 
-def define_actions():
-    return {
-        "multi-campagne-import-et-traitement-des-donnees-de-cibles": {
-            "type": "pipeline",
-            "url": "https://api.openhexa.org/pipelines/MjI4NzA4ODQtZjQzMy00OGZmLTkyOTUtOWVmZWZjZDY2MWZlOjF3MTNXOTpRMnFoS2d3ck1QVjRQRERrZ3pOdUtYYktUSlU5RkhwN2VFOUhUWmwzUzcw/run",
-            "params": {},
-        },
+def define_actions() -> dict:
+    """
+    Define the actions to be executed in the pipeline, including the pipelines to be run and their parameters.
+
+    Args:
+        None
+
+    Returns:
+        action_dict (dict): A dictionary containing the actions to be executed in the pipeline.
+    """
+    action_dict = {
         "multi-campagne-etablissement-de-la-structure-des-donnees-attendues": {
             "type": "pipeline",
             "url": "https://api.openhexa.org/pipelines/ZjIzYzgyMzctODk2Ni00OWQ2LWFlYmQtZmQxNWJiNjQ1OTM1OjF3MTNXdDpYZFlncVI5cUVRMTRUNHJMNmJJaWNuR2ZadkU0eUFobXUtMG9NUU1Cd0Rn/run",
             "params": {},
         },
-        "multi-campagne-extraction-et-traitement-des-donnees-du-formulaire-iaso": {
+        "multi-campagne-extraction-des-donnees-du-formulaire-iaso": {
             "type": "pipeline",
-            "url": "https://api.openhexa.org/pipelines/NDgzMzcyMDMtNjFlNS00NzYxLTk2YjQtMWIxZWU0MDc3NWJkOjF3MTNYSzpMSHRHWERsMFhtTnFnTVRmTjBQWnlzQzVWVU5TRE1ibU9CTjNkZVhNVDlj/run",
+            "url": "https://api.openhexa.org/pipelines/MTJhMzU0MzItMGIyZS00NTRmLTgzYzItZTljOGZkZmI3M2M1OjF3NTRESDpHYlJ3Qm04VG1rSklsYjNrVkZKZVhOZ05QbUJWZm5ZR2w2MG5rUE16M3Zr/run",
+            "params": {},
+        },
+        "multi-campagne-traitement-des-donnees-du-formulaire-iaso": {
+            "type": "pipeline",
+            "url": "https://api.openhexa.org/pipelines/MTExOGRjZWEtMjZhOS00OTI1LTk4NWYtODM5YWYzNjk1YjZkOjF3NTRFVjprNm5tdFJFcHVMaWNQRTVVLTB4MlQyQXpJUnJ0MFNkWlpsTlZXRzRWc3Nv/run",
             "params": {},
         },
         "multi-campagne-construction-des-tableaux-pour-la-visualisation": {
@@ -53,6 +69,8 @@ def define_actions():
             "params": {},
         },
     }
+
+    return action_dict
 
 
 class OpenHEXAClient:
@@ -67,10 +85,18 @@ class OpenHEXAClient:
         self,
         with_credentials: tuple[str, str] | None = None,
         with_token: str | None = None,
-    ):
+    ) -> None:
         """
-        with_credentials: tuple of email and password
-        with_token: JWT token
+        Authenticate the client using either credentials (email and password) or a token.
+
+        Args:
+            with_credentials (tuple[str, str], optional): A tuple containing the email and
+                                                          password for authentication.
+                                                          Defaults to None.
+            with_token (str, optional): A token for authentication. Defaults to None.
+
+        Returns:
+            None
         """
         if with_credentials:
             resp = self._graphql_request(
@@ -98,29 +124,62 @@ class OpenHEXAClient:
         elif with_token:
             self.session.headers.update({"Authorization": f"Bearer {with_token}"})
 
-    def pipelinerun(self, runid):
+    def pipelinerun(self, runid) -> dict:
+        """
+        Retrieve the pipeline run data for a given run ID.
+
+        Args:
+            runid (str): The ID of the pipeline run to retrieve.
+
+        Returns:
+            dict: The pipeline run data.
+        """
         res = self.query(
             f"""
             query {{
-             		pipelineRun (id: "{runid}" )
-              		{{run_id
-                     executionDate
-                     status
-                     messages {{ 
-      		            message
-      		            timestamp}}
+                    pipelineRun (id: "{runid}" )
+                    {{run_id
+                        executionDate
+                        status
+                        messages {{ 
+                        message
+                        timestamp}}
                         }}
                 }}"""
         )
 
         return res
 
-    def _graphql_request(self, operation, variables=None):
+    def _graphql_request(
+        self, operation: str, variables: dict | None = None
+    ) -> requests.Response:
+        """
+        Sends a GraphQL request to the OpenHEXA API.
+
+        Args:
+            operation (str): The GraphQL query or mutation to be executed.
+            variables (dict, optional): A dictionary of variables to be included
+            in the GraphQL request. Defaults to None.
+
+        Returns:
+            requests.Response: The response object from the GraphQL request.
+        """
         return self.session.post(
             f"{self.url}/graphql", json={"query": operation, "variables": variables}
         )
 
-    def query(self, operation, variables=None):
+    def query(self, operation: str, variables: dict | None = None) -> dict:
+        """
+        Sends a GraphQL query to the OpenHEXA API.
+
+        Args:
+            operation (str): The GraphQL query to be executed.
+            variables (dict, optional): A dictionary of variables to be included
+            in the GraphQL request. Defaults to None.
+
+        Returns:
+            dict: The data returned from the GraphQL query.
+        """
         resp = self._graphql_request(operation, variables)
         if resp.status_code == 400:
             raise Exception(resp.json()["errors"][0]["message"])
