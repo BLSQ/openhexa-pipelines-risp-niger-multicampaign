@@ -97,15 +97,24 @@ def generate_targets_templates(
     campaign_scale: list,
     year: int,
     aggregation_level: str,
-):
+) -> None:
     """
     This pipeline generates target templates for each campaign type based on the organizational unit tree
     data from IASO. It retrieves the org unit tree data, cleans it, creates template files for each campaign
-    type, and saves the cleaned org unit tree data for future use
+    type, and saves the cleaned org unit tree data for future use.
+
+    Args:
+        campaign (str): The type of campaign for which to generate the target template.
+        campaign_scale (list): The scale of the campaign (e.g., national, regional).
+        year (int): The year of the campaign.
+        aggregation_level (str): The level of aggregation for the campaign (e.g., CSI, District).
+
+    Returns:
+        None
     """
     inspect_params(campaign_scale, year)
     iaso_org_unit_tree_df_clean = load_data("iaso_org_unit_tree_clean")
-    create_template_files(
+    create_template_file(
         iaso_org_unit_tree_df_clean,
         campaign,
         campaign_scale,
@@ -115,11 +124,18 @@ def generate_targets_templates(
 
 
 def inspect_params(
-    campaign_scale,
-    year,
-):
+    campaign_scale: list,
+    year: int,
+) -> None:
     """
-    This function runs checks on the parmater choices for year, round, age, site, and strategy
+    Runs checks on the parmater choices for campaign scale and year to ensure they are valid.
+
+    Args:
+        campaign_scale (list): the scale of the campaign
+        year (int): the year of the campaign
+
+    Returns:
+        None
     """
     current_run.log_info("Vérification des choix des paramètres...")
 
@@ -139,17 +155,14 @@ def inspect_params(
 
 
 def load_data(file_name: str) -> pd.DataFrame:
-    """Read a table from the workspace database and return it as a dataframe.
+    """
+    Load data from a parquet file in the OUTPUTS_PATH.
 
-    Parameters
-    ----------
-    file_name : str
-        The name of the file to read from.
+    Args:
+        file_name (str): The name of the file to read from.
 
-    Returns
-    -------
-    pd.DataFrame
-        The dataframe containing the file data.
+    Returns:
+        df (pd.DataFrame): The dataframe containing the file data.
     """
     current_run.log_info(
         f"Lecture des données de la pyramide des unités organisationnelles depuis le fichier {file_name}..."
@@ -172,7 +185,7 @@ def load_data(file_name: str) -> pd.DataFrame:
         raise
 
 
-def create_template_files(
+def create_template_file(
     org_unit_df: pd.DataFrame,
     campaign: str,
     campaign_scale: list,
@@ -180,7 +193,9 @@ def create_template_files(
     aggregation_level: str,
 ) -> pd.DataFrame:
     """
-    Create template files for each organizational unit based on the cleaned org unit tree data.
+    Create a pre-formatted template Excel file containing the organizational units and target columns for
+    a given campaign, campaign scale, year, and aggregation level. The file is saved in the
+    TEMPLATES_PATH and also returned as a DataFrame.
 
     Args:
         org_unit_df (pd.DataFrame): DataFrame containing the cleaned org unit tree data.
@@ -190,7 +205,7 @@ def create_template_files(
         aggregation_level (str): The level of aggregation for the campaign.
 
     Returns:
-        pd.DataFrame: DataFrame containing the template files for each organizational unit.
+        df (pd.DataFrame): DataFrame containing the template files for each organizational unit.
     """
     current_run.log_info(
         "Création des fichiers templates pour chaque unité organisationnelle..."

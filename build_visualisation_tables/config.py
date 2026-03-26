@@ -178,7 +178,30 @@ cvrg_campaign_map = {
     "tcv": cvrg_tcv_cols,
 }
 
-district_level_target_keys = [
+cvrg_yellow_fever_age_adjustment = {
+    "12-23 mois": "12-59 mois",
+    "24-59 mois": "12-59 mois",
+    "0-11 mois": "9-11 mois",
+}
+
+cvrg_rougeole_age_adjustment = {
+    "6-9 mois": "6-11 mois",
+    "9-11 mois": "6-11 mois",
+}
+
+cvrg_group_by_cols = [
+    "year",
+    "round",
+    "period",
+    "age",
+    "sexe",
+    "org_unit_id",
+    "produit",
+    "vaccination_status",
+    "site",
+]
+
+cvrg_district_level_target_keys = [
     "year",
     "round",
     "age",
@@ -186,7 +209,7 @@ district_level_target_keys = [
     "LVL_3_NAME",
 ]
 
-district_level_group_keys = district_level_target_keys + [
+cvrg_district_level_group_keys = cvrg_district_level_target_keys + [
     "period",
     "order_day",
     "sexe",
@@ -194,38 +217,26 @@ district_level_group_keys = district_level_target_keys + [
     "site",
 ]
 
-district_level_final_keys = district_level_group_keys + [
+cvrg_district_level_final_keys = cvrg_district_level_group_keys + [
     "org_unit_id",
     "value",
     "cible",
 ]
 
-district_level_cumsum_keys = list(
-    (set(district_level_group_keys) | {"org_unit_id"}) - {"period"} - {"order_day"}
+cvrg_district_level_cumsum_keys = list(
+    (set(cvrg_district_level_group_keys) | {"org_unit_id"}) - {"period"} - {"order_day"}
 )
 
-csi_level_target_keys = list(
-    (set(district_level_target_keys) | {"org_unit_id"}) - {"LVL_3_NAME"}
+cvrg_csi_level_target_keys = list(
+    (set(cvrg_district_level_target_keys) | {"org_unit_id"}) - {"LVL_3_NAME"}
 )
 
-csi_level_final_keys = district_level_final_keys + ["LVL_6_NAME"]
+cvrg_csi_level_final_keys = cvrg_district_level_final_keys + ["LVL_6_NAME"]
 
-csi_level_cumsum_keys = district_level_cumsum_keys + ["LVL_6_NAME"]
-
-csi_level_config = {
-    2025: {
-        "fièvre jaune": ["round 1"],
-        "méningite": ["round 1", "round 2"],
-        "tcv": ["round 1", "round 2"],
-    },
-    2026: {
-        "fièvre jaune": ["round 1"],
-        "vaccin polio": ["round 1"],
-    },
-}
+cvrg_csi_level_cumsum_keys = cvrg_district_level_cumsum_keys + ["LVL_6_NAME"]
 
 # completeness table
-product_campaign_mapping = {
+cmpl_product_campaign_mapping = {
     "vaccin polio": "polio",
     "vitamine A": "polio",
     "albendazole": "polio",
@@ -234,6 +245,12 @@ product_campaign_mapping = {
     "méningite": "méningite",
     "tcv": "tcv",
 }
+
+cmpl_cols_selection_1 = ["year", "round", "org_unit_id", "choix_campagne", "period"]
+cmpl_cols_selection_2 = [
+    col for col in cmpl_cols_selection_1 if col != "choix_campagne"
+] + ["produit"]
+cmpl_cols_selection_3 = [col for col in cmpl_cols_selection_1 if col != "period"]
 
 # stocks table
 stock_polio_cols = (
@@ -294,6 +311,10 @@ stock_tcv_cols = (
     ]
 )
 
+stocks_cols_selection_1 = ["period", "round", "year", "org_unit_id"]
+stocks_cols_selection_2 = stocks_cols_selection_1 + ["produit", "product_status"]
+stocks_cols_selection_3 = stocks_cols_selection_1 + ["produit"]
+
 stocks_campaign_map = {
     "polio": stock_polio_cols,
     "fièvre jaune": stock_fjaune_cols,
@@ -312,34 +333,37 @@ stock_ratios_config = {
     "tcv": 1,
 }
 
-# surveillance table
-surveillance_polio_cols = [
+# supervision table
+supervision_polio_cols = [
     "nbre_cas_pfa_notifie",
     "nbre_cas_mapi_notifie_mapi",
     "nbre_cas_mapi_majeur_notifie_mapi",
 ]
-surveillance_rougeole_cols = [
+supervision_rougeole_cols = [
     "nombre_MAPI_non_grave",
     "nombre_MAPI_graves",
 ]
-surveillance_fjaune_cols = [
+supervision_fjaune_cols = [
     "nbre_cas_pfa_notifie_fievre_jaune",
     "nbre_cas_fievre_jaune_notifie_fievre_jaune",
     "nbre_cas_mapi_notifie_mapi_fievre_jaune",
     "nbre_cas_mapi_majeur_notifie_mapi_fievre_jaune",
 ]
-surveillance_men5_cols = [
+supervision_men5_cols = [
     "men5_total_de_cas_de_pfa_signales",
     "men5_mapi_mineurs",
     "men5_mapi_graves",
 ]
 
-surveillance_campaign_map = {
-    "polio": surveillance_polio_cols,
-    "rougeole": surveillance_rougeole_cols,
-    "fièvre jaune": surveillance_fjaune_cols,
-    "méningite": surveillance_men5_cols,
+supervision_campaign_map = {
+    "polio": supervision_polio_cols,
+    "rougeole": supervision_rougeole_cols,
+    "fièvre jaune": supervision_fjaune_cols,
+    "méningite": supervision_men5_cols,
 }
+
+supervision_cols_selection_1 = ["period", "round", "year", "org_unit_id"]
+supervision_cols_selection_2 = supervision_cols_selection_1 + ["choix_campagne"]
 
 # communication table
 communication_deployment_polio = [
@@ -595,7 +619,7 @@ communication_category_groups = {
 cols_campaign_map = {
     "polio": cvrg_polio_cols
     + stock_polio_cols
-    + surveillance_polio_cols
+    + supervision_polio_cols
     + communication_deployment_polio
     + communication_denombrement_polio
     + communication_reach_polio
@@ -604,7 +628,7 @@ cols_campaign_map = {
     + communication_activities_polio,
     "fièvre jaune": cvrg_fjaune_cols
     + stock_fjaune_cols
-    + surveillance_fjaune_cols
+    + supervision_fjaune_cols
     + communication_deployment_fjaune
     + communication_denombrement_fjaune
     + communication_reach_fjaune
@@ -613,7 +637,7 @@ cols_campaign_map = {
     + communication_activities_fjaune,
     "rougeole": cvrg_rougeole_cols
     + stock_rougeole_cols
-    + surveillance_rougeole_cols
+    + supervision_rougeole_cols
     + communication_deployment_rougeole
     + communication_denombrement_rougeole
     + communication_reach_rougeole
@@ -622,7 +646,7 @@ cols_campaign_map = {
     + communication_activities_rougeole,
     "méningite": cvrg_meningite_cols
     + stock_men5_cols
-    + surveillance_men5_cols
+    + supervision_men5_cols
     + communication_deployment_men5_cols
     + communication_denombrement_men5_cols
     + communication_reach_men5_cols

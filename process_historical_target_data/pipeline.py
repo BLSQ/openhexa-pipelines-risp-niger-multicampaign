@@ -29,7 +29,9 @@ from config import (
 )
 def process_historical_target_data():
     """
-    Main pipeline function to process target data from historical vaccination campaigns
+    This pipelines imports and processes historical target data for various vaccination
+    campaigns in Niger, including polio, rougeole, yellow fever, and men5_tcv, that took place
+    between July 2024 and January 2026.
     """
     iaso_org_unit_tree_df_clean = load_data("iaso_org_unit_tree_clean")
 
@@ -95,8 +97,9 @@ def load_data(name: str) -> pd.DataFrame:
 
     Args:
         name (str): Name of the file to be imported (without extension).
+
     Returns:
-        pd.DataFrame: DataFrame containing the imported data.
+        df (pd.DataFrame): DataFrame containing the imported data.
     """
     current_run.log_info(f"Importation du fichier {name}...")
     try:
@@ -124,7 +127,7 @@ def import_target_data_for_polio_2024_r1_r4() -> pd.DataFrame:
         None
 
     Returns:
-        pd.DataFrame: DataFrame containing the target data for Polio 2024 rounds 1 to 4
+        target_polio_2024 (pd.DataFrame): DataFrame containing the target data for Polio campaign 2024 rounds 1 to 4
     """
     try:
         if not os.path.exists(TARGETS_HISTORICAL_PATH):
@@ -197,7 +200,7 @@ def import_target_data_for_polio_and_rougeole_2025_r1_r2() -> pd.DataFrame:
         None
 
     Returns:
-        pd.DataFrame: DataFrame containing the target data for polio and rougeole campaigns year 2025 rounds 1 and 2
+        target_polio_rougeole_2025 (pd.DataFrame): DataFrame containing the target data for polio and rougeole campaigns year 2025 rounds 1 and 2
     """
     current_run.log_info(
         "Importation des données de cibles pour la polio et rougeole 2025..."
@@ -255,7 +258,7 @@ def import_target_data_for_yellow_fever_2025_2026_r1() -> pd.DataFrame:
         None
 
     Returns:
-        pd.DataFrame: DataFrame containing the target data for yellow fever campaign year 2025 and 2026 rounds 1 for the regions of Dosso and Tahoua
+        target_yellow_fever_2025_2026_r1 (pd.DataFrame): DataFrame containing the target data for yellow fever campaign year 2025 and 2026 rounds 1 for the regions of Dosso and Tahoua
     """
     current_run.log_info(
         "Importation des données de cibles historiques pour la campagne fièvre jaune 2025/2026 rounds 1..."
@@ -330,7 +333,7 @@ def import_target_data_for_men5_and_tcv_2025_r1_r2() -> pd.DataFrame:
         None
 
     Returns:
-        pd.DataFrame: DataFrame containing the target data for yellow fever campaign year 2025 rounds 1 and 2
+        target_men5_tcv_2025_clean (pd.DataFrame): DataFrame containing the target data for men5 and tcv campaigns year 2025 rounds 1 and 2
     """
     current_run.log_info(
         "Importation des données de cibles pour la campagne Méningite et TCV 2025..."
@@ -381,7 +384,9 @@ def import_target_data_for_men5_and_tcv_2025_r1_r2() -> pd.DataFrame:
 
 def import_target_data_for_polio_2026_r1() -> pd.DataFrame:
     """
-    Import target data for polio campaign for year 2026 round 1
+    Import target data for polio campaign for year 2026 round 1.
+
+    NB: this campaign was initially planned in 2025 (as the file name suggests) but got postponed to 2026
 
     Args:
         None
@@ -447,7 +452,15 @@ def match_csi_to_org_unit_id(
     csi_level_target_df: pd.DataFrame, iaso_org_unit_tree_df_clean: pd.DataFrame
 ) -> pd.DataFrame:
     """
-    Match CSI names in df containing the CSI-level target data to organizational unit IDs using spatial data.
+    Match CSI names in df containing the CSI-level target data to organizational unit IDs
+    using the IASO org unit tree data.
+
+    NB:
+        - The matching is performed using a fuzzy matching approach based on the Levenshtein distance
+          between the cleaned CSI names in the target data and the cleaned spatial match field in the
+          IASO org unit tree data.
+        - A threshold is applied to determine acceptable matches, and manual corrections are made for
+          known matching failures.
 
     Args:
         csi_level_target_df (pd.DataFrame): DataFrame containing the target data at CSI level.
@@ -563,14 +576,19 @@ def match_district_to_org_unit_id(
     district_level_target_df: pd.DataFrame, iaso_org_unit_tree_df_clean: pd.DataFrame
 ) -> pd.DataFrame:
     """
-    Match district names in df containing the district-level target data to organizational unit IDs using iaso_org_unit_tree data.
+    Match district names in df containing the district-level target data to organizational unit IDs
+    using the IASO org unit tree data.
+
+    NB:
+        - The matching is performed using a simple merge on the district name field (LVL_3_NAME) which
+          has been cleansed manually in both datasets to ensure consistency.
 
     Args:
         district_level_target_df (pd.DataFrame): DataFrame containing the target data at district level.
         iaso_org_unit_tree_df_clean (pd.DataFrame): DataFrame containing the clean organisational units tree data.
 
     Returns:
-        pd.DataFrame: DataFrame with matched organizational unit IDs.
+        target_df_matched (pd.DataFrame): DataFrame with matched organizational unit IDs.
     """
     current_run.log_info("Matching district names to organizational unit IDs...")
     try:
@@ -607,13 +625,14 @@ def match_district_to_org_unit_id(
 
 def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Create rounds for the target data.
+    Create rounds for the target data based on dates of the vaccination campaigns
+    and add a product column based on the campaign and full_name columns.
 
     Args:
         target_df (pd.DataFrame): DataFrame containing the target data.
 
     Returns:
-        pd.DataFrame: DataFrame with rounds added.
+        target_df_expanded (pd.DataFrame): DataFrame with rounds and products added.
     """
     current_run.log_info("Ajout des rounds et des produits aux données de cibles...")
 
@@ -761,7 +780,7 @@ def combine_target_data(
         dfs (list[pd.DataFrame]): List of DataFrames to be combined.
 
     Returns:
-        pd.DataFrame: Combined DataFrame containing all target data.
+        target_data_combined (pd.DataFrame): Combined DataFrame containing all target data.
     """
     current_run.log_info("Combinaison des différentes données de cibles...")
     try:
@@ -778,10 +797,10 @@ def combine_target_data(
 
 def save_file(df: pd.DataFrame, file_name: str) -> None:
     """
-    Save the cleaned org unit tree data to a parquet file.
+    Save the given DataFrame as a parquet file in the outputs directory with the specified file name.
 
     Args:
-        df (pd.DataFrame): DataFrame containing the cleaned org unit tree data.
+        df (pd.DataFrame): DataFrame containing the data to be saved.
         file_name (str): Name of the file to save the DataFrame as.
 
     Returns:

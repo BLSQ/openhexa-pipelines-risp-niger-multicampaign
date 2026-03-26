@@ -1,9 +1,8 @@
 import io
 import time
-import numpy as np
+from openhexa.sdk import current_run
 import pandas as pd
 import requests
-import random
 import json
 from typing import Tuple, Dict, Any, List
 
@@ -21,9 +20,11 @@ def request_explanatory_decorator(function):
 
     """
 
-    def wrapper_request(url, headers, process_message):
+    def wrapper_request(
+        url: str, headers: dict, process_message: str
+    ) -> requests.Response | None:
         """
-        Wrapper function to handle requests and provide detailed error messages.
+        Wrapper function to handle API requests and provide detailed error messages.
 
         Parameters:
             url (str): The URL to send the request to.
@@ -31,7 +32,7 @@ def request_explanatory_decorator(function):
             process_message (str): A message describing the process for error context.
 
         Returns:
-            Response object if successful, None otherwise.
+            requests.Response | None: The response object from the GET request, or None if an error occurred.
         """
         try:
             r = function(url, headers)
@@ -62,7 +63,7 @@ def request_explanatory_decorator(function):
 
 
 @request_explanatory_decorator
-def request_with_explanation(url, headers):
+def request_with_explanation(url: str, headers: dict):
     """
     Sends a GET request to the specified URL with the provided headers.
 
@@ -71,12 +72,12 @@ def request_with_explanation(url, headers):
         headers (dict): The headers to include in the request.
 
     Returns:
-        Response object from the GET request.
+        requests.Response: The response object from the GET request.
     """
     return requests.get(url, headers=headers)
 
 
-def period_form_convert_date(row):
+def period_form_convert_date(row: pd.Series) -> str:
     """
     Converts various date formats to a standardized 'YYYY-MM-DD' format.
 
@@ -84,7 +85,7 @@ def period_form_convert_date(row):
         row (pd.Series): A pandas Series containing date information.
 
     Returns:
-        str: The converted date in 'YYYY-MM-DD' format or the original value if conversion fails.
+        str: The converted date in 'YYYY-MM-DD' string format or the original value if conversion fails.
     """
     val_0 = row.iloc[0]
 
@@ -106,7 +107,7 @@ def period_processing(df: pd.DataFrame) -> pd.DataFrame:
         df (pd.DataFrame): The input DataFrame containing a 'period' column.
 
     Returns:
-        pd.DataFrame: The DataFrame with the processed 'period' column.
+        df (pd.DataFrame): The DataFrame with the processed 'period' column.
     """
     df.period = df.period.mask(df.period == "Invalid date", None)
     df.period = df.period.mask(
@@ -120,134 +121,6 @@ def period_processing(df: pd.DataFrame) -> pd.DataFrame:
         ),
     )
     return df
-
-
-def empty_generator(values: np.ndarray, empty_quality: float) -> np.ndarray:
-    """
-    Generates NaN values based on a quality threshold.
-
-    Parameters:
-        values (np.ndarray): The input values to process.
-        empty_quality (float): The threshold for generating empty values (between 0 and 1)
-
-    Returns:
-        np.ndarray: An array with some values replaced by NaN based on the empty_quality threshold
-    """
-    return np.where(
-        np.random.default_rng().uniform(size=len(values)) > empty_quality,
-        values,
-        np.nan,
-    )
-
-
-def empty_generator_object(values: np.ndarray, empty_quality: float) -> np.ndarray:
-    """
-    Generates None values based on a quality threshold.
-
-    Parameters:
-        values (np.ndarray): The input values to process.
-        empty_quality (float): The threshold for generating empty values (between 0 and 1
-    """
-    return np.where(
-        np.random.default_rng().uniform(size=len(values)) > empty_quality, values, None
-    )
-
-
-def outlier_generator(values: np.ndarray) -> np.ndarray:
-    """
-    Generates outlier values.
-
-    Parameters:
-        values (np.ndarray): The input values to process.
-
-    Returns:
-        np.ndarray: An array with some values replaced by outliers.
-    """
-    outlier_thr = 0.005
-    return np.where(
-        np.random.default_rng().uniform(size=len(values)) < outlier_thr,
-        values,
-        np.multiply(np.random.default_rng().uniform(size=len(values)) * 100, values),
-    )
-
-
-def numbers_per_param(
-    param_required: bool,
-    size_picked: float,
-    stability_picked: float,
-    empty_quality: float,
-    periods: list,
-    integer_value: bool = True,
-):
-    """
-    Generates a list of numbers based on specified parameters.
-
-    Parameters:
-        param_required (bool): If True, ensures that a number is always generated.
-        size_picked (float): The mean value for the normal distribution.
-        stability_picked (float): The standard deviation factor for the normal distribution.
-        empty_quality (float): The quality threshold for generating empty values (between 0 and 1).
-        periods (list): The list of periods for which numbers are to be generated.
-        integer_value (bool, optional): If True, rounds the generated numbers to integers. Defaults to True.
-
-    Returns:
-        list: A list of generated numbers for each period.
-    """
-    raw_values = np.random.default_rng().normal(
-        loc=size_picked, scale=size_picked * stability_picked, size=len(periods)
-    )
-    values = outlier_generator(raw_values)
-    if integer_value:
-        values = values.round(0)
-    if not param_required:
-        values = empty_generator(values, empty_quality)
-
-    return list(values)
-
-
-def choice_from_list_for_periods(
-    choices_list: list,
-    periods: list,
-    n_choices: int = False,
-    param_required: bool = False,
-    empty_quality: int = 0.70,
-) -> list:
-    """
-    Generates a list of choices for given periods from a list of choices.
-
-    Parameters:
-        choices_list (list): The list of possible choices.
-        periods (list): The list of periods for which choices are to be generated.
-        n_choices (int, optional): The number of choices to select for each period. Defaults to False.
-        param_required (bool, optional): If True, ensures that a choice is always made. Defaults to False.
-        empty_quality (int, optional): The quality threshold for generating empty values. Defaults to 0.70.
-
-    Returns:
-        list: A list of generated choices for each period.
-    """
-    generator_choice_list = list()
-
-    if n_choices == 1:
-        while len(generator_choice_list) < len(periods):
-            generator_choice_list.append(random.sample(choices_list, k=n_choices)[0])
-    elif n_choices:
-        while len(generator_choice_list) < len(periods):
-            generator_choice_list.append(
-                " ".join(map(str, random.sample(choices_list, k=n_choices)))
-            )
-    else:
-        while len(generator_choice_list) < len(periods):
-            lenght = random.choice(range(1, len(choices_list) + 1))
-            generator_choice_list.append(
-                " ".join(map(str, random.sample(choices_list, k=lenght)))
-            )
-
-    if not param_required:
-        generator_choice_list = list(
-            empty_generator_object(generator_choice_list, empty_quality)
-        )
-
-    return generator_choice_list
 
 
 class Conector_from_Dict:
@@ -276,7 +149,7 @@ class IASOConnectionHandler:
 
     """
 
-    def __init__(self, iaso_connector_slug):
+    def __init__(self, iaso_connector_slug: Dict[str, Any]):
         """
         Initializes the IASO connection handler with the provided connector details.
 
@@ -297,11 +170,6 @@ class IASOConnectionHandler:
             "status",
         ]
 
-        # Parameter for records generations
-        self.sizelist = [10, 50, 100]
-        self.stable_condition = [0.05, 0.10, 0.20]
-        self.quality_reportig = [0.025, 0.05, 0.1]
-
     def connection(self) -> Dict[str, Any]:
         """
         Establishes a connection to the IASO API and retrieves authentication headers.
@@ -310,7 +178,7 @@ class IASOConnectionHandler:
             None
 
         Returns:
-            Dict[str, Any]: A dictionary containing the authentication headers.
+            headers (Dict[str, Any]): A dictionary containing the authentication headers.
         """
         creds = {
             "username": self.iaso_connector.username,
@@ -329,7 +197,7 @@ class IASOConnectionHandler:
             form_id (int): The ID of the form to retrieve metadata for.
 
         Returns:
-            Dict[str, Any]: A dictionary containing the form metadata.
+            form_metadata_dict (Dict[str, Any]): A dictionary containing the form metadata.
         """
         fields_scope_list = [
             "id",
@@ -345,7 +213,9 @@ class IASOConnectionHandler:
         form_metadata_dict = json.loads(r.content)
         return form_metadata_dict
 
-    def _get_form_dataframe_tuple_from_url(self, url: str) -> Tuple[Any]:
+    def _get_form_dataframe_tuple_from_url(
+        self, url: str
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Retrieves the form data structure from the provided URL.
 
@@ -353,7 +223,7 @@ class IASOConnectionHandler:
             url (str): The URL to retrieve the form data from.
 
         Returns:
-            Tuple[Any]: A tuple containing the survey and choices DataFrames.
+            form_df_raw_tuple (Tuple[pd.DataFrame, pd.DataFrame]): A tuple containing the survey and choices DataFrames.
         """
         try:
             r = requests.get(url)
@@ -370,17 +240,23 @@ class IASOConnectionHandler:
         return form_df_raw_tuple
 
     def _get_data_structure_from_form_tuple(
-        self, form_df_raw_tuple: Tuple[Any]
-    ) -> pd.DataFrame:
+        self, form_df_raw_tuple: Tuple[pd.DataFrame, pd.DataFrame]
+    ) -> None:
         """
-        Extracts the data structure from the form dataframes (survey and choices).
+        Processes the raw survey and choice forms DataFrames to define and store the
+        internal data structure.
+
+        This method extracts field names and types from the survey sheet and maps
+        them to their corresponding option lists from the choices sheet. It stores
+        the final schema in 'self.form_data_structure_df' for use in data
+        validation and formatting.
 
         Parameters:
             form_df_raw_tuple (Tuple[pd.DataFrame, pd.DataFrame]):
-                A tuple containing the survey and choices dataframes.
+                A tuple containing the (survey, choices) DataFrames from the XLSForm.
 
         Returns:
-            pd.DataFrame: A dataframe representing the form data structure.
+            None: Updates the instance attributes in-place.
         """
         survey_tab_df = form_df_raw_tuple[0]
         needed_cols = ["type", "name", "relevant", "required", "constraint"]
@@ -444,164 +320,41 @@ class IASOConnectionHandler:
             form_id (int): The ID of the form to retrieve data from.
 
         Returns:
-            None
+            None: Updates the instance attributes in-place with the form data structure.
         """
         excel_url = self._get_form_metadata(form_id)["latest_form_version"]["xls_file"]
         self._get_data_structure_from_form_tuple(
             self._get_form_dataframe_tuple_from_url(excel_url)
         )
 
-    def get_cols_from_the_form(self, type: str | None = None):
+    def get_cols_from_the_form(self, type_filter: str | None = None) -> zip:
         """
         Retrieves columns from the form data structure, optionally filtered by type.
 
         Parameters:
-            type (str, optional): The type of columns to filter by. Defaults to None.
+            type_filter (str, optional): The type of columns to filter by (e.g., 'integer').
+                                        Defaults to None.
 
         Returns:
-            generator: A generator yielding tuples of (name, required_bool, type, choices).
+            col_info_zip(zip): A generator yielding tuples of (name, required_bool, type, choices).
         """
-        if type:
-            filtered_param_df = self.form_data_structure_df[
-                self.form_data_structure_df.type == type
-            ]
-            sub_cols = lambda: zip(
-                filtered_param_df.name.tolist(),
-                filtered_param_df.required_bool.tolist(),
-                filtered_param_df.type.tolist(),
-                filtered_param_df.choices.tolist(),
-            )
-        else:
-            sub_cols = lambda: zip(
-                self.form_data_structure_df.name.tolist(),
-                self.form_data_structure_df.required_bool.tolist(),
-                self.form_data_structure_df.type.tolist(),
-                self.form_data_structure_df.choices.tolist(),
-            )
-        return sub_cols
+        df = self.form_data_structure_df
 
-    def _get_raw_ou_tree_frame_from_orgtype_id(
-        self, org_unit_type_id: int, validation_status: str = "all"
-    ) -> pd.DataFrame:
-        """
-        Retrieves the raw organizational unit tree frame for a specific organization unit type ID.
+        if type_filter:
+            df = df[df.type == type_filter]
 
-        Parameters:
-            org_unit_type_id (int): The ID of the organization unit type.
-            validation_status (str, optional): The validation status filter. Defaults to "all".
-
-        Returns:
-            pd.DataFrame: A dataframe containing the organizational unit information.
-        """
-        url = (
-            f"{self.iaso_connector.url}/api/orgunits/"
-            + "?order=id&page=1&searches=[{%22validation_status%22:%22"
-            + f"{validation_status}"
-            + "%22,%22orgUnitTypeId%22:%22"
-            + f"{org_unit_type_id}"
-            + "%22}]&xlsx=true"
+        col_info_zip = zip(
+            df.name.tolist(),
+            df.required_bool.tolist(),
+            df.type.tolist(),
+            df.choices.tolist(),
         )
-        r = request_with_explanation(
-            url, self.headers, "file recover from IASO Instance for OrgType Info"
-        )
-        org_df = pd.read_excel(r.content, engine="openpyxl")
-        return org_df
 
-    def _generate_ou_treecolnames_dict_from_orgtype_id(
-        self, org_unit_type_id: int
-    ) -> List:
-        """
-        Generates a list of organizational unit tree column names and a corresponding dictionary
-        mapping from organization unit type ID.
-
-        Parameters:
-            org_unit_type_id (int): The ID of the organization unit type.
-
-        Returns:
-            List: A list containing the column names and a dictionary mapping.
-        """
-        url_depth = f"{self.iaso_connector.url}/api/v2/orgunittypes/{org_unit_type_id}/?fields=depth"
-        org_depth = request_with_explanation(
-            url_depth, self.headers, "OrgType depth Request"
-        ).json()["depth"]
-
-        base_cols = [
-            "ID",
-            "Nom",
-            "Référence externe",
-            "Source",
-            "Validé",
-            "Date de modification",
-        ]
-        extendend_cols = [f"parent {i}" for i in range(1, org_depth)] + [
-            f"Ref Ext parent {i}" for i in range(1, org_depth)
-        ]
-        extendend_cols.extend(base_cols)
-
-        base_dict = {
-            "Date de modification": "updated_date",
-            "ID": "org_unit_id",
-            "Nom": f"LVL_{org_depth}_NAME",
-            "Référence externe": f"LVL_{org_depth}_UID",
-        }
-        extendend_dict = {
-            f"parent {i}": f"LVL_{org_depth - i}_NAME" for i in range(1, org_depth)
-        }
-        extendend_dict.update(
-            {
-                f"Ref Ext parent {i}": f"LVL_{org_depth - i}_UID"
-                for i in range(1, org_depth)
-            }
-        )
-        extendend_dict.update(base_dict)
-        return [extendend_cols, extendend_dict]
-
-    def _get_ou_tree_frame_from_orgtype_id(
-        self, org_unit_type_id: int, validation_status: str = "all"
-    ) -> pd.DataFrame:
-        """
-        Retrieves the organizational unit tree frame for a specific organization unit type ID,
-        with columns renamed according to the organization unit type.
-
-        Parameters:
-            org_unit_type_id (int): The ID of the organization unit type.
-            validation_status (str, optional): The validation status filter. Defaults to "all".
-
-        Returns:
-            pd.DataFrame: A dataframe containing the organizational unit information with renamed columns.
-        """
-        org_df = self._get_raw_ou_tree_frame_from_orgtype_id(
-            org_unit_type_id, validation_status
-        )
-        extendend_cols, extendend_dict = (
-            self._generate_ou_treecolnames_dict_from_orgtype_id(org_unit_type_id)
-        )
-        present_cols = [col for col in org_df.columns if col in extendend_cols]
-        org_df = org_df[present_cols].rename(columns=extendend_dict)
-        return org_df
-
-    def get_ou_tree_dataframe_from_the_form(
-        self, form_id: int, validation_status: str = "all"
-    ) -> pd.DataFrame:
-        """
-        Retrieves the organizational unit tree dataframe for a specific form ID.
-
-        Parameters:
-            form_id (int): The ID of the form to retrieve organizational unit data for.
-            validation_status (str, optional): The validation status filter. Defaults to "all".
-
-        Returns:
-            pd.DataFrame: A dataframe containing the organizational unit information for the form.
-        """
-        org_df_total = [
-            self._get_ou_tree_frame_from_orgtype_id(orgtype_id, validation_status)
-            for orgtype_id in self._get_form_metadata(form_id)["org_unit_type_ids"]
-        ]
-        return pd.concat(org_df_total, ignore_index=True)
+        return col_info_zip
 
     def _json_iaso_instance_info_extractor(
         self, instance_json: Dict[str, Any]
-    ) -> List[pd.DataFrame]:
+    ) -> pd.DataFrame:
         """
         Extracts instance information from the provided JSON data.
 
@@ -609,7 +362,7 @@ class IASOConnectionHandler:
             instance_json (Dict[str, Any]): The JSON data containing instance information.
 
         Returns:
-            List[pd.DataFrame]: A list of dataframes containing the extracted instance information.
+            instance_full_df (pd.DataFrame): A dataframe containing the extracted instance information.
         """
         self.instance_info_cols = [
             "uuid",
@@ -632,9 +385,7 @@ class IASOConnectionHandler:
 
         return instance_full_df
 
-    def _json_iaso_crawler(
-        self, json_query_answer: Dict[str, Any]
-    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def _json_iaso_crawler(self, json_query_answer: Dict[str, Any]) -> pd.DataFrame:
         """
         Crawls through the JSON query answer and extracts instance information.
 
@@ -642,8 +393,7 @@ class IASOConnectionHandler:
             json_query_answer (Dict[str, Any]): The JSON data containing instances information.
 
         Returns:
-            Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]: A tuple containing dataframes with
-            the extracted instance information.
+            instance_full_df (pd.DataFrame): A dataframe containing the extracted instance information.
         """
         instance_full_df = [
             self._json_iaso_instance_info_extractor(instance_json)
@@ -657,8 +407,9 @@ class IASOConnectionHandler:
                 col.replace("file_content_", "") for col in instance_full_df.columns
             ]
 
-        except:
-            instance_full_df = pd.DataFrame()
+        except Exception as e:
+            current_run.log_error(f"Erreur lors de la concaténation des données : {e}")
+            raise
 
         return instance_full_df
 
@@ -668,7 +419,7 @@ class IASOConnectionHandler:
         limit_batch: int = 50,
         dateFrom: str = None,
         dateTo: str = None,
-    ) -> Dict[str, Any]:
+    ) -> pd.DataFrame:
         """
         Extracts JSON data from IASO API for a specific form ID with pagination support.
 
@@ -679,7 +430,7 @@ class IASOConnectionHandler:
             dateTo (str, optional): The end date for filtering records. Defaults to None.
 
         Returns:
-            Dict[str, Any]: A dictionary containing the extracted JSON data.
+            form_full_df (pd.DataFrame): A dataframe containing the extracted JSON data.
         """
         instances_endpoint = f"{self.iaso_connector.url}/api/instances/"
         form_endpoint = instances_endpoint + f"?form_ids={form_id}"
@@ -722,17 +473,19 @@ class IASOConnectionHandler:
             df (pd.DataFrame): The input submission dataframe.
 
         Returns:
-            pd.DataFrame: The formatted submission dataframe.
+            df (pd.DataFrame): The formatted submission dataframe.
         """
         df = period_processing(df)
-        for col_info_zip in self.get_cols_from_the_form("integer")():
-            try:
-                df[col_info_zip[0]] = pd.to_numeric(
-                    df[col_info_zip[0]], errors="coerce"
-                )
-                df[col_info_zip[0]] = df[col_info_zip[0]].astype(float)
-            except:
-                pass
+        for col_info_zip in self.get_cols_from_the_form("integer"):
+            col_name = col_info_zip[0]
+
+            if col_name in df.columns:
+                try:
+                    df[col_name] = pd.to_numeric(df[col_name], errors="coerce")
+                    df[col_name] = df[col_name].astype(float)
+                except Exception:
+                    pass
+
         return df
 
     def extract_submissions_info(
@@ -747,7 +500,7 @@ class IASOConnectionHandler:
             dateTo (str, optional): The end date for filtering records. Defaults to None.
 
         Returns:
-            pd.DataFrame: The formatted submission dataframe.
+            instance_full_df (pd.DataFrame): The formatted submission dataframe.
         """
         self.get_data_structure_from_the_form(form_id)
         instance_full_df = self._json_request_extract(form_id, 50, dateFrom, dateTo)
@@ -756,120 +509,3 @@ class IASOConnectionHandler:
         else:
             instance_full_df = self._submmission_df_formatting(instance_full_df)
             return instance_full_df
-
-    def all_param_data_generation_per_orgunit(
-        self,
-        ogunit_id: str,
-        ind: int,
-        sizes_picked: List[float],
-        stabilitys_picked: List[float],
-        base_qualitys_picked: List[float],
-        periods: List[str],
-    ) -> pd.DataFrame:
-        """
-        Generates parameter data for a specific organizational unit and period.
-
-        Parameters:
-            ogunit_id (str): The ID of the organizational unit.
-            ind (int): The index for selecting size, stability, and quality parameters.
-            sizes_picked (List[float]): A list of size parameters.
-            stabilitys_picked (List[float]): A list of stability parameters.
-            base_qualitys_picked (List[float]): A list of quality parameters.
-            periods (List[str]): A list of periods for which data is to be generated.
-
-        Returns:
-            pd.DataFrame: A dataframe containing the generated parameter data.
-        """
-        param_df = []
-
-        for param_name, param_required, type, choices in self.get_cols_from_the_form(
-            "integer"
-        )():
-            raw_values = numbers_per_param(
-                param_name,
-                True,
-                param_required,
-                sizes_picked[ind],
-                stabilitys_picked[ind],
-                base_qualitys_picked[ind],
-                periods,
-            )
-            param_df.append(
-                pd.DataFrame({"period": periods, "VALUE": raw_values}).assign(
-                    PARAMETER=param_name
-                )
-            )
-
-        for param_name, param_required, type, choices in self.get_cols_from_the_form(
-            "select_one"
-        )():
-            raw_values = choice_from_list_for_periods(
-                choices, periods, 1, param_required, base_qualitys_picked[ind]
-            )
-            param_df.append(
-                pd.DataFrame({"period": periods, "VALUE": raw_values}).assign(
-                    PARAMETER=param_name
-                )
-            )
-
-        for param_name, param_required, type, choices in self.get_cols_from_the_form(
-            "select_multiple"
-        )():
-            raw_values = choice_from_list_for_periods(
-                choices, periods, False, param_required, base_qualitys_picked[ind]
-            )
-            param_df.append(
-                pd.DataFrame({"period": periods, "VALUE": raw_values}).assign(
-                    PARAMETER=param_name
-                )
-            )
-
-        param_df = pd.concat(param_df)
-        param_df = param_df.assign(org_unit_id=ogunit_id)
-        return param_df
-
-    def generate_fake_full_data(self, form_id: int, periods: List[str]) -> pd.DataFrame:
-        """
-        Generates fake full data for a specific form ID and periods.
-
-        Parameters:
-            form_id (int): The ID of the form to generate data for.
-            periods (List[str]): A list of periods for which data is to be generated.
-
-        Returns:
-            pd.DataFrame: A dataframe containing the generated fake data.
-        """
-        self.get_data_structure_from_the_form(form_id)
-        df_org_unit = self.get_ou_tree_dataframe_from_the_form(form_id)
-        base_org_tree_id_list = df_org_unit.org_unit_id.unique()
-
-        sizes_picked = random.choices(self.sizelist, k=len(base_org_tree_id_list))
-        stabilitys_picked = random.choices(
-            self.stable_condition, k=len(base_org_tree_id_list)
-        )
-        base_qualitys_picked = random.choices(
-            self.quality_reportig, k=len(base_org_tree_id_list)
-        )
-
-        full_df = [
-            self.all_param_data_generation_per_orgunit(
-                ogunit_id,
-                ind,
-                sizes_picked,
-                stabilitys_picked,
-                base_qualitys_picked,
-                periods,
-            )
-            for ind, ogunit_id in enumerate(base_org_tree_id_list)
-        ]
-        full_df_pivot = pd.concat(full_df)
-        full_df_pivot = pd.pivot(
-            data=full_df_pivot,
-            index=["period", "org_unit_id"],
-            columns="PARAMETER",
-            values="VALUE",
-        ).reset_index()
-        full_df_pivot["period"] = pd.to_datetime(
-            full_df_pivot.period, format="%Y-%m-%d"
-        )
-        return full_df_pivot.round(0)

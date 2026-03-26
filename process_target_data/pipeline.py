@@ -25,7 +25,15 @@ from config import (
 )
 def process_target_data():
     """
-    Main pipeline function to process target data from various campaigns
+    This pipeline processes the target data of newly configured campaigns and merge them with the historical target data.
+    The target data of the newly configured campaigns is generated based on template Excel files that are uploaded to the
+    TARGET_OTHER_DATA_PATH.
+
+    It performs the following steps:
+     - imports and processes target data for newly configured campaigns from template Excel files
+     - adds historical target data
+     - retrieves all org unit IDs from the raw IASO tree associated to the org unit names in the combined target data
+     - saves the combined target data and exports it to a dataset.
     """
     # load org unit tree data
     iaso_org_unit_tree_df = load_data("iaso_org_unit_tree_raw")
@@ -75,7 +83,7 @@ def process_target_data():
     # save
     save_file(target_data_configured_combined, "combined_configured_target_data")
     save_file(target_data_combined, "combined_target_data")
-    export_to_dataset(target_data_combined, "combined_target_data")
+    export_to_dataset(target_data_combined, OUTPUTS_PATH, "combined_target_data")
 
 
 def load_data(name: str) -> pd.DataFrame:
@@ -86,7 +94,7 @@ def load_data(name: str) -> pd.DataFrame:
     Args:
         name (str): Name of the file to be imported (without extension).
     Returns:
-        pd.DataFrame: DataFrame containing the imported data.
+        df (pd.DataFrame): DataFrame containing the imported data.
     """
     current_run.log_info(f"Importation du fichier {name}...")
     try:
@@ -109,7 +117,7 @@ def load_data(name: str) -> pd.DataFrame:
 def process_dataframe(df: pd.DataFrame, aggregation_type: str, meta: dict):
     """
     This function processes the input DataFrame by melting it from wide to long format,
-    extracting age and site/strategy information, and cleaning up the resulting DataFrame.
+    extracting age group information, and cleaning up the resulting DataFrame.
 
     Args:
         df (pd.DataFrame): The input DataFrame to be processed.
@@ -117,7 +125,7 @@ def process_dataframe(df: pd.DataFrame, aggregation_type: str, meta: dict):
         meta (dict): A dictionary containing metadata about the DataFrame, such as the source file name.
 
     Returns:
-        pd.DataFrame: The processed DataFrame in long format with extracted age and site/strategy information.
+        df_melted (pd.DataFrame): The processed DataFrame in long format with extracted age group information.
     """
     id_vars = cols_for_melting.copy()
     if aggregation_type == "csi":
@@ -170,7 +178,8 @@ def import_target_data_for_future_campaigns():
         None
 
     Returns:
-        pd.DataFrame: DataFrame containing the target data for future campaigns.
+        csi_target_df (pd.DataFrame): DataFrame containing the target data at CSI level for future campaigns.
+        district_target_df (pd.DataFrame): DataFrame containing the target data at district level for future campaigns.
     """
     current_run.log_info(
         "Importation et traitement des données de cibles générées par les fichiers templates..."
@@ -258,12 +267,12 @@ def import_target_data_for_future_campaigns():
                 raise ValueError(f"Erreur sur {entry.name} : {str(e)}")
 
         # Combine results
-        df_csi = (
+        csi_target_df = (
             pd.concat(all_data["csi"], ignore_index=True)
             if all_data["csi"]
             else pd.DataFrame()
         )
-        df_dist = (
+        district_target_df = (
             pd.concat(all_data["district"], ignore_index=True)
             if all_data["district"]
             else pd.DataFrame()
@@ -273,7 +282,7 @@ def import_target_data_for_future_campaigns():
             f"Importation terminée: CSI: {len(all_data['csi'])}, District: {len(all_data['district'])}"
         )
 
-        return df_csi, df_dist
+        return csi_target_df, district_target_df
 
     except Exception as e:
         current_run.log_error(
@@ -286,7 +295,15 @@ def match_csi_to_org_unit_id(
     csi_level_target_df: pd.DataFrame, iaso_org_unit_tree_df_clean: pd.DataFrame
 ) -> pd.DataFrame:
     """
-    Match CSI names in df containing the CSI-level target data to organizational unit IDs using spatial data.
+    Match CSI names in df containing the CSI-level target data to organizational unit IDs
+    using the IASO org unit tree data.
+
+    NB:
+        - The matching is performed using a fuzzy matching approach based on the Levenshtein distance
+          between the cleaned CSI names in the target data and the cleaned spatial match field in the
+          IASO org unit tree data.
+        - A threshold is applied to determine acceptable matches, and manual corrections are made for
+          known matching failures.
 
     Args:
         csi_level_target_df (pd.DataFrame): DataFrame containing the target data at CSI level.
@@ -402,14 +419,19 @@ def match_district_to_org_unit_id(
     district_level_target_df: pd.DataFrame, iaso_org_unit_tree_df_clean: pd.DataFrame
 ) -> pd.DataFrame:
     """
-    Match district names in df containing the district-level target data to organizational unit IDs using iaso_org_unit_tree data.
+    Match district names in df containing the district-level target data to organizational unit IDs
+    using the IASO org unit tree data.
+
+    NB:
+        - The matching is performed using a simple merge on the district name field (LVL_3_NAME) which
+          has been cleansed manually in both datasets to ensure consistency.
 
     Args:
         district_level_target_df (pd.DataFrame): DataFrame containing the target data at district level.
         iaso_org_unit_tree_df_clean (pd.DataFrame): DataFrame containing the clean organisational units tree data.
 
     Returns:
-        pd.DataFrame: DataFrame with matched organizational unit IDs.
+        target_df_matched (pd.DataFrame): DataFrame with matched organizational unit IDs.
     """
     current_run.log_info("Matching district names to organizational unit IDs...")
     try:
@@ -454,7 +476,7 @@ def combine_target_data(
         dfs (list[pd.DataFrame]): List of DataFrames to be combined.
 
     Returns:
-        pd.DataFrame: Combined DataFrame containing all target data.
+        target_data_combined(pd.DataFrame): Combined DataFrame containing all target data.
     """
     current_run.log_info("Combinaison des différentes données de cibles...")
     try:
@@ -484,7 +506,7 @@ def clean_org_unit_id(
         iaso_org_unit_tree_clean_df (pd.DataFrame): DataFrame containing the cleaned org unit tree data.
 
     Returns:
-        pd.DataFrame: DataFrame with cleaned org_unit_id column.
+        target_data_combined(pd.DataFrame): DataFrame with
     """
     current_run.log_info(
         "Récupération des identifiants des unités d'organisation et application de la correspondance un-à-plusieurs..."
@@ -546,7 +568,7 @@ def add_round_info_to_configured_target_data(
         target_data_combined (pd.DataFrame): DataFrame containing the combined target data.
 
     Returns:
-        pd.DataFrame: DataFrame with added round information for the configured campaigns.
+        target_data_combined(pd.DataFrame): DataFrame with added round information for the configured campaigns.
     """
     current_run.log_info(
         "Ajout des informations de rounds pour les campagnes configurées..."
@@ -634,19 +656,22 @@ def save_file(df: pd.DataFrame, file_name: str) -> None:
         raise e
 
 
-def export_to_dataset(df: pd.DataFrame, dataset_name: str) -> None:
+def export_to_dataset(df: pd.DataFrame, df_file_path: str, dataset_name: str) -> None:
     """
     Exports a DataFrame to an OpenHexa dataset in multiple formats (xlsx, parquet, csv).
 
     Args:
         df (pd.DataFrame): The configuration dataframe to export.
+        df_file_path (str): The file path where the dataframe is saved.
         dataset_name (str): The name of the OpenHexa dataset.
     """
     current_run.log_info(
         f"Préparation de l'exportation vers le dataset : {dataset_name}..."
     )
+
     dataset_slug = dataset_name.lower().strip().replace(" ", "-").replace("_", "-")
-    # 1. Manage Dataset Existence
+
+    # check if dataset already exists
     try:
         dataset = workspace.get_dataset(dataset_slug)
         current_run.log_info(f"Dataset existant trouvé : {dataset_slug}")
@@ -657,30 +682,27 @@ def export_to_dataset(df: pd.DataFrame, dataset_name: str) -> None:
             description="Données de configuration de campagne (multi-formats)",
         )
 
-    # 2. Define Versioning
+    # define versioning
     latest_version = dataset.latest_version
     version_number = int(latest_version.name.lstrip("v")) + 1 if latest_version else 1
     new_version_name = f"v{version_number}"
 
-    # 3. Create Local Files (Temporary Storage)
-    # Ensure the config directory exists
-    if not os.path.exists(OUTPUTS_PATH):
-        os.makedirs(OUTPUTS_PATH)
+    # create local files
+    if not os.path.exists(df_file_path):
+        os.makedirs(df_file_path)
 
-    # Define the file paths
-    base_path = os.path.join(OUTPUTS_PATH, dataset_name)
+    base_path = os.path.join(df_file_path, dataset_name)
     files_to_upload = {
         "parquet": f"{base_path}.parquet",
         "xlsx": f"{base_path}.xlsx",
         "csv": f"{base_path}.csv",
     }
 
-    # Save the dataframe in different formats
     df.to_parquet(files_to_upload["parquet"], index=False)
     df.to_excel(files_to_upload["xlsx"], index=False)
     df.to_csv(files_to_upload["csv"], index=False)
 
-    # 4. Upload to Dataset Version
+    # upload to Dataset in OH
     version = dataset.create_version(new_version_name)
 
     for format_type, file_path in files_to_upload.items():

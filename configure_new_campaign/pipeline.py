@@ -155,18 +155,30 @@ def configure_new_campaign(
     config_df = add_org_unit_info(config_df, org_unit_tree, campaign_scale)
     save_file(config_df, f"config_{campaign}_{year}_{campaign_round.replace(' ', '_')}")
     export_to_dataset(
-        config_df, f"config_{campaign}_{year}_{campaign_round.replace(' ', '_')}"
+        config_df,
+        CONFIG_PATH,
+        f"config_{campaign}_{year}_{campaign_round.replace(' ', '_')}",
     )
 
 
 def inspect_params(
-    year,
-    campaign_scale,
-    campaign_round_start_date,
-    campaign_round_end_date,
-):
+    year: int,
+    campaign_scale: list,
+    campaign_round_start_date: str,
+    campaign_round_end_date: str,
+) -> None:
     """
-    This function runs checks on the parameter choices for year, and round start/end dates
+    Runs checks on the parameter choices to ensure they are valid and coherent before running the rest
+      of the pipeline.
+
+    Args:
+        year (int): The year of the campaign.
+        campaign_scale (list): The scale of the campaign (e.g., "Nationale", "Agadez", etc.).
+        campaign_round_start_date (str): The start date of the campaign round in the format YYYY-MM-DD.
+        campaign_round_end_date (str): The end date of the campaign round in the format YYYY-MM-DD.
+
+    Returns:
+        None
     """
     current_run.log_info("Vérification des choix des paramètres...")
 
@@ -218,30 +230,47 @@ def inspect_params(
 
 def validate_coherence_of_params(
     target_df: pd.DataFrame,
-    combined_campaign_data: pd.DataFrame,
+    expected_structure_df: pd.DataFrame,
     campaign: str,
     campaign_scale: list,
     year: int,
     campaign_round_start_date: str,
     campaign_round_end_date: str,
     overwrite_existing_round: bool,
-):
+) -> bool:
     """
-    This function validates the coherence of the parameters against the configured target data.
+    Validates the coherence of the parameters against the configured target data.
+
+    Args:
+        target_df (pd.DataFrame): The dataframe containing the configured target data.
+        expected_structure_df (pd.DataFrame): the dataframe containing the expected structure of the data for each campaign
+        campaign (str): The campaign for which the configuration is being created.
+        campaign_scale (list): The scale of the campaign (e.g., "Nationale", "Agadez", etc.).
+        year (int): The year of the campaign.
+        campaign_round_start_date (str): The start date of the campaign round in the format YYYY-MM-DD.
+        campaign_round_end_date (str): The end date of the campaign round in the format YYYY-MM-DD.
+        overwrite_existing_round (bool): Indicates whether to overwrite existing round configurations
+                                         in case of overlapping periods.
+
+    Returns:
+        overlap_exists (bool): True if there is an overlap with existing campaign rounds, False otherwise.
+                                This information is used later on to determine the round number for the
+                                new campaign configuration.
     """
     current_run.log_info(
         "Validation de la cohérence des paramètres avec les données de cibles configurées..."
     )
     try:
-        # 1. Vérification de chevauchement des périodes avec les prériodes de round(s) existants
+        # Checking for overlapping periods with existing campaign rounds for the same product and year in
+        # the expected structure dataframe
         campaign_cleaned = campaign_name_dict[campaign].strip()
         start_new = pd.to_datetime(campaign_round_start_date)
         end_new = pd.to_datetime(campaign_round_end_date)
 
-        mask = (combined_campaign_data["produit"] == campaign_cleaned) & (
-            combined_campaign_data["year"] == year
+        mask = (expected_structure_df["produit"] == campaign_cleaned) & (
+            expected_structure_df["year"] == year
         )
-        check_df = combined_campaign_data[mask]
+        check_df = expected_structure_df[mask]
         check_df = check_df[["period", "round"]].drop_duplicates()
         overlap_exists = False
         for round in check_df["round"].unique():
@@ -258,7 +287,7 @@ def validate_coherence_of_params(
                         f"Conflit détecté : La période de la nouvelle campagne chevauche celle du {round} d'une campagne de '{campaign}' déjà existante ({round_period_start.date()} - {round_period_end.date()}). Veuillez soit ajuster les dates de la nouvelle campagne pour éviter ce chevauchement, soit activer l'option pour écraser les configurations existantes."
                     )
 
-        # 2. Vérification de la Campagne (Produit)
+        # Checking that the campaign exists in the target data for the selected year
         target_data_check_1 = target_df[target_df["produit"] == campaign_cleaned]
         if target_data_check_1.empty:
             choices = list(target_df["produit"].unique())
@@ -266,7 +295,7 @@ def validate_coherence_of_params(
                 f"Campagne '{campaign_cleaned}' non trouvée. Options possibles : {choices}"
             )
 
-        # 3. Vérification de l'Année
+        # Checking that the year exists for the selected campaign in the target data
         target_data_check_2 = target_data_check_1[target_data_check_1["year"] == year]
         if target_data_check_2.empty:
             years = list(target_data_check_1["year"].unique())
@@ -274,7 +303,8 @@ def validate_coherence_of_params(
                 f"Année '{year}' non disponible pour '{campaign_cleaned}'. Années en base : {years}"
             )
 
-        # 4. Vérification de l'Échelle de la campagne: si "Nationale" est sélectionné, toutes les régions doivent être présentes; sinon, les régions sélectionnées doivent être présentes
+        # Checking that the regions selected in campaign_scale are present in the target data for the selected
+        # campaign and year
         if "Nationale" in campaign_scale:
             missing_regions = [
                 r
@@ -305,7 +335,7 @@ def validate_coherence_of_params(
 
 
 def create_configuration_df(
-    combined_campaign_data: pd.DataFrame,
+    expected_structure_df: pd.DataFrame,
     campaign: str,
     year: int,
     campaign_round_start_date: str,
@@ -313,17 +343,29 @@ def create_configuration_df(
     overlap_exists: bool,
 ):
     """
-    This function creates a dataframe containing the configuration for a new vaccination campaign
+    Creates a dataframe containing the configuration for a new vaccination campaign
     based on the parameters provided by the user.
+
+    Args:
+        expected_structure_df (pd.DataFrame): the dataframe containing the expected structure of the data for each campaign
+        campaign (str): The campaign for which the configuration is being created.
+        year (int): The year of the campaign.
+        campaign_round_start_date (str): The start date of the campaign round in the format YYYY-MM-DD.
+        campaign_round_end_date (str): The end date of the campaign round in the format YYYY-MM-DD.
+        overlap_exists (bool): True if there is an overlap with existing campaign rounds, False otherwise.
+
+    Returns:
+        config_df (pd.DataFrame): A dataframe containing the configuration for the new campaign, with one row per
+                                  combination of parameters and organizational unit.
     """
     current_run.log_info("Création du dataframe de configuration de la campagne...")
 
     # identify the round of the campaign, based on prior campaign data in the same year for the same product
     # if the period overlaps with an existing round, the existing round will be overwritten and the new campaign
     # will take the round number of the overwritten round;
-    prior_campaigns = combined_campaign_data[
-        (combined_campaign_data["produit"] == campaign_name_dict[campaign])
-        & (combined_campaign_data["year"] == year)
+    prior_campaigns = expected_structure_df[
+        (expected_structure_df["produit"] == campaign_name_dict[campaign])
+        & (expected_structure_df["year"] == year)
     ]
     if prior_campaigns.empty:
         current_run.log_info(
@@ -348,7 +390,8 @@ def create_configuration_df(
             current_run.log_info(
                 f"Campagne antérieure trouvée pour {campaign_name_dict[campaign]} en {year} sans périodes de chevauchement. Le round de la campagne sera défini à {campaign_round}."
             )
-    # create a dataframe with the campaign configuration (use campaign_config_dict to create the columns for vaccination_status, age_range, site_type, and sex type based on the campaign)
+    # create a dataframe with the campaign configuration (use campaign_config_dict to create the columns for
+    # vaccination_status, age_range, site_type, and sex type based on the campaign)
     config_df = pd.DataFrame(
         {
             "produit": [campaign],
@@ -383,7 +426,8 @@ def create_configuration_df(
         config_df["period"] - config_df["campaign_round_start_date"]
     ).dt.days + 1
 
-    # expand vaccination_status, age_range, site_type, and strategy_type columns to have one row per combination of choices
+    # expand vaccination_status, age_range, site_type, and strategy_type columns to have one row per combination
+    # of choices
     config_df = config_df.explode("vaccination_status").reset_index(drop=True)
     config_df = config_df.explode("age").reset_index(drop=True)
     config_df = config_df.explode("site").reset_index(drop=True)
@@ -418,7 +462,7 @@ def load_data(name: str) -> pd.DataFrame:
     Args:
         name (str): Name of the file to be imported (without extension).
     Returns:
-        pd.DataFrame: DataFrame containing the imported data.
+        df (pd.DataFrame): DataFrame containing the imported data.
     """
     current_run.log_info(f"Importation du fichier {name}...")
     try:
@@ -442,8 +486,19 @@ def add_org_unit_info(
     config_df: pd.DataFrame, org_unit_df: pd.DataFrame, campaign_scale: list
 ) -> pd.DataFrame:
     """
-    This function adds organizational unit information to the campaign configuration dataframe
-    by merging it with the org_unit_df dataframe.
+    Adds organizational unit information to the campaign configuration dataframe
+    by merging it with the IASO org unit tree dataframe. The merge is done in a way
+    to create one row per combination of campaign configuration and organizational unit,
+    based on the selected campaign scale.
+
+    Args:
+        config_df (pd.DataFrame): The dataframe containing the campaign configuration.
+        org_unit_df (pd.DataFrame): The dataframe containing the cleaned IASO organizational unit tree data.
+        campaign_scale (list): The scale of the campaign (e.g., "Nationale", "Agadez", etc.) which determines
+                                how the merge is performed.
+
+    Returns:
+        merged_df (pd.DataFrame): The merged dataframe containing campaign configuration and organizational unit information.
     """
     current_run.log_info("Ajout des informations des unités organisationnelles...")
 
@@ -495,12 +550,13 @@ def save_file(df: pd.DataFrame, file_name: str) -> None:
         raise e
 
 
-def export_to_dataset(df: pd.DataFrame, dataset_name: str) -> None:
+def export_to_dataset(df: pd.DataFrame, df_file_path: str, dataset_name: str) -> None:
     """
     Exports a DataFrame to an OpenHexa dataset in multiple formats (xlsx, parquet, csv).
 
     Args:
         df (pd.DataFrame): The configuration dataframe to export.
+        df_file_path (str): The file path where the dataframe is saved.
         dataset_name (str): The name of the OpenHexa dataset.
     """
     current_run.log_info(
@@ -508,7 +564,8 @@ def export_to_dataset(df: pd.DataFrame, dataset_name: str) -> None:
     )
 
     dataset_slug = dataset_name.lower().strip().replace(" ", "-").replace("_", "-")
-    # 1. Manage Dataset Existence
+
+    # check if dataset already exists
     try:
         dataset = workspace.get_dataset(dataset_slug)
         current_run.log_info(f"Dataset existant trouvé : {dataset_slug}")
@@ -519,17 +576,16 @@ def export_to_dataset(df: pd.DataFrame, dataset_name: str) -> None:
             description="Données de configuration de campagne (multi-formats)",
         )
 
-    # 2. Define Versioning
+    # define versioning
     latest_version = dataset.latest_version
     version_number = int(latest_version.name.lstrip("v")) + 1 if latest_version else 1
     new_version_name = f"v{version_number}"
 
-    # 3. Create Local Files (Temporary Storage)
-    # Ensure the config directory exists
-    if not os.path.exists(CONFIG_PATH):
-        os.makedirs(CONFIG_PATH)
+    # create local files
+    if not os.path.exists(df_file_path):
+        os.makedirs(df_file_path)
 
-    base_path = os.path.join(CONFIG_PATH, dataset_name)
+    base_path = os.path.join(df_file_path, dataset_name)
     files_to_upload = {
         "parquet": f"{base_path}.parquet",
         "xlsx": f"{base_path}.xlsx",
@@ -540,7 +596,7 @@ def export_to_dataset(df: pd.DataFrame, dataset_name: str) -> None:
     df.to_excel(files_to_upload["xlsx"], index=False)
     df.to_csv(files_to_upload["csv"], index=False)
 
-    # 4. Upload to Dataset Version
+    # upload to Dataset in OH
     version = dataset.create_version(new_version_name)
 
     for format_type, file_path in files_to_upload.items():

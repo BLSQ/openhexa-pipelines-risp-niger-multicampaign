@@ -15,9 +15,49 @@ import unicodedata
 
 
 def request_explanatory_decorator(function):
-    def wrapper_request(url, headers, process_message):
+    """
+    A decorator to wrap requests functions and provide detailed error messages
+    for HTTP errors and JSON decoding issues.
+
+    Parameters:
+        function (callable): The requests function to be wrapped.
+
+    Returns:
+        callable: The wrapped function with enhanced error handling.
+
+    """
+
+    def wrapper_request(
+        url: str, headers: dict, process_message: str
+    ) -> requests.Response | None:
+        """
+        Wrapper function to handle API requests and provide detailed error messages.
+
+        Parameters:
+            url (str): The URL to send the request to.
+            headers (dict): The headers to include in the request.
+            process_message (str): A message describing the process for error context.
+
+        Returns:
+            requests.Response | None: The response object from the GET request, or None if an error occurred.
+        """
         try:
             r = function(url, headers)
+            r.raise_for_status()
+            if not r.text:
+                print("ERROR: Empty response body")
+            elif not r.text.strip():
+                print("ERROR: Response contains only whitespace")
+            else:
+                r.json()
+                return r
+        except requests.exceptions.HTTPError as e:
+            print(f"HTTP Error: {e}")
+            print(f"Response body: {r.text}")
+        except requests.exceptions.JSONDecodeError as e:
+            print(f"JSON Decode Error: {e}")
+            print(f"Response content: {r.text}")
+
             return r
         except requests.exceptions.RequestException as e:
             print(
@@ -30,146 +70,53 @@ def request_explanatory_decorator(function):
 
 
 @request_explanatory_decorator
-def request_with_explanation(url, headers):
+def request_with_explanation(url: str, headers: dict):
+    """
+    Sends a GET request to the specified URL with the provided headers.
+
+    Parameters:
+        url (str): The URL to send the request to.
+        headers (dict): The headers to include in the request.
+
+    Returns:
+        requests.Response: The response object from the GET request.
+    """
     return requests.get(url, headers=headers)
 
 
-def period_form_convert_date(row):
-    """
-    Convert period field
-    """
-    if len(str(row[0])) == 8 and str(row[0]).isdigit():
-        return pd.to_datetime(row[0], format="%Y%m%d").strftime("%Y-%m-%d")
-    elif len(str(row[0])) >= 8:
-        return pd.to_datetime(row[0], format="%Y-%m-%d").strftime("%Y-%m-%d")
-    elif len(str(row[1])) >= 8:
-        return pd.to_datetime(row[1], unit="s").strftime("%Y-%m-%d")
-    else:
-        return row[0]
-
-
-def period_processing(df: pd.DataFrame) -> pd.DataFrame:
-    # Traitement de la colonne period au cas par cas
-    df.period = df.period.mask(df.period == "Invalid date", None)
-    df.period = df.period.mask(
-        df.period.isna(),
-        df.created_at.apply(lambda x: pd.to_datetime(x, unit="s").strftime("%Y-%m-%d")),
-    )
-    df.period = df.period.mask(
-        df.period.notna(),
-        df[["period", "created_at"]].apply(
-            lambda row: period_form_convert_date(row), axis=1
-        ),
-    )
-    return df
-
-
-def empty_generator(values, empty_quality):
-    """Generates empty values based on a quality threshold."""
-    return np.where(
-        np.random.default_rng().uniform(size=len(values)) > empty_quality,
-        values,
-        np.nan,
-    )
-
-
-def empty_generator_object(values, empty_quality):
-    """Generates empty values based on a quality threshold."""
-    return np.where(
-        np.random.default_rng().uniform(size=len(values)) > empty_quality, values, None
-    )
-
-
-def outlier_generator(values):
-    """Generates outlier values."""
-    outlier_thr = 0.005
-    return np.where(
-        np.random.default_rng().uniform(size=len(values)) < outlier_thr,
-        values,
-        np.multiply(np.random.default_rng().uniform(size=len(values)) * 100, values),
-    )
-
-
-def choice_from_list_for_periods(
-    choices_list: list,
-    periods: list,
-    n_choices: int = False,
-    param_required: bool = False,
-    empty_quality: int = 0.70,
-) -> list:
-    generator_choice_list = list()
-
-    if n_choices == 1:
-        while len(generator_choice_list) < len(periods):
-            generator_choice_list.append(random.sample(choices_list, k=n_choices)[0])
-    elif n_choices:
-        while len(generator_choice_list) < len(periods):
-            generator_choice_list.append(
-                " ".join(map(str, random.sample(choices_list, k=n_choices)))
-            )
-    else:
-        while len(generator_choice_list) < len(periods):
-            lenght = random.choice(range(1, len(choices_list) + 1))
-            generator_choice_list.append(
-                " ".join(map(str, random.sample(choices_list, k=lenght)))
-            )
-
-    if not param_required:
-        generator_choice_list = list(
-            empty_generator_object(generator_choice_list, empty_quality)
-        )
-
-    return generator_choice_list
-
-
-def numbers_per_param(
-    param,
-    constraint_positive,
-    param_required,
-    size_picked,
-    stability_picked,
-    empty_quality,
-    periods,
-    integer_value=True,
-):
-    """Generates numbers per parameter."""
-
-    raw_values = np.random.default_rng().normal(
-        loc=size_picked, scale=size_picked * stability_picked, size=len(periods)
-    )
-    """
-    choices = ['normal', 'poisson', 'exponential']
-    
-    generator_choice = random.choices(choices, k=1)[0]
-    if generator_choice == 'normal':
-        raw_values = np.random.default_rng().normal(loc=size_picked,
-                                            scale=size_picked*stability_picked,
-                                            size=len(periods))
-    elif generator_choice == 'poisson':
-        raw_values = np.random.default_rng().poisson(lam=size_picked, size=len(periods))
-    
-    elif generator_choice == 'exponential':
-        raw_values = np.random.default_rng().exponential(scale=size_picked*stability_picked, size=len(periods))
-    """
-
-    values = outlier_generator(raw_values)
-    if integer_value:
-        values = values.round(0)
-    if not param_required:
-        values = empty_generator(values, empty_quality)
-
-    return list(values)
-
-
 class Conector_from_Dict:
+    """
+    Class to create a connector from a dictionary containing connection parameters.
+    """
+
     def __init__(self, iaso_connector_slug: Dict[str, Any]):
+        """
+        Initializes the connector with the provided connection parameters.
+
+        Parameters:
+            iaso_connector_slug (Dict[str, Any]): A dictionary containing 'username', 'password', and 'url' keys.
+        """
         self.username = iaso_connector_slug["username"]
         self.password = iaso_connector_slug["password"]
         self.url = iaso_connector_slug["url"]
 
 
 class IASOConnectionHandler:
-    def __init__(self, iaso_connector_slug):
+    """
+    Class to handle connection to IASO using provided connector details.
+
+    Parameters:
+        iaso_connector_slug (Dict[str, Any]): A dictionary containing 'username', 'password', and 'url' keys.
+
+    """
+
+    def __init__(self, iaso_connector_slug: Dict[str, Any]):
+        """
+        Initializes the IASO connection handler with the provided connector details.
+
+        Parameters:
+            iaso_connector_slug (Dict[str, Any]): A dictionary containing 'username', 'password', and 'url' keys.
+        """
         self.iaso_connector = Conector_from_Dict(iaso_connector_slug)
         self.headers = self.connection()
         self.session = requests.Session()
@@ -184,16 +131,16 @@ class IASOConnectionHandler:
             "status",
         ]
 
-        # Parameter for records generations
-        self.sizelist = [10, 50, 100]
-        self.stable_condition = [0.05, 0.10, 0.20]
-        self.quality_reportig = [0.025, 0.05, 0.1]
-
-    def _get_credentials_on_slug_name(self, slug_name: str):
-        # TODO
-        pass
-
     def connection(self) -> Dict[str, Any]:
+        """
+        Establishes a connection to the IASO API and retrieves authentication headers.
+
+        Parameters:
+            None
+
+        Returns:
+            headers (Dict[str, Any]): A dictionary containing the authentication headers.
+        """
         creds = {
             "username": self.iaso_connector.username,
             "password": self.iaso_connector.password,
@@ -204,6 +151,15 @@ class IASOConnectionHandler:
         return headers
 
     def _get_form_metadata(self, form_id: int) -> Dict[str, Any]:
+        """
+        Retrieves metadata for a specific form from the IASO API.
+
+        Parameters:
+            form_id (int): The ID of the form to retrieve metadata for.
+
+        Returns:
+            form_metadata_dict (Dict[str, Any]): A dictionary containing the form metadata.
+        """
         fields_scope_list = [
             "id",
             "name",
@@ -214,116 +170,23 @@ class IASOConnectionHandler:
             "latest_form_version",
         ]
         url = f"{self.iaso_connector.url}/api/forms/{form_id}/?fields={','.join(fields_scope_list)}"
-        print(url)
         r = requests.get(url, headers=self.headers)
         form_metadata_dict = json.loads(r.content)
         return form_metadata_dict
 
-    def _get_form_dataframe_tuple_from_url(self, url: str) -> Tuple[Any]:
-        try:
-            r = requests.get(url)
-            assert r.status_code == 200
-            content = r.content
-            form_survey = pd.read_excel(content, sheet_name="survey")
-            form_choices = pd.read_excel(content, sheet_name="choices")
-        except AssertionError:
-            print(
-                "It seem that some error occured during file recover from IASO Instance"
-            )
-
-        form_df_raw_tuple = (form_survey, form_choices)
-        return form_df_raw_tuple
-
-    def _get_data_structure_from_form_tuple(
-        self, form_df_raw_tuple: Tuple[Any]
-    ) -> pd.DataFrame:
-        """ """
-        survey_tab_df = form_df_raw_tuple[0]
-        needed_cols = ["type", "name", "relevant", "required", "constraint"]
-
-        for col in [_ for _ in needed_cols if _ not in survey_tab_df.columns]:
-            survey_tab_df[col] = None
-
-        survey_tab_df = survey_tab_df.dropna(subset="name")[needed_cols]
-        survey_tab_df["choice_name"] = survey_tab_df.type.str.split(" ", n=1).str[-1]
-        survey_tab_df["type"] = survey_tab_df.type.str.split(" ", n=1).str[0]
-        survey_tab_df = survey_tab_df[
-            survey_tab_df.type.isin(
-                ["integer", "select_one", "select_multiple", "text"]
-            )
-        ]
-
-        required_mapping = {"yes": 1, "no": 0}
-        constraint_mapping = {".>=0": 1, "other": 0}
-        survey_tab_df["required_bool"] = (
-            survey_tab_df["required"].map(required_mapping).fillna(0).astype(int)
-        )
-        survey_tab_df["positive_bool"] = (
-            survey_tab_df["constraint"].map(constraint_mapping).fillna(0).astype(int)
-        )
-
-        survey_tab_df = survey_tab_df[
-            [
-                "name",
-                "required_bool",
-                "positive_bool",
-                "relevant",
-                "type",
-                "choice_name",
-            ]
-        ].drop_duplicates()
-
-        if form_df_raw_tuple[1].empty:
-            survey_tab_df["choices"] = None
-        else:
-            choices_tab = form_df_raw_tuple[1]
-            list_label_name = [
-                col for col in choices_tab.columns if col in ["list_name", "list name"]
-            ][0]
-            choices_tab = choices_tab.dropna(subset=list_label_name)
-            if choices_tab.shape[0] > 0:
-                choices_label_dict = (
-                    choices_tab.groupby(list_label_name)["name"].apply(list).to_dict()
-                )
-                survey_tab_df["choices"] = survey_tab_df["choice_name"].map(
-                    choices_label_dict
-                )
-
-        self.form_data_structure_df = survey_tab_df
-        self.form_content_form_structure_base_columns_list = survey_tab_df.name.unique()
-
-    def get_data_structure_from_the_form(self, form_id: int) -> None:
-        excel_url = self._get_form_metadata(form_id)["latest_form_version"]["xls_file"]
-        self._get_data_structure_from_form_tuple(
-            self._get_form_dataframe_tuple_from_url(excel_url)
-        )
-
-    def get_cols_from_the_form(self, type=None):
-        """
-        The idea is to retrieve all the columns as an iterable zip
-        """
-        if type:
-            filtered_param_df = self.form_data_structure_df[
-                self.form_data_structure_df.type == type
-            ]
-            sub_cols = lambda: zip(
-                filtered_param_df.name.tolist(),
-                filtered_param_df.required_bool.tolist(),
-                filtered_param_df.type.tolist(),
-                filtered_param_df.choices.tolist(),
-            )
-        else:
-            sub_cols = lambda: zip(
-                self.form_data_structure_df.name.tolist(),
-                self.form_data_structure_df.required_bool.tolist(),
-                self.form_data_structure_df.type.tolist(),
-                self.form_data_structure_df.choices.tolist(),
-            )
-        return sub_cols
-
     def _get_raw_ou_tree_frame_from_orgtype_id(
         self, org_unit_type_id: int, validation_status: str = "all"
     ) -> pd.DataFrame:
+        """
+        Retrieves the raw organizational unit tree frame for a specific organization unit type ID.
+
+        Parameters:
+            org_unit_type_id (int): The ID of the organization unit type.
+            validation_status (str, optional): The validation status filter. Defaults to "all".
+
+        Returns:
+            org_df (pd.DataFrame): A dataframe containing the organizational unit information.
+        """
         url = (
             f"{self.iaso_connector.url}/api/orgunits/"
             + "?order=id&page=1&searches=[{%22validation_status%22:%22"
@@ -340,7 +203,17 @@ class IASOConnectionHandler:
 
     def _generate_ou_treecolnames_dict_from_orgtype_id(
         self, org_unit_type_id: int
-    ) -> List:
+    ) -> List[List | Dict[str, str]]:
+        """
+        Generates a list of organizational unit tree column names and a corresponding dictionary
+        mapping from organization unit type ID.
+
+        Parameters:
+            org_unit_type_id (int): The ID of the organization unit type.
+
+        Returns:
+            extendend_cols_dict (List[List, Dict]): A list containing the column names list and a dictionary mapping of column names.
+        """
         url_depth = f"{self.iaso_connector.url}/api/v2/orgunittypes/{org_unit_type_id}/?fields=depth"
         org_depth = request_with_explanation(
             url_depth, self.headers, "OrgType depth Request"
@@ -376,457 +249,74 @@ class IASOConnectionHandler:
         )
         extendend_dict.update(base_dict)
 
-        return [extendend_cols, extendend_dict]
+        extendend_cols_dict = [extendend_cols, extendend_dict]
+
+        return extendend_cols_dict
 
     def _get_ou_tree_frame_from_orgtype_id(
         self, org_unit_type_id: int, validation_status: str = "all"
     ) -> pd.DataFrame:
+        """
+        Retrieves the organizational unit tree frame for a specific organization unit type ID,
+        with columns renamed according to the organization unit type.
+
+        Parameters:
+            org_unit_type_id (int): The ID of the organization unit type.
+            validation_status (str, optional): The validation status filter. Defaults to "all".
+
+        Returns:
+            org_df (pd.DataFrame): A dataframe containing the organizational unit information with renamed columns.
+        """
         org_df = self._get_raw_ou_tree_frame_from_orgtype_id(
             org_unit_type_id, validation_status
         )
-
         extendend_cols, extendend_dict = (
             self._generate_ou_treecolnames_dict_from_orgtype_id(org_unit_type_id)
         )
-
         present_cols = [col for col in org_df.columns if col in extendend_cols]
-
         org_df = org_df[present_cols].rename(columns=extendend_dict)
         return org_df
 
     def get_ou_tree_dataframe_from_the_form(
         self, form_id: int, validation_status: str = "all"
     ) -> pd.DataFrame:
+        """
+        Retrieves the organizational unit tree dataframe for a specific form ID.
+
+        Parameters:
+            form_id (int): The ID of the form to retrieve organizational unit data for.
+            validation_status (str, optional): The validation status filter. Defaults to "all".
+
+        Returns:
+            org_df (pd.DataFrame): A dataframe containing the organizational unit information for the form.
+        """
         org_df_total = [
             self._get_ou_tree_frame_from_orgtype_id(orgtype_id, validation_status)
             for orgtype_id in self._get_form_metadata(form_id)["org_unit_type_ids"]
         ]
-        return pd.concat(org_df_total, ignore_index=True)
-
-    # ---------------------------------
-
-    def _json_iaso_instance_info_extractor(
-        self, instance_json: Dict[str, Any]
-    ) -> List[pd.DataFrame]:
-        """
-        Extracts JSON instance information.
-        """
-        # ['uuid', 'form_id','org_unit_id','org_unit_created_at','org_unit_updated_at','form_name', 'created_at', 'updated_at',
-        #'period','status', 'latitude', 'longitude', 'altitude', 'form_name']
-
-        self.instance_info_cols = [
-            "uuid",
-            "form_id",
-            "org_unit_id",
-            "org_unit_updated_at",
-            "created_at",
-            "period",
-            "status",
-        ]
-
-        ins_uuid = instance_json["uuid"]
-        ins_form_id = instance_json["form_id"]
-
-        instance_normalized_df = pd.json_normalize(instance_json, sep="_")
-        instance_info_cols_sub = [
-            _ for _ in instance_normalized_df.columns if _ in self.instance_info_cols
-        ]
-        full_cols_sub = [
-            _
-            for _ in instance_normalized_df.columns
-            if _ in self.instance_info_cols
-            or _.replace("file_content_", "")
-            in self.form_content_form_structure_base_columns_list
-        ]
-
-        instance_full_df = instance_normalized_df[full_cols_sub]
-
-        # instance_submission_info_df = instance_normalized_df[instance_info_cols_sub]
-
-        # instance_file_content_df = pd.json_normalize(instance_json['file_content'])
-        # instance_file_content_df = instance_file_content_df.assign(uuid=ins_uuid)
-        # instance_full_df=instance_file_content_df.merge(instance_submission_info_df)
-
-        return instance_full_df
-
-    def _json_iaso_crawler(
-        self, json_query_answer: Dict[str, Any]
-    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-        """
-        Browse IASO JSON responses.
-        """
-        instance_full_df = [
-            self._json_iaso_instance_info_extractor(instance_json)
-            for instance_json in json_query_answer["instances"]
-        ]
-
-        try:
-            instance_full_df = pd.concat(instance_full_df, ignore_index=True)
-            instance_full_df = instance_full_df.drop_duplicates(subset="uuid")
-            instance_full_df.columns = [
-                col.replace("file_content_", "") for col in instance_full_df.columns
-            ]
-
-        except:
-            instance_full_df = pd.DataFrame()
-
-        return instance_full_df
-
-    def _json_request_extract(
-        self, form_id: int, limit_batch: int = 50
-    ) -> pd.DataFrame:
-        """
-        Extracts submission information from IASO.
-        """
-        instances_endpoint = f"{self.iaso_connector.url}/api/instances/"
-
-        # # Time Filtering of the query
-        # dateFrom = pd.to_datetime(dateFrom, format='%Y-%m-%d').date()
-        # dateTo = pd.to_datetime(dateTo, format='%Y-%m-%d').date()
-        # modificationDateFrom = pd.to_datetime(modificationDateFrom, format='%Y-%m-%d').date()
-        # modificationDateTo = pd.to_datetime(modificationDateTo, format='%Y-%m-%d').date()
-
-        # format_date_from = f"&dateFrom={self.dateFrom}" if not pd.isna(self.dateFrom) else ""
-        # format_date_to = f"&dateTo={self.dateTo}" if not pd.isna(self.dateTo) else ""
-        # format_modif_date_from = f"&modificationDateFrom={self.modificationDateFrom}" if not pd.isna(self.modificationDateFrom) else ""
-        # format_modif_date_to = f"&modificationDateTo={self.modificationDateTo}" if not pd.isna(self.modificationDateTo) else ""
-
-        # format_period = "".join([format_date_from, format_date_to, format_modif_date_from, format_modif_date_to])
-
-        base_url = instances_endpoint + f"?form_ids={form_id}&limit={limit_batch}"
-
-        r = request_with_explanation(
-            base_url + "&page=1", self.headers, f"Form {form_id} - Page 1"
-        )
-        first_page_json = r.json()
-        all_chunks = [self._json_iaso_crawler(first_page_json)]
-
-        total_pages = first_page_json.get("pages", 1)
-
-        for page in range(2, total_pages + 1):
-            datetime.time.sleep(0.5)
-            r = request_with_explanation(
-                base_url + f"&page={page}",
-                self.headers,
-                f"Form {form_id} - Page {page}",
-            )
-            all_chunks.append(self._json_iaso_crawler(r.json()))
-
-        all_extracted_df = pd.concat(all_chunks, ignore_index=True)
-        return all_extracted_df
-
-    def _submmission_df_formatting(self, df: pd.DataFrame) -> pd.DataFrame:
-        df = period_processing(df)
-        for col_info_zip in self.get_cols_from_the_form("integer")():
-            try:
-                df[col_info_zip[0]] = pd.to_numeric(
-                    df[col_info_zip[0]], errors="coerce"
-                )
-                df[col_info_zip[0]] = df[col_info_zip[0]].astype(float)
-            except:
-                pass
-        return df
-
-    def extract_submissions_info(self, form_id: int) -> pd.DataFrame:
-        """
-        Extracts submission information from IASO.
-
-        Args:
-            form_id (int): The ID of the form to extract submissions from.
-
-        Returns:
-            pd.DataFrame: The formatted submission dataframe.
-
-        """
-        self.get_data_structure_from_the_form(form_id)
-
-        instance_full_df = self._json_request_extract(form_id, limit_batch=50)
-
-        if instance_full_df.empty:
-            return instance_full_df
-
-        return self._submmission_df_formatting(instance_full_df)
-
-    # ---------------
-
-    def all_param_data_generation_per_orgunit(
-        self,
-        ogunit_id: str,
-        ind: int,
-        sizes_picked: List[float],
-        stabilitys_picked: List[float],
-        base_qualitys_picked: List[float],
-        periods: List[str],
-    ) -> pd.DataFrame:
-        param_df = []
-
-        for param_name, param_required, type, choices in self.get_cols_from_the_form(
-            "integer"
-        )():
-            raw_values = numbers_per_param(
-                param_name,
-                True,
-                param_required,
-                sizes_picked[ind],
-                stabilitys_picked[ind],
-                base_qualitys_picked[ind],
-                periods,
-            )
-            param_df.append(
-                pd.DataFrame({"period": periods, "VALUE": raw_values}).assign(
-                    PARAMETER=param_name
-                )
-            )
-
-        for param_name, param_required, type, choices in self.get_cols_from_the_form(
-            "select_one"
-        )():
-            raw_values = choice_from_list_for_periods(
-                choices, periods, 1, param_required, base_qualitys_picked[ind]
-            )
-            param_df.append(
-                pd.DataFrame({"period": periods, "VALUE": raw_values}).assign(
-                    PARAMETER=param_name
-                )
-            )
-
-        for param_name, param_required, type, choices in self.get_cols_from_the_form(
-            "select_multiple"
-        )():
-            raw_values = choice_from_list_for_periods(
-                choices, periods, False, param_required, base_qualitys_picked[ind]
-            )
-            param_df.append(
-                pd.DataFrame({"period": periods, "VALUE": raw_values}).assign(
-                    PARAMETER=param_name
-                )
-            )
-
-        param_df = pd.concat(param_df)
-        param_df = param_df.assign(org_unit_id=ogunit_id)
-        return param_df
-
-    def generate_fake_full_data(self, form_id: int, periods: List[str]) -> pd.DataFrame:
-        """
-        Generates full data.
-        """
-        self.get_data_structure_from_the_form(form_id)
-        df_org_unit = self.get_ou_tree_dataframe_from_the_form(form_id)
-        base_org_tree_id_list = df_org_unit.org_unit_id.unique()
-
-        sizes_picked = random.choices(self.sizelist, k=len(base_org_tree_id_list))
-        stabilitys_picked = random.choices(
-            self.stable_condition, k=len(base_org_tree_id_list)
-        )
-        base_qualitys_picked = random.choices(
-            self.quality_reportig, k=len(base_org_tree_id_list)
-        )
-
-        full_df = [
-            self.all_param_data_generation_per_orgunit(
-                ogunit_id,
-                ind,
-                sizes_picked,
-                stabilitys_picked,
-                base_qualitys_picked,
-                periods,
-            )
-            for ind, ogunit_id in enumerate(base_org_tree_id_list)
-        ]
-        full_df_pivot = pd.concat(full_df)
-        full_df_pivot = pd.pivot(
-            data=full_df_pivot,
-            index=["period", "org_unit_id"],
-            columns="PARAMETER",
-            values="VALUE",
-        ).reset_index()
-        full_df_pivot["period"] = pd.to_datetime(
-            full_df_pivot.period, format="%Y-%m-%d"
-        )
-        return full_df_pivot.round(0)
+        org_df = pd.concat(org_df_total, ignore_index=True)
+        return org_df
 
 
-def pyramid_selector(df):
-    max_id = df["updated_date"].apply(pd.to_datetime).idxmax()
-    max_date = df["updated_date"].apply(pd.to_datetime).dt.date.get(max_id)
-    if max_date != datetime.date(2023, 7, 14):
-        return df.loc[max_id, :]
-    else:
-        df = df.drop(max_id)
-        return pyramid_selector(df)
-
-
-def normalize_string(text):
+def pyramid_selector(df: pd.DataFrame) -> pd.Series:
     """
-    Normalizes a string:
-    - Lowercase & Accent removal
-    - Removes suffixes even if glued to text (e.g., 'CSITagadofet' -> 'tagadofet')
-    - Removes special characters
-    - Collapses internal spaces
-    """
-    if not isinstance(text, str):
-        return ""
+    Selects the most recent row, excluding entries from 2023-07-14.
 
-    noisy_words = r"\b(csi|cs|ds|chr|hd|creni|crenam|cloture|departement|region|ville)"
-
-    text = text.lower()
-    text = unicodedata.normalize("NFD", text)
-    text = "".join([c for c in text if unicodedata.category(c) != "Mn"])
-    text = re.sub(noisy_words, "", text, flags=re.IGNORECASE)
-    text = re.sub(r"[^a-z0-9\s]", " ", text)
-
-    return " ".join(text.split()).strip()
-
-
-def org_unit_matching(
-    target_df: pd.DataFrame, spatial_unit_df: pd.DataFrame, threshold: int = 90
-) -> pd.DataFrame:
-    """
-    Matches organization unit levels (LVL 3 (ds), LVL 6 (csi)) between two DataFrames using fuzzy string matching.
-
-    Args:
-        target_df (pd.DataFrame): DataFrame containing the target data for each combination of LVL 2, LVL 3, and LVL 6 names.
-        spatial_unit_df (pd.DataFrame): DataFrame containing the org unit IDs for each combination of LVL 2, LVL 3, LVL 4, LVL 5 and LVL 6 names.
+    Parameters:
+        df (pd.DataFrame): The input dataframe containing an 'updated_date' column.
 
     Returns:
-        pd.DataFrame: target_df with matched organization units and their corresponding org unit IDs.
+        pd.Series: The row with the most recent updated_date, excluding the forbidden date.
     """
-    # 1. Preparation
-    rename_map = {
-        "LVL_3_NAME": "LVL_3_NAME_original",
-        "LVL_6_NAME": "LVL_6_NAME_original",
-    }
+    dates = pd.to_datetime(df["updated_date"])
+    mask = dates.dt.date != datetime.date(
+        2023, 7, 14
+    )  # Filter out the "forbidden" date (2023-07-14)
+    valid_df_dates = dates[mask]
 
-    target_df = target_df.rename(columns=rename_map)
-    target = target_df[["LVL_3_NAME_original", "LVL_6_NAME_original"]].copy()
-    target = target.drop_duplicates()
-    spatial = spatial_unit_df.copy()
+    if valid_df_dates.empty:
+        return pd.Series(dtype="object")
 
-    # 2. Create Cleansed Concatenations
-    target["cleansed_target"] = target.apply(
-        lambda r: f"{normalize_string(str(r['LVL_3_NAME_original']))} {normalize_string(str(r['LVL_6_NAME_original']))}",
-        axis=1,
-    )
-    spatial["cleansed_spatial"] = spatial.apply(
-        lambda r: f"{normalize_string(str(r['LVL_3_NAME']))} {normalize_string(str(r['LVL_6_NAME']))}",
-        axis=1,
-    )
-
-    # 3. Collect ALL Potential Match Candidates
-    all_potential_candidates = []
-    spatial_list = spatial["cleansed_spatial"].tolist()
-    spatial_indices = spatial.index.tolist()
-
-    for idx_t, query in target["cleansed_target"].items():
-        if not query or not query.strip():
-            continue
-
-        if query in spatial_list:
-            exact_indices = [i for i, x in enumerate(spatial_list) if x == query]
-            for list_idx in exact_indices:
-                idx_s = spatial_indices[list_idx]
-                all_potential_candidates.append(
-                    {"target_idx": idx_t, "spatial_idx": idx_s, "score": 101}
-                )
-            continue
-
-        matches = process.extract(
-            query,
-            spatial_list,
-            scorer=lambda s1, s2: (fuzz.token_set_ratio(s1, s2) * 0.7)
-            + (fuzz.ratio(s1, s2) * 0.3),
-            limit=5,
-        )
-
-        for match in matches:
-            matched_str = match[0]
-            score = match[1]
-            if len(match) > 2:
-                list_idx = match[2]
-            else:
-                list_idx = spatial_list.index(matched_str)
-
-            if score >= threshold:
-                idx_s = spatial_indices[list_idx]
-                len_penalty = 1 - (
-                    abs(len(query) - len(matched_str))
-                    / max(len(query), len(matched_str))
-                )
-                adjusted_score = score * len_penalty
-
-                all_potential_candidates.append(
-                    {"target_idx": idx_t, "spatial_idx": idx_s, "score": adjusted_score}
-                )
-
-    # 4. Global Greedy Matching Logic
-    all_potential_candidates.sort(key=lambda x: x["score"], reverse=True)
-    assigned_target_indices = set()
-    assigned_spatial_indices = set()
-    final_assignment = {}
-
-    for match in all_potential_candidates:
-        t_idx = match["target_idx"]
-        s_idx = match["spatial_idx"]
-
-        if (
-            t_idx not in assigned_target_indices
-            and s_idx not in assigned_spatial_indices
-        ):
-            final_assignment[t_idx] = (s_idx, match["score"])
-            assigned_target_indices.add(t_idx)
-            assigned_spatial_indices.add(s_idx)
-
-    # 5. Finalize Results
-    target["match_index"] = target.index.map(
-        lambda x: final_assignment[x][0] if x in final_assignment else None
-    )
-    target["match_score"] = target.index.map(
-        lambda x: final_assignment[x][1] if x in final_assignment else 0
-    )
-
-    cols_to_pull = [
-        "org_unit_id",
-        "LVL_3_NAME",
-        "LVL_6_NAME",
-        "cleansed_spatial",
-    ]
-
-    final_df = target.merge(
-        spatial[cols_to_pull],
-        left_on="match_index",
-        right_index=True,
-        how="left",
-        suffixes=("", "_matched"),
-    )
-
-    final_df = final_df.rename(columns={"cleansed_spatial": "cleansed_spatial_match"})
-    final_df = target_df.merge(
-        final_df, on=["LVL_3_NAME_original", "LVL_6_NAME_original"], how="left"
-    )
-
-    # Make sure that all entries merged back to target_df
-    count_initial = target_df.shape[0]
-    count_final = final_df.shape[0]
-    if count_initial != count_final:
-        raise ValueError(
-            f"Row count mismatch after merging back to target_df: {count_initial} vs {count_final}"
-        )
-
-    return final_df.drop(columns=["match_index"]), spatial
-
-
-def parse_age_to_months(age_str):
-    """Converts 'X-Y mois/ans' to a (min_months, max_months) tuple."""
-    match = re.search(r"(\d+)-(\d+)\s+(mois|ans)", age_str)
-    if not match:
-        return None
-
-    start, end, unit = match.groups()
-    multiplier = 12 if unit == "ans" else 1
-
-    # We treat 'ans' as inclusive of the full year (e.g., 4 ans = up to 59.9 months)
-    # Adjusting 'end' for years to cover the full duration:
-    start_m = int(start) * multiplier
-    end_m = (int(end) + 1) * multiplier if unit == "ans" else int(end)
-
-    return start_m, end_m
+    max_idx = valid_df_dates.idxmax()
+    most_recent_row = df.loc[max_idx]
+    return most_recent_row

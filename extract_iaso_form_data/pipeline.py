@@ -25,13 +25,20 @@ def extract_iaso_form_data():
     """
     extract_iaso_data_for_current_month()
     extract_iaso_data_for_other_months()
-    combined_df = combine_historical_and_current_data()
+    combined_df = process_historical_and_current_data()
     save_file(combined_df, "combined_iaso_data_raw")
 
 
 def extract_iaso_data_for_current_month() -> None:
     """
-    Extrait les données IASO pour le mois en cours et met à jour le fichier local.
+    Extracts data from IASO for the current month and saves it as a feather file in the IASO_EXTRACTION_PATH.
+    If no data is found, the existing file will not be modified.
+
+    Args:
+        None
+
+    Returns:
+        None
     """
     now = datetime.datetime.today()
     current_month = now.month
@@ -81,7 +88,14 @@ def extract_iaso_data_for_current_month() -> None:
 def extract_iaso_data_for_other_months() -> None:
     """
     Extract data from IASO for all months from 2024 up to the current date,
-    skipping months that already have a saved file.
+    skipping months that already have a saved file, and saving each month's data as
+    a feather file in the IASO_EXTRACTION_PATH.
+
+    Args:
+        None
+
+    Returns:
+        None
     """
     now = datetime.datetime.today()
     current_month = now.month
@@ -147,13 +161,19 @@ def extract_iaso_data_for_other_months() -> None:
                 continue
 
 
-def combine_historical_and_current_data() -> pd.DataFrame:
+def process_historical_and_current_data() -> pd.DataFrame:
     """
-    Combine les données historiques et la période actuelle dans un seul DataFrame
-    avec gestion des doublons et validation de la structure.
+    Combine all the historical and current month data extracted from IASO,
+    handling duplicates and ensuring alignment with the expected form structure.
+
+    Args:
+        None
+
+    Returns:
+        pd.DataFrame: Combined DataFrame containing all the extracted data from IASO.
     """
 
-    # 1. Vérification de l'existence du dossier
+    # Checking if the extraction folder exists
     if not os.path.exists(IASO_EXTRACTION_PATH):
         current_run.log_error(
             f"Le dossier de données n'existe pas : {IASO_EXTRACTION_PATH}"
@@ -162,7 +182,7 @@ def combine_historical_and_current_data() -> pd.DataFrame:
 
     dataframes_list = []
 
-    # 2. Collecte efficace des fichiers
+    # Collecting all feather files in the extraction folder
     for file in os.listdir(IASO_EXTRACTION_PATH):
         if file.endswith(".feather") and not file.startswith("~$"):
             file_path = os.path.join(IASO_EXTRACTION_PATH, file)
@@ -180,14 +200,14 @@ def combine_historical_and_current_data() -> pd.DataFrame:
                 current_run.log_error(f"Erreur lors de la lecture de {file} : {e}")
                 continue
 
-    # 3. Combinaison unique
+    # Combining all dataframes into one
     if not dataframes_list:
         current_run.log_warning("Aucune donnée trouvée dans les fichiers Feather.")
         return pd.DataFrame()
 
     combined_df = pd.concat(dataframes_list, ignore_index=True)
 
-    # 4. Gestion robuste des doublons (basée sur UUID)
+    # Checking for duplicates based on 'uuid' column and keeping the first occurrence
     if "uuid" in combined_df.columns:
         duplicates = combined_df.duplicated(subset=["uuid"], keep="first")
         duplicates_count = duplicates.sum()
@@ -200,11 +220,12 @@ def combine_historical_and_current_data() -> pd.DataFrame:
             )
             combined_df = combined_df[~duplicates].reset_index(drop=True)
     else:
-        current_run.log_warning(
+        current_run.log_error(
             "La colonne 'uuid' est absente. Impossible de dédoublonner."
         )
+        raise
 
-    # 5. Alignement avec la structure attendue du formulaire IASO
+    # Making sure the combined dataframe has all the expected columns based on the form structure
     try:
         iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
         iaso_connector_instance.get_data_structure_from_the_form(iaso_form_id)
@@ -232,10 +253,10 @@ def combine_historical_and_current_data() -> pd.DataFrame:
 
 def save_file(df: pd.DataFrame, file_name: str) -> None:
     """
-    Save the cleaned org unit tree data to a parquet file.
+    Save the given DataFrame as a parquet file in the OUTPUTS_PATH with the specified file name.
 
     Args:
-        df (pd.DataFrame): DataFrame containing the cleaned org unit tree data.
+        df (pd.DataFrame): DataFrame containing the data to be saved.
         file_name (str): Name of the file to save the DataFrame as.
 
     Returns:
