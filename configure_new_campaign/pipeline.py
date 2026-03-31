@@ -92,7 +92,7 @@ from config import (
     help="Sélectionnez la date de début du round de la campagne. La date doit être au format AAAA-MM-JJ.",
     type=str,
     required=True,
-    # default="2026-05-01",
+    # default="2026-11-01",
 )
 @parameter(
     "campaign_round_end_date",
@@ -100,7 +100,7 @@ from config import (
     help="Sélectionnez la date de fin du round de la campagne. La date doit être au format AAAA-MM-JJ.",
     type=str,
     required=True,
-    # default="2026-05-20",
+    # default="2026-11-20",
 )
 @parameter(
     "overwrite_existing_round",
@@ -288,6 +288,10 @@ def validate_coherence_of_params(
                     )
 
         # Checking that the campaign exists in the target data for the selected year
+        if target_df.empty:
+            raise ValueError(
+                "Aucun fichier de cibles configurées n'est disponible. Veuillez d'abord configurer les données de cibles pour la campagne concernée."
+            )
         target_data_check_1 = target_df[target_df["produit"] == campaign_cleaned]
         if target_data_check_1.empty:
             choices = list(target_df["produit"].unique())

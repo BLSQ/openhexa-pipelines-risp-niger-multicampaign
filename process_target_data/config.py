@@ -12,6 +12,28 @@ TARGET_OTHER_DATA_PATH = os.path.join(
 TEMP_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "temp")
 
 # configs
+valid_campaigns = [
+    "Polio",
+    "Rougeole",
+    "Méningite",
+    "TCV",
+    "Fièvre jaune",
+    "Albendazole",
+    "Vitamine A",
+]
+valid_scales = [
+    "nationale",
+    "agadez",
+    "diffa",
+    "dosso",
+    "maradi",
+    "niamey",
+    "tahoua",
+    "tillaberi",
+    "zinder",
+]
+valid_levels = ["csi", "district"]
+
 campaign_rename_dict = {
     "Polio": "vaccin polio",
     "Rougeole": "rougeole",

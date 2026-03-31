@@ -4,12 +4,16 @@ from openhexa.sdk import current_run, pipeline, workspace
 import pandas as pd
 import numpy as np
 from utils import (
+    validate_campaign_filename,
     org_unit_matching,
 )
 from config import (
     OUTPUTS_PATH,
     TARGET_OTHER_DATA_PATH,
     TEMP_PATH,
+    valid_campaigns,
+    valid_scales,
+    valid_levels,
     templates_required_cols_csi,
     templates_required_cols_district,
     campaign_rename_dict,
@@ -137,7 +141,7 @@ def process_dataframe(df: pd.DataFrame, aggregation_type: str, meta: dict):
         else templates_required_cols_district
     )
     if not all(col in df.columns for col in required):
-        raise ValueError(f"Colonnes manquantes. Attendu: {required}")
+        raise ValueError(f"Colonnes manquantes. Colonnes attendues: {required}")
 
     regex_pattern = r"^Cible (\d+-\d+ (?:mois|ans))$"
     extra_cols = [col for col in df.columns if col not in required]
@@ -172,7 +176,7 @@ def process_dataframe(df: pd.DataFrame, aggregation_type: str, meta: dict):
 
 def import_target_data_for_future_campaigns():
     """
-    Placeholder function for importing target data for future campaigns.
+    Imports target data for future campaigns
 
     Args:
         None
@@ -181,9 +185,8 @@ def import_target_data_for_future_campaigns():
         csi_target_df (pd.DataFrame): DataFrame containing the target data at CSI level for future campaigns.
         district_target_df (pd.DataFrame): DataFrame containing the target data at district level for future campaigns.
     """
-    current_run.log_info(
-        "Importation et traitement des données de cibles générées par les fichiers templates..."
-    )
+    current_run.log_info("Démarrage de l'importation des cibles...")
+
     try:
         if not os.path.exists(TARGET_OTHER_DATA_PATH):
             os.makedirs(TARGET_OTHER_DATA_PATH)
@@ -191,9 +194,8 @@ def import_target_data_for_future_campaigns():
 
         all_data = {"csi": [], "district": []}
 
-        file_pattern = re.compile(r"Cibles_([^_]+)_(\d{4})_(.+)\.xlsx")
-
         for entry in os.scandir(TARGET_OTHER_DATA_PATH):
+            # validation
             if not (
                 entry.is_file()
                 and entry.name.endswith(".xlsx")
@@ -201,72 +203,50 @@ def import_target_data_for_future_campaigns():
             ):
                 continue
 
-            match = file_pattern.match(entry.name)
-            if not match:
-                current_run.log_error(f"Format de nommage invalide : '{entry.name}'")
-                raise ValueError(f"Format de nommage invalide : '{entry.name}'")
+            is_valid, result = validate_campaign_filename(
+                entry.name, valid_campaigns, valid_scales, valid_levels
+            )
 
-            # Extract groups based on file name convention e.g. Cibles_Rougeole_2026_agadez_diffa_dosso_csi.xlsx
-            campaign_raw, year, middle_part = match.groups()
-            parts = middle_part.split("_")
-            agg = parts[-1].lower()
-
-            if campaign_raw not in campaign_rename_dict:
+            if not is_valid:
                 current_run.log_error(
-                    f"Campagne invalide '{campaign_raw}' dans {entry.name}"
+                    f"Fichier rejeté: {entry.name} | Raison: {result}"
                 )
-                raise ValueError(
-                    f"Campagne invalide '{campaign_raw}' dans {entry.name}"
-                )
+                raise
 
-            # Ensure the aggregation level is one we expect (csi or district)
-            if agg not in all_data:
-                current_run.log_error(
-                    f"Niveau d'agrégation '{agg}' non supporté dans {entry.name}"
-                )
-                raise ValueError(
-                    f"Niveau d'agrégation '{agg}' doit être 'csi' ou 'district'."
-                )
+            # processing
+            metadata = result
 
             try:
                 df = pd.read_excel(entry.path)
 
                 if df.empty:
                     current_run.log_error(f"Le fichier {entry.name} est vide.")
-                    raise ValueError(f"Le fichier {entry.name} est vide.")
-
-                target_cols = [col for col in df.columns if col.startswith("Cible ")]
-
-                if not target_cols:
-                    current_run.log_error(
-                        f"Aucune colonne de cible trouvée dans le fichier {entry.name}."
-                    )
                     raise
 
-                # Validate numeric data
+                target_cols = [col for col in df.columns if col.startswith("Cible ")]
                 for col in target_cols:
-                    non_empty_values = df[col].dropna()
-                    check_numeric = pd.to_numeric(non_empty_values, errors="coerce")
-                    if check_numeric.isna().any():
+                    if pd.to_numeric(df[col], errors="coerce").isna().any():
                         current_run.log_error(
-                            f"Le fichier {entry.name} contient des valeurs non numériques dans la colonne {col}."
+                            f"Données non numériques dans {entry.name} (colonne '{col}')"
                         )
                         raise
 
-                # Metadata assignment
-                df["year"] = int(year)
-                df["produit"] = campaign_rename_dict.get(campaign_raw, campaign_raw)
+                df["year"] = metadata["year"]
+                df["produit"] = campaign_rename_dict.get(
+                    metadata["campaign"], metadata["campaign"]
+                )
 
-                processed_df = process_dataframe(df, agg, {"file": entry.name})
-                all_data[agg].append(processed_df)
+                processed_df = process_dataframe(
+                    df, metadata["level"], {"file": entry.name}
+                )
+                all_data[metadata["level"]].append(processed_df)
 
-                current_run.log_info(f"Fichier {entry.name} traité.")
+                current_run.log_info(f"Succès: {entry.name}")
 
             except Exception as e:
-                current_run.log_error(f"Erreur sur {entry.name} : {str(e)}")
-                raise ValueError(f"Erreur sur {entry.name} : {str(e)}")
+                current_run.log_error(f"Erreur technique sur {entry.name}: {e}")
+                raise
 
-        # Combine results
         csi_target_df = (
             pd.concat(all_data["csi"], ignore_index=True)
             if all_data["csi"]
@@ -278,16 +258,10 @@ def import_target_data_for_future_campaigns():
             else pd.DataFrame()
         )
 
-        current_run.log_info(
-            f"Importation terminée: CSI: {len(all_data['csi'])}, District: {len(all_data['district'])}"
-        )
-
         return csi_target_df, district_target_df
 
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'importation des données de cibles : {e}"
-        )
+        current_run.log_error(f"Erreur globale d'importation: {e}")
         raise
 
 
