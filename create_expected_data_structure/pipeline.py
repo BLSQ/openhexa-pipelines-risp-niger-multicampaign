@@ -13,10 +13,10 @@ from config import (
 
 
 @pipeline(
-    "build_combination_products_dataset",
+    "create_expected_data_structure",
     name="multi-campagne - Etablissement de la structure des données attendues",
 )
-def build_combination_products_dataset():
+def create_expected_data_structure():
     """
     This pipeline builds a dataframe that contains all the combinations of parameter values
     expected based on the configuration of historical and new campaigns. This dataframe
@@ -54,7 +54,7 @@ def build_combination_products_dataset():
     combined_df = add_new_campaign_configurations(combined_df)
 
     # Save
-    save_file(combined_df, "combined_campaign_data")
+    save_file(combined_df, "expected_data_structure")
 
 
 def create_product_site_df() -> pd.DataFrame:
@@ -433,4 +433,4 @@ def save_file(df: pd.DataFrame, file_name: str) -> None:
 
 
 if __name__ == "__main__":
-    build_combination_products_dataset()
+    create_expected_data_structure()

@@ -73,14 +73,13 @@ def build_visualisation_tables():
     # data imports
     combined_df = load_data("combined_iaso_data")
     target_df = load_data("combined_target_data")
-    combined_campaign_data_df = load_data("combined_campaign_data")
+    expected_structure_df = load_data("expected_data_structure")
+    iaso_org_unit_tree_clean_df = load_data("iaso_org_unit_tree_clean")
 
     # create datasets
-    cvrg_total, cvrg_df = create_coverage_dataset(
-        combined_df, combined_campaign_data_df
-    )
+    cvrg_total, cvrg_df = create_coverage_dataset(combined_df, expected_structure_df)
     cvrg_csi_district = add_target_data(cvrg_df, target_df)
-    cmpl = create_completeness_dataset(combined_df, combined_campaign_data_df)
+    cmpl = create_completeness_dataset(combined_df, expected_structure_df)
     stock = create_stocks_dataset(combined_df, cvrg_total)
     supervision = create_supervision_dataset(combined_df)
     communication_long, communication = create_communication_dataset(combined_df)
@@ -90,8 +89,8 @@ def build_visualisation_tables():
         year_filter_table,
         products_filter_table,
         combination_filter_table,
-    ) = create_filter_tables(combined_df, combined_campaign_data_df)
-    spatial_units_combined = create_dynamic_org_unit_table()
+    ) = create_filter_tables(combined_df, expected_structure_df)
+    spatial_units_combined = create_dynamic_org_unit_table(iaso_org_unit_tree_clean_df)
 
     # write to db
     write_to_db(cvrg_total, "ner_vaccination_couverture")
@@ -772,7 +771,9 @@ def create_filter_tables(
         raise
 
 
-def create_dynamic_org_unit_table() -> pd.DataFrame:
+def create_dynamic_org_unit_table(
+    iaso_org_unit_tree_clean_df: pd.DataFrame,
+) -> pd.DataFrame:
     """
     Create a table that allows to dynamically switch between district-level and CSI-level
     data in Power BI by having the same org unit in different rows with a variable indicating
@@ -785,7 +786,7 @@ def create_dynamic_org_unit_table() -> pd.DataFrame:
      - concatenating these two tables together.
 
     Args:
-        None
+        iaso_org_unit_tree_clean_df (pd.DataFrame): DataFrame containing the cleaned org unit tree.
 
     Returns:
         spatial_units_combined (pd.DataFrame): DataFrame containing the combined district-level and
@@ -797,13 +798,6 @@ def create_dynamic_org_unit_table() -> pd.DataFrame:
         "Création du tableau dynamique des unités organisationnelles..."
     )
     try:
-        file_path = os.path.join(
-            OUTPUTS_PATH,
-            "iaso_org_unit_tree_clean.parquet",
-        )
-
-        iaso_org_unit_tree_clean_df = pd.read_parquet(file_path)
-
         spatial_units_choice_0 = iaso_org_unit_tree_clean_df.copy()
 
         spatial_units_choice_0["choice_org_unit_level"] = "District"

@@ -28,7 +28,7 @@ def process_iaso_form_data():
     # data imports
     iaso_org_unit_tree_clean = load_data("iaso_org_unit_tree_clean")
     iaso_org_unit_tree_raw = load_data("iaso_org_unit_tree_raw")
-    expected_data_structure = load_data("combined_campaign_data")
+    expected_data_structure = load_data("expected_data_structure")
     iaso_raw_df = load_data("combined_iaso_data_raw")
 
     # data processing
@@ -78,20 +78,17 @@ def align_to_clean_org_tree(
     Standardizes org unit IDs in the submission data by mapping them to the 'Clean'
     org unit tree.
 
-    This function performs a 'strict' alignment: any submission linked to an org
-    unit ID that was rejected or dropped during the tree cleaning process will
-    be identified as invalid and removed from the final dataset. This ensures
-    downstream consistency with the campaign-specific organizational hierarchy.
-
     Args:
         iaso_raw_df (pd.DataFrame): The dataframe containing the raw data from the IASO multi-campaign form
-        iaso_org_unit_tree_raw (pd.DataFrame): The raw IASO organisation tree DataFrame.
-        iaso_org_unit_tree_clean (pd.DataFrame): The clean IASO organisation tree DataFrame.
+        iaso_org_unit_tree_raw (pd.DataFrame): The raw IASO organisation tree DataFrame containing all org units names and IDs
+        iaso_org_unit_tree_clean (pd.DataFrame): The clean IASO organisation tree DataFrame containing the clean org units names and IDs.
 
     Returns:
         iaso_processed_df (pd.DataFrame): The dataframe containing the processed data from the IASO multi-campaign form with org unit IDs retrieved.
     """
-    current_run.log_info("Récupération des identifiants des unités d'organisation...")
+    current_run.log_info(
+        "Récupération des identifiants des unités organisationnelles..."
+    )
     try:
         iaso_org_unit_tree_raw["LVL_6_UID"] = iaso_org_unit_tree_raw.groupby(
             "LVL_6_NAME"
@@ -129,7 +126,7 @@ def align_to_clean_org_tree(
         return iaso_processed_df
     except Exception as e:
         current_run.log_error(
-            f"Erreur lors de la récupération des identifiants des unités d'organisation : {str(e)}"
+            f"Erreur lors de la récupération des identifiants des unités organisationnelles : {str(e)}"
         )
         raise
 

@@ -131,10 +131,10 @@ def configure_new_campaign(
         campaign_round_end_date,
     )
     configured_target_data = load_data("combined_configured_target_data")
-    combined_campaign_data = load_data("combined_campaign_data")
+    expected_data_structure = load_data("expected_data_structure")
     overlap_exists = validate_coherence_of_params(
         configured_target_data,
-        combined_campaign_data,
+        expected_data_structure,
         campaign,
         campaign_scale,
         year,
@@ -143,7 +143,7 @@ def configure_new_campaign(
         overwrite_existing_round,
     )
     config_df = create_configuration_df(
-        combined_campaign_data,
+        expected_data_structure,
         campaign,
         year,
         campaign_round_start_date,
