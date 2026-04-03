@@ -8,6 +8,8 @@ from config import (
     TEMPLATES_PATH,
     rename_dict,
     age_group_campaign_dict,
+    campaign_names_mapping,
+    regions_list,
 )
 
 
@@ -112,8 +114,21 @@ def generate_targets_templates(
     Returns:
         None
     """
-    inspect_params(campaign_scale, year)
+    # load data
     iaso_org_unit_tree_df_clean = load_data("iaso_org_unit_tree_clean")
+    existing_target_df = load_data("combined_target_data")
+
+    # run checks
+    inspect_params(campaign_scale, year)
+    validate_coherence_of_params(
+        campaign,
+        campaign_scale,
+        year,
+        aggregation_level,
+        existing_target_df,
+    )
+
+    # create template
     create_template_file(
         iaso_org_unit_tree_df_clean,
         campaign,
@@ -149,7 +164,81 @@ def inspect_params(
     # year must be a reasonable integer between 2026 and 2050
     if not isinstance(year, int) or year < 2026 or year > 2050:
         current_run.log_error(
-            "Le paramètre 'Année' doit être un entier entre 2026 et 2100."
+            "Le paramètre 'Année' doit être un entier entre 2026 et 2050."
+        )
+        raise
+
+
+def validate_coherence_of_params(
+    campaign: str,
+    campaign_scale: list,
+    year: int,
+    aggregation_level: str,
+    existing_target_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Validates the coherence of the parameters for campaign, campaign scale, year and aggregation level with the existing target data. If the combination of parameters already exists in the existing target data, an error is raised. If the combination of parameters is new, it is added to the existing target data and returned as a new dataframe.
+
+    Args:
+        campaign (str): The type of campaign for which to generate the target template.
+        campaign_scale (list): The scale of the campaign (e.g., national, regional).
+        year (int): The year of the campaign.
+        aggregation_level (str): The level of aggregation for the campaign (e.g., CSI, District).
+        existing_target_df (pd.DataFrame): The existing target data to check against.
+
+    Returns:
+        combined_df (pd.DataFrame): A dataframe combining the existing target data with the new combination of parameters if it is new, or raises an error if the combination already exists.
+    """
+    current_run.log_info(
+        "Validation de la cohérence des paramètres avec les données de cibles existantes..."
+    )
+    try:
+        # create a dataframe with the new combination of parameters
+        campaign_clean = campaign_names_mapping.get(campaign, campaign)
+        if "Nationale" in campaign_scale:
+            campaign_scale = regions_list
+
+        new_combination_df = pd.DataFrame(
+            {
+                "produit": [campaign_clean],
+                "LVL_2_NAME": [", ".join(campaign_scale)],
+                "year": [year],
+            }
+        )
+        new_combination_df = new_combination_df.assign(
+            LVL_2_NAME=new_combination_df["LVL_2_NAME"].str.split(", ")
+        ).explode("LVL_2_NAME")
+
+        # check if the combination of parameters already exists in the combined target data
+        existing_target_check = new_combination_df.merge(
+            existing_target_df,
+            on=["produit", "LVL_2_NAME", "year"],
+            how="left",
+            indicator=True,
+        )
+        has_overlap = existing_target_check["_merge"].eq("both").any()
+        overlapping_regions = existing_target_check[
+            existing_target_check["_merge"].eq("both")
+        ]["LVL_2_NAME"].unique()
+        existing_was_csi = existing_target_check["LVL_6_NAME"].notnull().any()
+
+        if has_overlap:
+            if aggregation_level == "CSI" and existing_was_csi:
+                error_msg = f"Il existe déjà une configuration de cibles aux niveau CSI avec la combinaison de paramètres 'Campagne: {campaign}' et 'Année: {year}' pour les régions suivantes: {', '.join(overlapping_regions)}. Veuillez vérifier les données de cibles existantes."
+            elif aggregation_level == "CSI" and not existing_was_csi:
+                error_msg = f"Il existe déjà une configuration de cibles au niveau District avec la combinaison de paramètres 'Campagne: {campaign}' et 'Année: {year}' pour les régions suivantes: {', '.join(overlapping_regions)}. Veuillez vérifier les données de cibles existantes."
+            elif aggregation_level == "District" and existing_was_csi:
+                error_msg = f"Il existe déjà une configuration de cibles au niveau CSI avec la combinaison de paramètres 'Campagne: {campaign}' et 'Année: {year}' pour les régions suivantes: {', '.join(overlapping_regions)}. Veuillez vérifier les données de cibles existantes."
+            elif aggregation_level == "District" and not existing_was_csi:
+                error_msg = f"Il existe déjà une configuration de cibles au niveau District avec la combinaison de paramètres 'Campagne: {campaign}' et 'Année: {year}' pour les régions suivantes: {', '.join(overlapping_regions)}. Veuillez vérifier les données de cibles existantes."
+            raise ValueError(error_msg)
+        else:
+            current_run.log_info(
+                "Les paramètres des cibles choisis sont cohérents avec les données de cibles existantes. La création du fichier template peut se poursuivre."
+            )
+    except Exception as e:
+        current_run.log_error(
+            f"Erreur lors de la validation de la cohérence des paramètres avec les données de cibles existantes: {e}"
         )
         raise
 
@@ -180,7 +269,7 @@ def load_data(file_name: str) -> pd.DataFrame:
         return df
     except Exception as e:
         current_run.log_error(
-            f"Erreur lors de la lecture des données de la pyramide des unités organisationnelles depuis le fichier {file_to_import}: {e}"
+            f"Erreur lors de la lecture des données de la pyramide des unités organisationnelles depuis le fichier {file_name}: {e}"
         )
         raise
 
@@ -300,38 +389,6 @@ def create_template_file(
     except Exception as e:
         current_run.log_error(f"Erreur lors de la création du fichier template: {e}")
         raise
-
-
-def save_file(df: pd.DataFrame, file_name: str) -> None:
-    """
-    Save the cleaned org unit tree data to a parquet file.
-
-    Args:
-        df (pd.DataFrame): DataFrame containing the cleaned org unit tree data.
-        file_name (str): Name of the file to save the DataFrame as.
-
-    Returns:
-        None
-    """
-    current_run.log_info("Enregistrement des données des unités organisationnelles...")
-    try:
-        if not os.path.exists(OUTPUTS_PATH):
-            os.makedirs(OUTPUTS_PATH)
-        file_path = os.path.join(
-            OUTPUTS_PATH,
-            f"{file_name}.parquet",
-        )
-
-        df.to_parquet(
-            file_path,
-            index=False,
-        )
-        current_run.log_info(
-            f"Données des unités organisationnelles enregistrées avec succès: {file_path}"
-        )
-    except Exception as e:
-        current_run.log_error(f"Erreur lors de l'enregistrement du fichier: {e}")
-        raise e
 
 
 if __name__ == "__main__":

@@ -50,11 +50,11 @@ def process_target_data():
         import_target_data_for_future_campaigns()
     )
     if not all_target_data_csi_combined.empty:
-        all_target_data_csi_combined = match_csi_to_org_unit_id(
+        all_target_data_csi_combined = import_org_unit_ids(
             all_target_data_csi_combined, iaso_org_unit_tree_df_clean
         )
     if not all_target_data_district_combined.empty:
-        all_target_data_district_combined = match_district_to_org_unit_id(
+        all_target_data_district_combined = import_org_unit_ids(
             all_target_data_district_combined, iaso_org_unit_tree_df_clean
         )
 
@@ -261,6 +261,77 @@ def import_target_data_for_future_campaigns():
 
     except Exception as e:
         current_run.log_error(f"Erreur globale d'importation: {e}")
+        raise
+
+
+def import_org_unit_ids(
+    target_df: pd.DataFrame,
+    iaso_org_unit_tree_df_clean: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Imports org unit IDs from the raw IASO org unit tree data based on the org unit names in the configured target data.
+
+    Args:
+        target_df (pd.DataFrame): DataFrame containing the target data with org unit names.
+        iaso_org_unit_tree_df_clean (pd.DataFrame): DataFrame containing the clean IASO org unit tree with org unit IDs.
+
+    Returns:
+         target_with_org_unit_ids_df (pd.DataFrame): DataFrame containing the target data with matched org unit IDs.
+    """
+    current_run.log_info(
+        "Récupération des identifiants des unités organisationnelles à partir de la pyramide IASO..."
+    )
+    try:
+        district_org_unit_ids_df = iaso_org_unit_tree_df_clean[
+            ["org_unit_id", "LVL_3_NAME"]
+        ].drop_duplicates()
+        csi_org_unit_ids_df = iaso_org_unit_tree_df_clean[
+            ["org_unit_id", "LVL_3_NAME", "LVL_6_NAME"]
+        ].drop_duplicates()
+
+        # district-level matching
+        if target_df["LVL_6_NAME"].isna().all():
+            target_with_org_unit_ids_df = target_df.merge(
+                district_org_unit_ids_df,
+                left_on=["LVL_3_NAME"],
+                right_on=["LVL_3_NAME"],
+                how="left",
+                indicator=True,
+            )
+            unmatched_count = (
+                target_with_org_unit_ids_df["_merge"].value_counts().get("left_only", 0)
+            )
+            if unmatched_count > 0:
+                current_run.log_error(
+                    f"Erreur lors de l'appariement au niveau des districts: {unmatched_count} unités organisationnelles n'ont pas été appariées."
+                )
+                raise
+
+        # csi-level matching
+        else:
+            target_with_org_unit_ids_df = target_df.merge(
+                csi_org_unit_ids_df,
+                left_on=["LVL_3_NAME", "LVL_6_NAME"],
+                right_on=["LVL_3_NAME", "LVL_6_NAME"],
+                how="left",
+                indicator=True,
+            )
+            unmatched_count = (
+                target_with_org_unit_ids_df["_merge"].value_counts().get("left_only", 0)
+            )
+            if unmatched_count > 0:
+                current_run.log_error(
+                    f"Erreur lors de l'appariement au niveau des CSI: {unmatched_count} unités organisationnelles n'ont pas été appariées."
+                )
+                raise
+
+        target_with_org_unit_ids_df = target_with_org_unit_ids_df.drop(
+            columns=["_merge"]
+        )
+
+        return target_with_org_unit_ids_df
+    except Exception as e:
+        current_run.log_error(f"Erreur lors de l'importation des org unit IDs: {e}")
         raise
 
 
@@ -516,11 +587,6 @@ def clean_org_unit_id(
 
         target_data_combined.drop(columns=["final_org_unit_id", "_merge"], inplace=True)
 
-        # drop LVL_2_NAME col (not needed)
-        target_data_combined = target_data_combined.drop(
-            columns=["LVL_2_NAME"], errors="ignore"
-        )
-
         return target_data_combined
     except Exception as e:
         current_run.log_error(
@@ -552,11 +618,12 @@ def add_round_info_to_configured_target_data(
     # if there already exist round info for the same combination of year-produit in the historical data,
     # create new rounds upto 10 rounds starting from the max round number in the historical data for this
     # combination. Otherwise, assign round 1 to 10 to the target data of the configured campaigns.
-    historical_target_df["round_num"] = (
-        historical_target_df["round"].str.extract(r"round (\d+)").astype(int)
+    historical_target_df_modified = historical_target_df.copy()
+    historical_target_df_modified["round_num"] = (
+        historical_target_df_modified["round"].str.extract(r"round (\d+)").astype(int)
     )
     max_rounds_historical = (
-        historical_target_df.groupby(["year", "produit"])["round_num"]
+        historical_target_df_modified.groupby(["year", "produit"])["round_num"]
         .max()
         .reset_index()
     )
@@ -581,7 +648,7 @@ def add_round_info_to_configured_target_data(
     configured_target_df = configured_target_df.explode("round").reset_index(drop=True)
 
     configured_target_with_rounds_df = configured_target_df.drop(
-        columns=["round_start", "round_end", "round_num"], errors="ignore"
+        columns=["round_start", "round_end"]
     )
 
     return configured_target_with_rounds_df
