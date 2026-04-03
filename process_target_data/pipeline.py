@@ -39,11 +39,13 @@ def process_target_data():
      - retrieves all org unit IDs from the raw IASO tree associated to the org unit names in the combined target data
      - saves the combined target data and exports it to a dataset.
     """
-    # load org unit tree data
+
+    # load data
     iaso_org_unit_tree_df = load_data("iaso_org_unit_tree_raw")
     iaso_org_unit_tree_df_clean = load_data("iaso_org_unit_tree_clean")
+    historical_target_data = load_data("combined_historical_target_data")
 
-    # process target data from templates
+    # process configured target data
     all_target_data_csi_combined, all_target_data_district_combined = (
         import_target_data_for_future_campaigns()
     )
@@ -56,10 +58,6 @@ def process_target_data():
             all_target_data_district_combined, iaso_org_unit_tree_df_clean
         )
 
-    # load historical target data
-    historical_target_data = load_data("combined_historical_target_data")
-
-    # combine all target data
     target_data_configured_combined = combine_target_data(
         [
             all_target_data_csi_combined,
@@ -67,21 +65,22 @@ def process_target_data():
         ]
     )
 
+    target_data_configured_combined = add_round_info_to_configured_target_data(
+        target_data_configured_combined, historical_target_data
+    )
+
+    target_data_configured_combined = clean_org_unit_id(
+        target_data_configured_combined,
+        iaso_org_unit_tree_df,
+        iaso_org_unit_tree_df_clean,
+    )
+
+    # combine with historical target data
     target_data_combined = combine_target_data(
         [
             target_data_configured_combined,
             historical_target_data,
         ]
-    )
-
-    # add campaign rounds for configured target data
-    target_data_combined = add_round_info_to_configured_target_data(
-        target_data_combined
-    )
-
-    # clean up org unit
-    target_data_combined = clean_org_unit_id(
-        target_data_combined, iaso_org_unit_tree_df, iaso_org_unit_tree_df_clean
     )
 
     # save
@@ -467,7 +466,7 @@ def combine_target_data(
 
 def clean_org_unit_id(
     target_data_combined: pd.DataFrame,
-    iaso_org_unit_tree_df: pd.DataFrame,
+    iaso_org_unit_tree_raw_df: pd.DataFrame,
     iaso_org_unit_tree_clean_df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
@@ -476,7 +475,7 @@ def clean_org_unit_id(
 
     Args:
         target_data_combined (pd.DataFrame): DataFrame containing the combined target data.
-        iaso_org_unit_tree_df (pd.DataFrame): DataFrame containing the org unit tree data.
+        iaso_org_unit_tree_raw_df (pd.DataFrame): DataFrame containing the raw org unit tree data.
         iaso_org_unit_tree_clean_df (pd.DataFrame): DataFrame containing the cleaned org unit tree data.
 
     Returns:
@@ -489,7 +488,7 @@ def clean_org_unit_id(
         uid_to_org_id_df_clean = iaso_org_unit_tree_clean_df[
             ["LVL_6_UID", "org_unit_id"]
         ].drop_duplicates()
-        uid_to_org_id_df_raw = iaso_org_unit_tree_df.copy()
+        uid_to_org_id_df_raw = iaso_org_unit_tree_raw_df.copy()
         uid_to_org_id_df_raw["LVL_6_UID"] = uid_to_org_id_df_raw.groupby("LVL_6_NAME")[
             "LVL_6_UID"
         ].transform("first")
@@ -531,7 +530,7 @@ def clean_org_unit_id(
 
 
 def add_round_info_to_configured_target_data(
-    target_data_combined: pd.DataFrame,
+    configured_target_df: pd.DataFrame, historical_target_df: pd.DataFrame
 ) -> pd.DataFrame:
     """
     Add round information to the combined target data for the configured campaigns, assuming that
@@ -539,42 +538,38 @@ def add_round_info_to_configured_target_data(
     in the historical data for the campaign.
 
     Args:
-        target_data_combined (pd.DataFrame): DataFrame containing the combined target data.
+        configured_target_df (pd.DataFrame): DataFrame containing the configured target data.
+        historical_target_df (pd.DataFrame): DataFrame containing the historical target data.
 
     Returns:
-        target_data_combined(pd.DataFrame): DataFrame with added round information for the configured campaigns.
+        configured_target_with_rounds_df(pd.DataFrame): DataFrame with added round information for the configured campaigns.
     """
     current_run.log_info(
         "Ajout des informations de rounds pour les campagnes configurées..."
     )
-    target_data_combined_historical = target_data_combined[
-        target_data_combined["round"].notna()
-    ]
-    target_data_combined_configured = target_data_combined[
-        target_data_combined["round"].isna()
-    ]
+    configured_target_df["round"] = np.nan
 
     # if there already exist round info for the same combination of year-produit in the historical data,
     # create new rounds upto 10 rounds starting from the max round number in the historical data for this
     # combination. Otherwise, assign round 1 to 10 to the target data of the configured campaigns.
-    target_data_combined_historical["round_num"] = (
-        target_data_combined_historical["round"].str.extract(r"round (\d+)").astype(int)
+    historical_target_df["round_num"] = (
+        historical_target_df["round"].str.extract(r"round (\d+)").astype(int)
     )
     max_rounds_historical = (
-        target_data_combined_historical.groupby(["year", "produit"])["round_num"]
+        historical_target_df.groupby(["year", "produit"])["round_num"]
         .max()
         .reset_index()
     )
     max_rounds_historical["round_start"] = max_rounds_historical["round_num"] + 1
     max_rounds_historical["round_end"] = 10
 
-    target_data_combined_configured = target_data_combined_configured.merge(
+    configured_target_df = configured_target_df.merge(
         max_rounds_historical[["year", "produit", "round_start", "round_end"]],
         on=["year", "produit"],
         how="left",
     )
 
-    target_data_combined_configured["round"] = target_data_combined_configured.apply(
+    configured_target_df["round"] = configured_target_df.apply(
         lambda row: [
             f"round {i}"
             for i in range(int(row["round_start"]), int(row["round_end"]) + 1)
@@ -583,21 +578,13 @@ def add_round_info_to_configured_target_data(
         else [f"round {i}" for i in range(1, 11)],
         axis=1,
     )
-    target_data_combined_configured = target_data_combined_configured.explode(
-        "round"
-    ).reset_index(drop=True)
-    target_data_combined_configured = target_data_combined_configured.drop(
-        columns=["round_start", "round_end"]
-    )
-    target_data_combined = pd.concat(
-        [target_data_combined_historical, target_data_combined_configured],
-        ignore_index=True,
-    )
-    target_data_combined = target_data_combined.drop(
-        columns=["round_num"], errors="ignore"
+    configured_target_df = configured_target_df.explode("round").reset_index(drop=True)
+
+    configured_target_with_rounds_df = configured_target_df.drop(
+        columns=["round_start", "round_end", "round_num"], errors="ignore"
     )
 
-    return target_data_combined
+    return configured_target_with_rounds_df
 
 
 def save_file(df: pd.DataFrame, file_name: str) -> None:

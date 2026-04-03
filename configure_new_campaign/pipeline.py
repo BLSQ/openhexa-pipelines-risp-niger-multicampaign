@@ -29,7 +29,7 @@ from config import (
         "Albendazole",
         "Vitamine A",
     ],
-    # default="Polio",
+    default="Polio",
 )
 @parameter(
     "year",
@@ -64,7 +64,7 @@ from config import (
         2049,
         2050,
     ],
-    # default=2026,
+    default=2026,
 )
 @parameter(
     "campaign_scale",
@@ -84,7 +84,7 @@ from config import (
         "Zinder",
     ],
     multiple=True,
-    # default=["Nationale"],
+    default=["Nationale"],
 )
 @parameter(
     "campaign_round_start_date",
@@ -92,7 +92,7 @@ from config import (
     help="Sélectionnez la date de début du round de la campagne. La date doit être au format AAAA-MM-JJ.",
     type=str,
     required=True,
-    # default="2026-11-01",
+    default="2026-11-01",
 )
 @parameter(
     "campaign_round_end_date",
@@ -100,7 +100,7 @@ from config import (
     help="Sélectionnez la date de fin du round de la campagne. La date doit être au format AAAA-MM-JJ.",
     type=str,
     required=True,
-    # default="2026-11-20",
+    default="2026-11-20",
 )
 @parameter(
     "overwrite_existing_round",
@@ -108,7 +108,7 @@ from config import (
     help="Indiquez si les configurations de rounds précédents doivent être effacées en cas de chevauchement de période avec la nouvelle campagne. Si non, une erreur sera levée en cas de chevauchement de période.",
     type=bool,
     required=True,
-    default=False,
+    default=True,
 )
 def configure_new_campaign(
     campaign: str,

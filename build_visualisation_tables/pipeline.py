@@ -91,6 +91,7 @@ def build_visualisation_tables():
         combination_filter_table,
     ) = create_filter_tables(combined_df, expected_structure_df)
     spatial_units_combined = create_dynamic_org_unit_table(iaso_org_unit_tree_clean_df)
+    campaign_round_summary = create_campaign_round_summary_table(cvrg_total)
 
     # write to db
     write_to_db(cvrg_total, "ner_vaccination_couverture")
@@ -107,6 +108,7 @@ def build_visualisation_tables():
     write_to_db(products_filter_table, "ner_vaccination_products_filter_table")
     write_to_db(combination_filter_table, "ner_vaccination_combination_filter_table")
     write_to_db(spatial_units_combined, "ner_spatial_units")
+    write_to_db(campaign_round_summary, "ner_vaccination_campaign_round_summary")
 
 
 def load_data(name: str) -> pd.DataFrame:
@@ -826,6 +828,49 @@ def create_dynamic_org_unit_table(
     except Exception as e:
         current_run.log_error(
             f"Erreur lors de la création du tableau dynamique des unités organisationnelles: {e}"
+        )
+        raise
+
+
+def create_campaign_round_summary_table(
+    cvrg_total: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Create a summary table of the different campaigns, rounds, years, periods and products present in the combined IASO data to be used as a visual in PBI.
+
+    Args:
+        cvrg_total (pd.DataFrame): the dataframe containing the coverage data for all campaigns, rounds, years, periods and products present in the combined IASO data.
+
+    Returns:
+        campaign_round_summary_df (pd.DataFrame): summary table of the different campaigns, rounds, years and products present in the combined IASO data.
+    """
+    current_run.log_info(
+        "Création du tableau de résumé des campagnes, produits, années, rounds, et périodes..."
+    )
+    try:
+        campaign_round_summary_df = (
+            cvrg_total[["produit", "year", "round", "period"]]
+            .drop_duplicates()
+            .reset_index(drop=True)
+        )
+        campaign_round_summary_df["round_start"] = campaign_round_summary_df.groupby(
+            ["produit", "year", "round"]
+        )["period"].transform("min")
+        campaign_round_summary_df["round_end"] = campaign_round_summary_df.groupby(
+            ["produit", "year", "round"]
+        )["period"].transform("max")
+        campaign_round_summary_df = (
+            campaign_round_summary_df[
+                ["produit", "year", "round", "round_start", "round_end"]
+            ]
+            .drop_duplicates()
+            .reset_index(drop=True)
+        )
+
+        return campaign_round_summary_df
+    except Exception as e:
+        current_run.log_error(
+            f"Erreur lors de la création du tableau de résumé des campagnes, rounds, années et produits: {e}"
         )
         raise
 

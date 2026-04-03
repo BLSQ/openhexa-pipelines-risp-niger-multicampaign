@@ -4,7 +4,6 @@ import pandas as pd
 import numpy as np
 from config import (
     OUTPUTS_PATH,
-    CONFIG_PATH,
     product_site_config,
     product_status_config,
     sex_types_config,
@@ -13,13 +12,13 @@ from config import (
 
 
 @pipeline(
-    "create_expected_data_structure",
-    name="multi-campagne - Etablissement de la structure des données attendues",
+    "create_expected_data_structure_for_historical_campaigns",
+    name="multi-campagne - Etablissement de la structure des données attendues pour les campagnes historiques",
 )
-def create_expected_data_structure():
+def create_expected_data_structure_for_historical_campaigns():
     """
     This pipeline builds a dataframe that contains all the combinations of parameter values
-    expected based on the configuration of historical and new campaigns. This dataframe
+    expected based on the configuration of historical campaigns. This dataframe
     will be used as a base to combine with the extracted IASO data and create the final
     dataset that will be used for the dashboard.
 
@@ -27,21 +26,20 @@ def create_expected_data_structure():
     - create the combinations of parameters (product, site, age group, sex, vaccination status,
       campaign round, campaign year, campaign period) based on the configurations of historical
       campaigns
-    - add the configurations of new campaigns to the combined dataframe
     - save the combined dataframe in the outputs folder as a parquet file in the workspace
 
     """
-    # Create combination dataset for historical campaigns
-    org_unit_ids_df = load_data("iaso_org_unit_tree_clean")
+    # load relevant data
     target_df = load_data("combined_historical_target_data")
 
+    # create combination dataset for historical campaigns
     product_site_df = create_product_site_df()
     sex_type_df = create_sex_type_df()
     product_status_df = create_product_status_df()
     age_product_year_round_df = create_age_product_year_round_df(target_df)
     campaign_period_df = create_campaign_period_df()
     combined_df = combine_dfs(
-        org_unit_ids_df,
+        target_df,
         age_product_year_round_df,
         product_site_df,
         sex_type_df,
@@ -50,11 +48,37 @@ def create_expected_data_structure():
     )
     combined_df = adjust_to_specific_campaigns(combined_df)
 
-    # Add new campaign configurations to the combined dataframe
-    combined_df = add_new_campaign_configurations(combined_df)
+    # save
+    save_file(combined_df, "expected_data_structure_historical_campaigns")
 
-    # Save
-    save_file(combined_df, "expected_data_structure")
+
+def load_data(name: str) -> pd.DataFrame:
+    """
+    Import data from a specified file in the outputs directory.
+    The file should be in parquet format and the name should be provided without the extension.
+
+    Args:
+        name (str): Name of the file to be imported (without extension).
+
+    Returns:
+        df (pd.DataFrame): DataFrame containing the imported data.
+    """
+    current_run.log_info(f"Importation du fichier {name}...")
+    try:
+        if not os.path.exists(OUTPUTS_PATH):
+            os.makedirs(OUTPUTS_PATH)
+
+        file_path = os.path.join(
+            OUTPUTS_PATH,
+            f"{name}.parquet",
+        )
+        df = pd.read_parquet(file_path)
+        current_run.log_info(f"Fichier importé avec succès: {file_path}")
+        return df
+
+    except Exception as e:
+        current_run.log_error(f"Erreur lors de l'importation du fichier {name}: {e}")
+        raise
 
 
 def create_product_site_df() -> pd.DataFrame:
@@ -97,35 +121,6 @@ def create_sex_type_df() -> pd.DataFrame:
 
     sex_type_df = pd.DataFrame(sex_types_config, columns=["sexe"])
     return sex_type_df
-
-
-def load_data(name: str) -> pd.DataFrame:
-    """
-    Import data from a specified file in the outputs directory.
-    The file should be in parquet format and the name should be provided without the extension.
-
-    Args:
-        name (str): Name of the file to be imported (without extension).
-
-    Returns:
-        df (pd.DataFrame): DataFrame containing the imported data.
-    """
-    current_run.log_info(f"Importation du fichier {name}...")
-    try:
-        if not os.path.exists(OUTPUTS_PATH):
-            os.makedirs(OUTPUTS_PATH)
-
-        file_path = os.path.join(
-            OUTPUTS_PATH,
-            f"{name}.parquet",
-        )
-        df = pd.read_parquet(file_path)
-        current_run.log_info(f"Fichier importé avec succès: {file_path}")
-        return df
-
-    except Exception as e:
-        current_run.log_error(f"Erreur lors de l'importation du fichier {name}: {e}")
-        raise
 
 
 def create_age_product_year_round_df(target_df: pd.DataFrame) -> pd.DataFrame:
@@ -228,7 +223,7 @@ def create_campaign_period_df() -> pd.DataFrame:
 
 
 def combine_dfs(
-    org_unit_ids_df: pd.DataFrame,
+    target_df: pd.DataFrame,
     age_product_year_round_df: pd.DataFrame,
     product_site_df: pd.DataFrame,
     sex_type_df: pd.DataFrame,
@@ -239,7 +234,7 @@ def combine_dfs(
     Combine all DataFrames into a single DataFrame representing the combination products dataset of historical campaigns.
 
     Args:
-        org_unit_ids_df (pd.DataFrame): DataFrame with org unit IDs.
+        target_df (pd.DataFrame): DataFrame with target data.
         age_product_year_round_df (pd.DataFrame): DataFrame with age, product, year, and round combinations.
         product_site_df (pd.DataFrame): DataFrame with product and site combinations.
         sex_type_df (pd.DataFrame): DataFrame with sex types.
@@ -254,7 +249,7 @@ def combine_dfs(
     )
     try:
         # cross join org_unit, sex, and combo df
-        org_unit_ids_df = org_unit_ids_df[
+        org_unit_ids_df = target_df[
             ["org_unit_id", "LVL_2_NAME", "LVL_3_NAME", "LVL_6_NAME"]
         ].drop_duplicates()
         combined_df = org_unit_ids_df.merge(sex_type_df, how="cross").merge(
@@ -355,53 +350,6 @@ def adjust_to_specific_campaigns(combined_df: pd.DataFrame) -> pd.DataFrame:
     return combined_df
 
 
-def add_new_campaign_configurations(combined_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Import all config files relating to new campaigns and append the corresponding
-    configurations to the combined DataFrame of historical campaigns.
-
-    Args:
-        combined_df (pd.DataFrame): DataFrame containing the combined campaign data.
-
-    Returns:
-        combined_df (pd.DataFrame): Adjusted DataFrame with new campaign configurations added.
-    """
-    current_run.log_info(
-        "Ajout des configurations des nouvelles campagnes au DataFrame combiné..."
-    )
-    try:
-        config_files = [
-            f
-            for f in os.listdir(CONFIG_PATH)
-            if f.startswith("config_") and f.endswith(".parquet")
-        ]
-        if not config_files:
-            current_run.log_warning(
-                f"Aucun fichier de configuration de nouvelle campagne trouvé dans le dossier {CONFIG_PATH}. Aucune configuration de nouvelle campagne ne sera ajoutée aux données combinées."
-            )
-            return combined_df
-        else:
-            current_run.log_info(
-                f"Fichiers de configuration de nouvelle campagne trouvés: {config_files}."
-            )
-            for config_file in config_files:
-                config_path = os.path.join(CONFIG_PATH, config_file)
-                config_df = pd.read_parquet(config_path)
-                combined_df = pd.concat([combined_df, config_df], ignore_index=True)
-
-            combined_df = combined_df.drop_duplicates().reset_index(drop=True)
-
-            current_run.log_info(
-                "Configurations des nouvelles campagnes ajoutées avec succès au DataFrame combiné."
-            )
-            return combined_df
-    except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'ajout des configurations des nouvelles campagnes au DataFrame combiné: {e}"
-        )
-        raise
-
-
 def save_file(df: pd.DataFrame, file_name: str) -> None:
     """
     Save the cleaned org unit tree data to a parquet file.
@@ -433,4 +381,4 @@ def save_file(df: pd.DataFrame, file_name: str) -> None:
 
 
 if __name__ == "__main__":
-    create_expected_data_structure()
+    create_expected_data_structure_for_historical_campaigns()

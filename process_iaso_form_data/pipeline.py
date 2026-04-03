@@ -167,7 +167,7 @@ def clean_combined_df(
             campaign_name_mapping_dict
         )
 
-        # set values of columns unrelated to a specific campaign to NaN (use cvrg_campaign_map dict to identify columns specific to each campaign)
+        # set values of columns unrelated to a specific campaign to NaN
         for campaign_name, cols in cols_campaign_map.items():
             cols_in_df = [c for c in cols if c in iaso_processed_df.columns]
             mask_not_campaign = iaso_processed_df["choix_campagne"] != campaign_name
@@ -227,12 +227,31 @@ def clean_combined_df(
             indicator=True,
         )
 
+        # summarize affected entries
         date_invalide_mask = iaso_processed_df["_merge"] == "left_only"
-        if date_invalide_mask.sum() > 0:
-            proportion_date_invalide = date_invalide_mask.sum() / len(iaso_processed_df)
+        invalid_count = date_invalide_mask.sum()
+        if invalid_count > 0:
+            proportion_date_invalide = invalid_count / len(iaso_processed_df)
             current_run.log_warning(
-                f"{date_invalide_mask.sum()} entrées ({proportion_date_invalide:.2%}) ont été supprimées "
+                f"{invalid_count} entrées ({proportion_date_invalide:.2%}) ont été supprimées "
                 f"car la période est en dehors de la période de campagne."
+            )
+            iaso_processed_invalid_df = iaso_processed_df[date_invalide_mask]
+            iaso_processed_invalid_df["year"] = iaso_processed_invalid_df[
+                "period"
+            ].dt.year
+            invalid_entries_summary = (
+                iaso_processed_invalid_df.groupby(["choix_campagne", "year"])
+                .size()
+                .reset_index(name="count")
+            )
+            total_count = iaso_processed_df.shape[0]
+            invalid_entries_summary["proportion"] = round(
+                (invalid_entries_summary["count"] / total_count) * 100, 1
+            )
+
+            current_run.log_warning(
+                f"Résumé des entrées avec période invalide par campagne et année :\n{invalid_entries_summary}"
             )
         iaso_processed_df = iaso_processed_df[~date_invalide_mask].drop(
             columns=["_merge"]

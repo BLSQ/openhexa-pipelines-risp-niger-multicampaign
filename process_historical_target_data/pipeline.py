@@ -33,6 +33,7 @@ def process_historical_target_data():
     campaigns in Niger, including polio, rougeole, yellow fever, and men5_tcv, that took place
     between July 2024 and January 2026.
     """
+    iaso_org_unit_tree_df = load_data("iaso_org_unit_tree_raw")
     iaso_org_unit_tree_df_clean = load_data("iaso_org_unit_tree_clean")
 
     # district-level historical target data
@@ -84,6 +85,16 @@ def process_historical_target_data():
             target_men5_tcv_2025_r1_r2,
             target_polio_2026_r1,
         ]
+    )
+
+    # add region names
+    target_data_combined = add_region_names(
+        target_data_combined, iaso_org_unit_tree_df_clean
+    )
+
+    # clean up org unit
+    target_data_combined = clean_org_unit_id(
+        target_data_combined, iaso_org_unit_tree_df, iaso_org_unit_tree_df_clean
     )
 
     # save
@@ -596,7 +607,7 @@ def match_district_to_org_unit_id(
             ["org_unit_id", "LVL_3_NAME"]
         ].drop_duplicates()
         iaso_org_unit_tree_for_matching = iaso_org_unit_tree_for_matching.groupby(
-            "LVL_3_NAME", as_index=False
+            ["LVL_3_NAME"], as_index=False
         ).first()
 
         target_df_matched = district_level_target_df.merge(
@@ -793,6 +804,96 @@ def combine_target_data(
             f"Erreur lors de la combinaison des données de cibles: {e}"
         )
         raise ValueError(f"Erreur lors de la combinaison des données de cibles: {e}")
+
+
+def add_region_names(
+    target_df: pd.DataFrame, iaso_org_unit_tree_clean_df: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Add region names to the target data by merging with the cleaned IASO org unit tree data.
+
+    Args:
+        target_df (pd.DataFrame): DataFrame containing the target data with org_unit_id.
+        iaso_org_unit_tree_clean_df (pd.DataFrame): DataFrame containing the cleaned IASO org unit tree data.
+
+    Returns:
+        target_with_regions_df (pd.DataFrame): DataFrame with region names added.
+    """
+    current_run.log_info("Ajout des noms de région aux données de cibles combinées...")
+    try:
+        regions_df = iaso_org_unit_tree_clean_df[
+            ["org_unit_id", "LVL_2_NAME"]
+        ].drop_duplicates()
+
+        target_with_regions_df = target_df.merge(
+            regions_df[["org_unit_id", "LVL_2_NAME"]],
+            on="org_unit_id",
+            how="left",
+        )
+        return target_with_regions_df
+    except Exception as e:
+        current_run.log_error(f"Erreur lors de l'ajout des noms de région: {e}")
+        raise
+
+
+def clean_org_unit_id(
+    target_data_combined: pd.DataFrame,
+    iaso_org_unit_tree_raw_df: pd.DataFrame,
+    iaso_org_unit_tree_clean_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Clean the org_unit_id column in the combined target data, by assigning all the org_unit_ids in the raw org unit tree
+    to the corresponding LVL_6_UID org_unit_id from the cleaned org unit tree.
+
+    Args:
+        target_data_combined (pd.DataFrame): DataFrame containing the combined target data.
+        iaso_org_unit_tree_raw_df (pd.DataFrame): DataFrame containing the raw org unit tree data.
+        iaso_org_unit_tree_clean_df (pd.DataFrame): DataFrame containing the cleaned org unit tree data.
+
+    Returns:
+        target_data_combined(pd.DataFrame): DataFrame with
+    """
+    current_run.log_info(
+        "Récupération des identifiants des unités d'organisation et application de la correspondance un-à-plusieurs..."
+    )
+    try:
+        uid_to_org_id_df_clean = iaso_org_unit_tree_clean_df[
+            ["LVL_6_UID", "org_unit_id"]
+        ].drop_duplicates()
+        uid_to_org_id_df_raw = iaso_org_unit_tree_raw_df.copy()
+        uid_to_org_id_df_raw["LVL_6_UID"] = uid_to_org_id_df_raw.groupby("LVL_6_NAME")[
+            "LVL_6_UID"
+        ].transform("first")
+        uid_to_org_id_df_raw = uid_to_org_id_df_raw[
+            ["LVL_6_UID", "org_unit_id"]
+        ].drop_duplicates()
+        uid_to_org_id_df_raw = uid_to_org_id_df_raw.rename(
+            columns={"org_unit_id": "final_org_unit_id"}
+        )
+        mapping_df = uid_to_org_id_df_clean.merge(
+            uid_to_org_id_df_raw, on="LVL_6_UID", how="inner"
+        )
+        mapping_df = mapping_df[["org_unit_id", "final_org_unit_id"]].drop_duplicates()
+
+        target_data_combined = pd.merge(
+            target_data_combined,
+            mapping_df,
+            on="org_unit_id",
+            how="left",
+            indicator=True,
+        )
+        target_data_combined["org_unit_id"] = target_data_combined[
+            "final_org_unit_id"
+        ].fillna(target_data_combined["org_unit_id"])
+
+        target_data_combined.drop(columns=["final_org_unit_id", "_merge"], inplace=True)
+
+        return target_data_combined
+    except Exception as e:
+        current_run.log_error(
+            f"Erreur lors du processus de récupération des identifiants des unités d'organisation: {e}"
+        )
+        raise
 
 
 def save_file(df: pd.DataFrame, file_name: str) -> None:
