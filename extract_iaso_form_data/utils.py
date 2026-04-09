@@ -4,7 +4,7 @@ from openhexa.sdk import current_run
 import pandas as pd
 import requests
 import json
-from typing import Tuple, Dict, Any, List
+from typing import Tuple, Dict, Any
 
 
 def request_explanatory_decorator(function):

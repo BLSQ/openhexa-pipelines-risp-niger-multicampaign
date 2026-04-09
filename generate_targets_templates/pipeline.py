@@ -153,20 +153,24 @@ def inspect_params(
         None
     """
     current_run.log_info("Vérification des choix des paramètres...")
+    try:
+        # for campaign_scale, if 'Nationale' is present, it cannot coexist with any other choice
+        if "Nationale" in campaign_scale and len(campaign_scale) > 1:
+            msg = "Le choix 'Nationale' pour le paramètre 'Échelle de la campagne' ne peut pas être sélectionné avec d'autres choix."
+            current_run.log_error(msg)
+            raise ValueError(msg)
 
-    # for campaign_scale, if 'Nationale' is present, it cannot coexist with any other choice
-    if "Nationale" in campaign_scale and len(campaign_scale) > 1:
-        current_run.log_error(
-            "Le choix 'Nationale' pour le paramètre 'Échelle de la campagne' ne peut pas être sélectionné avec d'autres choix."
-        )
-        raise
+        # year must be a reasonable integer between 2026 and 2050
+        if not isinstance(year, int) or year < 2026 or year > 2050:
+            msg = f"Le paramètre 'Année' doit être un entier entre 2026 et 2050. Valeur fournie: {year}"
+            current_run.log_error(msg)
+            raise ValueError(msg)
 
-    # year must be a reasonable integer between 2026 and 2050
-    if not isinstance(year, int) or year < 2026 or year > 2050:
-        current_run.log_error(
-            "Le paramètre 'Année' doit être un entier entre 2026 et 2050."
-        )
-        raise
+        current_run.log_info("Les choix des paramètres sont valides.")
+    except Exception as e:
+        msg = f"Erreur lors de la vérification des choix des paramètres: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def validate_coherence_of_params(
@@ -175,7 +179,7 @@ def validate_coherence_of_params(
     year: int,
     aggregation_level: str,
     existing_target_df: pd.DataFrame,
-) -> pd.DataFrame:
+) -> None:
     """
     Validates the coherence of the parameters for campaign, campaign scale, year and aggregation level with the existing target data. If the combination of parameters already exists in the existing target data, an error is raised. If the combination of parameters is new, it is added to the existing target data and returned as a new dataframe.
 
@@ -187,7 +191,7 @@ def validate_coherence_of_params(
         existing_target_df (pd.DataFrame): The existing target data to check against.
 
     Returns:
-        combined_df (pd.DataFrame): A dataframe combining the existing target data with the new combination of parameters if it is new, or raises an error if the combination already exists.
+        None
     """
     current_run.log_info(
         "Validation de la cohérence des paramètres avec les données de cibles existantes..."
@@ -231,16 +235,16 @@ def validate_coherence_of_params(
                 error_msg = f"Il existe déjà une configuration de cibles au niveau CSI avec la combinaison de paramètres 'Campagne: {campaign}' et 'Année: {year}' pour les régions suivantes: {', '.join(overlapping_regions)}. Veuillez vérifier les données de cibles existantes."
             elif aggregation_level == "District" and not existing_was_csi:
                 error_msg = f"Il existe déjà une configuration de cibles au niveau District avec la combinaison de paramètres 'Campagne: {campaign}' et 'Année: {year}' pour les régions suivantes: {', '.join(overlapping_regions)}. Veuillez vérifier les données de cibles existantes."
+            current_run.log_error(error_msg)
             raise ValueError(error_msg)
         else:
             current_run.log_info(
                 "Les paramètres des cibles choisis sont cohérents avec les données de cibles existantes. La création du fichier template peut se poursuivre."
             )
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de la validation de la cohérence des paramètres avec les données de cibles existantes: {e}"
-        )
-        raise
+        msg = f"Erreur lors de la validation de la cohérence des paramètres avec les données de cibles existantes: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def load_data(file_name: str) -> pd.DataFrame:
@@ -262,16 +266,16 @@ def load_data(file_name: str) -> pd.DataFrame:
             raise
         file_to_import = os.path.join(OUTPUTS_PATH, f"{file_name}.parquet")
         df = pd.read_parquet(file_to_import)
+
         current_run.log_info(
             f"Données de la pyramide des unités organisationnelles chargées avec succès depuis le fichier {file_to_import}"
         )
 
         return df
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de la lecture des données de la pyramide des unités organisationnelles depuis le fichier {file_name}: {e}"
-        )
-        raise
+        msg = f"Erreur lors de la lecture des données de la pyramide des unités organisationnelles depuis le fichier {file_name}: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def create_template_file(
@@ -384,11 +388,13 @@ def create_template_file(
         current_run.add_file_output(file_path)
 
         current_run.log_info(f"Fichier template généré avec succès: {file_path}")
+
         return df
 
     except Exception as e:
-        current_run.log_error(f"Erreur lors de la création du fichier template: {e}")
-        raise
+        msg = f"Erreur lors de la création du fichier template: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 if __name__ == "__main__":

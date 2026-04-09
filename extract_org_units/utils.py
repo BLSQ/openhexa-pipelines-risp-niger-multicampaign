@@ -1,17 +1,8 @@
-import numpy as np
 import pandas as pd
 import requests, json
-
-import re
-import random
 import io
-
 import datetime
-
-from typing import Tuple, Dict, Any, List
-
-from fuzzywuzzy import fuzz, process
-import unicodedata
+from typing import Dict, Any, List
 
 
 def request_explanatory_decorator(function):

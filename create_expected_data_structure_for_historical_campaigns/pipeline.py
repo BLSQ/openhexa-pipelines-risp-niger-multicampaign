@@ -77,8 +77,9 @@ def load_data(name: str) -> pd.DataFrame:
         return df
 
     except Exception as e:
-        current_run.log_error(f"Erreur lors de l'importation du fichier {name}: {e}")
-        raise
+        msg = f"Erreur lors de l'importation du fichier {name}: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def create_product_site_df() -> pd.DataFrame:
@@ -91,20 +92,26 @@ def create_product_site_df() -> pd.DataFrame:
     Returns:
         product_site_df (pd.DataFrame): DataFrame with all sites.
     """
-    current_run.log_info("Création du DataFrame des sites...")
+    current_run.log_info("Création du DataFrame des types de sites...")
+    try:
+        combinations = []
 
-    combinations = []
+        for product, sites in product_site_config.items():
+            for site in sites:
+                combinations.append((product, site))
 
-    for product, sites in product_site_config.items():
-        for site in sites:
-            combinations.append((product, site))
+        product_site_df = pd.DataFrame(combinations, columns=["produit", "site"])
+        product_site_df = product_site_df.sort_values(
+            by=["produit", "site"]
+        ).reset_index(drop=True)
 
-    product_site_df = pd.DataFrame(combinations, columns=["produit", "site"])
-    product_site_df = product_site_df.sort_values(by=["produit", "site"]).reset_index(
-        drop=True
-    )
+        current_run.log_info("DataFrame des types de sites créé avec succès.")
 
-    return product_site_df
+        return product_site_df
+    except Exception as e:
+        msg = f"Erreur lors de la création du DataFrame des sites: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def create_sex_type_df() -> pd.DataFrame:
@@ -118,9 +125,14 @@ def create_sex_type_df() -> pd.DataFrame:
         sex_type_df (pd.DataFrame): DataFrame with all sex types of cases vaccinated.
     """
     current_run.log_info("Création du DataFrame des types de sexe...")
-
-    sex_type_df = pd.DataFrame(sex_types_config, columns=["sexe"])
-    return sex_type_df
+    try:
+        sex_type_df = pd.DataFrame(sex_types_config, columns=["sexe"])
+        current_run.log_info("DataFrame des types de sexe créé avec succès.")
+        return sex_type_df
+    except Exception as e:
+        msg = f"Erreur lors de la création du DataFrame des types de sexe: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def create_age_product_year_round_df(target_df: pd.DataFrame) -> pd.DataFrame:
@@ -141,12 +153,14 @@ def create_age_product_year_round_df(target_df: pd.DataFrame) -> pd.DataFrame:
             ["year", "produit", "round", "age"]
         ].drop_duplicates()
 
+        current_run.log_info(
+            "DataFrame des combinaisons âge, produit, round, année créé avec succès."
+        )
         return age_product_year_round_df
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de la création du DataFrame des combinaisons âge, produit, round, année: {e}"
-        )
-        raise
+        msg = f"Erreur lors de la création du DataFrame des combinaisons âge, produit, round, année: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def create_product_status_df() -> pd.DataFrame:
@@ -160,17 +174,24 @@ def create_product_status_df() -> pd.DataFrame:
         product_status_df (pd.DataFrame): DataFrame with all combinations of products and vaccination statuses.
     """
     current_run.log_info("Création du DataFrame des statuts de vaccination...")
-    combinations = []
+    try:
+        combinations = []
 
-    for product, statuses in product_status_config.items():
-        for status in statuses:
-            combinations.append((product, status))
-    product_status_df = pd.DataFrame(combinations, columns=["produit", "status"])
-    product_status_df = product_status_df.sort_values(
-        by=["produit", "status"]
-    ).reset_index(drop=True)
+        for product, statuses in product_status_config.items():
+            for status in statuses:
+                combinations.append((product, status))
+        product_status_df = pd.DataFrame(combinations, columns=["produit", "status"])
+        product_status_df = product_status_df.sort_values(
+            by=["produit", "status"]
+        ).reset_index(drop=True)
 
-    return product_status_df
+        current_run.log_info("DataFrame des statuts de vaccination créé avec succès.")
+
+        return product_status_df
+    except Exception as e:
+        msg = f"Erreur lors de la création du DataFrame des statuts de vaccination: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def create_campaign_period_df() -> pd.DataFrame:
@@ -207,19 +228,17 @@ def create_campaign_period_df() -> pd.DataFrame:
             all_campaigns.append(temp_df)
 
         if not all_campaigns:
-            current_run.log_error(
-                "Aucune campagne historique trouvée dans la configuration"
-            )
-            raise
+            msg = "Aucune campagne historique trouvée dans la configuration."
+            current_run.log_error(msg)
+            raise ValueError(msg)
 
         all_campaigns_df = pd.concat(all_campaigns, ignore_index=True)
 
         return all_campaigns_df
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de la création du DataFrame des périodes de campagne: {e}"
-        )
-        raise
+        msg = f"Erreur lors de la création du DataFrame des périodes de campagne: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def combine_dfs(
@@ -314,12 +333,16 @@ def combine_dfs(
             }
         )
 
-        return combined_df
-    except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de la combinaison des DataFrames de campagnes historiques: {e}"
+        current_run.log_info(
+            "Tous les DataFrames de campagnes historiques combinés avec succès."
         )
-        raise
+
+        return combined_df
+
+    except Exception as e:
+        msg = f"Erreur lors de la combinaison des DataFrames de campagnes historiques: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def adjust_to_specific_campaigns(combined_df: pd.DataFrame) -> pd.DataFrame:
@@ -335,19 +358,29 @@ def adjust_to_specific_campaigns(combined_df: pd.DataFrame) -> pd.DataFrame:
     current_run.log_info(
         "Ajustement du DataFrame combiné pour des campagnes spécifiques..."
     )
+    try:
+        # For yellow fever campaigns 2025 2026 round 1, delete all entries outside the
+        #  regions of Dosso and Tahoua (only these 2 regions have been covered)
+        mask_yellow_fever_dosso_tahouha = (
+            (combined_df["produit"] == "fièvre jaune")
+            & (combined_df["year"].isin([2025, 2026]))
+            & (combined_df["round"] == "round 1")
+            & (~combined_df["LVL_2_NAME"].isin(["Dosso", "Tahoua"]))
+        )
+        combined_df = combined_df[~mask_yellow_fever_dosso_tahouha].reset_index(
+            drop=True
+        )
+        combined_df = combined_df.drop(columns=["LVL_2_NAME"])
 
-    # For yellow fever campaigns 2025 2026 round 1, delete all entries outside the
-    #  regions of Dosso and Tahoua (only these 2 regions have been covered)
-    mask_yellow_fever_dosso_tahouha = (
-        (combined_df["produit"] == "fièvre jaune")
-        & (combined_df["year"].isin([2025, 2026]))
-        & (combined_df["round"] == "round 1")
-        & (~combined_df["LVL_2_NAME"].isin(["Dosso", "Tahoua"]))
-    )
-    combined_df = combined_df[~mask_yellow_fever_dosso_tahouha].reset_index(drop=True)
-    combined_df = combined_df.drop(columns=["LVL_2_NAME"])
+        current_run.log_info(
+            "Ajustement du DataFrame combiné pour des campagnes spécifiques effectué avec succès."
+        )
 
-    return combined_df
+        return combined_df
+    except Exception as e:
+        msg = f"Erreur lors de l'ajustement du DataFrame combiné pour des campagnes spécifiques: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def save_file(df: pd.DataFrame, file_name: str) -> None:
@@ -376,8 +409,9 @@ def save_file(df: pd.DataFrame, file_name: str) -> None:
         )
         current_run.log_info(f"Fichier enregistré avec succès: {file_path}")
     except Exception as e:
-        current_run.log_error(f"Erreur lors de l'enregistrement du fichier: {e}")
-        raise e
+        msg = f"Erreur lors de l'enregistrement du fichier: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 if __name__ == "__main__":

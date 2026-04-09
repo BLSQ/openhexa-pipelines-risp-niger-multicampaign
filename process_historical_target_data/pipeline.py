@@ -123,11 +123,14 @@ def load_data(name: str) -> pd.DataFrame:
         )
         df = pd.read_parquet(file_path)
 
+        current_run.log_info(f"Importation du fichier {name} réussie.")
+
         return df
 
     except Exception as e:
-        current_run.log_error(f"Erreur lors de l'importation du fichier {name}: {e}")
-        raise
+        msg = f"Erreur lors de l'importation du fichier {name}: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def import_target_data_for_polio_2024_r1_r4() -> pd.DataFrame:
@@ -149,10 +152,9 @@ def import_target_data_for_polio_2024_r1_r4() -> pd.DataFrame:
             "Population JNV JNM ET DEPRARASITAGE.xlsx",
         )
     except Exception as e:
-        current_run.log_error(
-            f"Erreur d'importation des données de cibles pour la polio 2024 rounds 1 à 4: Impossible d'accéder au fichier: {file_path}. Veuillez vérifier que le fichier existe et que le chemin est correct."
-        )
-        raise
+        msg = f"Erreur d'importation des données de cibles pour la polio 2024 rounds 1 à 4: Impossible d'accéder au fichier: {file_path}. Veuillez vérifier que le fichier existe et que le chemin est correct."
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
     current_run.log_info(
         f"Importation des données de cibles pour la polio 2024 rounds 1 à 4 à partir du fichier {file_path}..."
@@ -197,10 +199,9 @@ def import_target_data_for_polio_2024_r1_r4() -> pd.DataFrame:
 
         return target_polio_2024
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'importation des données de cibles pour la polio 2024: {e}"
-        )
-        raise
+        msg = f"Erreur lors de l'importation des données de cibles pour la polio 2024 rounds 1 à 4: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def import_target_data_for_polio_and_rougeole_2025_r1_r2() -> pd.DataFrame:
@@ -253,12 +254,15 @@ def import_target_data_for_polio_and_rougeole_2025_r1_r2() -> pd.DataFrame:
         target_polio_rougeole_2025["year"] = 2025
         target_polio_rougeole_2025["campaign"] = "polio_rougeole"
 
+        current_run.log_info(
+            "Importation des données de cibles pour la polio et rougeole 2025 rounds 1 et 2 terminée."
+        )
+
         return target_polio_rougeole_2025
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'importation des données historiques de cibles pour les campagnes polio 2025 rounds 1-2 et rougeole 2025 round 1: {e}"
-        )
-        raise
+        msg = f"Erreur lors de l'importation des données historiques de cibles pour les campagnes polio 2025 rounds 1-2 et rougeole 2025 round 1: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def import_target_data_for_yellow_fever_2025_2026_r1() -> pd.DataFrame:
@@ -328,12 +332,15 @@ def import_target_data_for_yellow_fever_2025_2026_r1() -> pd.DataFrame:
             ignore_index=True,
         )
 
+        current_run.log_info(
+            "Importation des données de cibles pour la fièvre jaune 2025 et 2026 rounds 1 terminée."
+        )
+
         return target_yellow_fever_2025_2026_r1
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'importation des données de cibles pour la fièvre jaune 2025 et 2026 rounds 1: {e}"
-        )
-        raise
+        msg = f"Erreur lors de l'importation des données de cibles pour la fièvre jaune 2025 et 2026 rounds 1: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def import_target_data_for_men5_and_tcv_2025_r1_r2() -> pd.DataFrame:
@@ -384,13 +391,16 @@ def import_target_data_for_men5_and_tcv_2025_r1_r2() -> pd.DataFrame:
         ].drop_duplicates()
         target_men5_tcv_2025_clean["campaign"] = "men5_tcv"
 
+        current_run.log_info(
+            "Importation des données de cibles pour la campagne Méningite et TCV 2025 rounds 1 et 2 terminée."
+        )
+
         return target_men5_tcv_2025_clean
 
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'importation des données de cibles historiques pour la campagne Méningite et TCV 2025 rounds 1 et 2: {e}"
-        )
-        raise
+        msg = f"Erreur lors de l'importation des données de cibles historiques pour la campagne Méningite et TCV 2025 rounds 1 et 2: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def import_target_data_for_polio_2026_r1() -> pd.DataFrame:
@@ -451,12 +461,16 @@ def import_target_data_for_polio_2026_r1() -> pd.DataFrame:
         ].astype(int)
         target_polio_2026_r1_clean["year"] = 2026
         target_polio_2026_r1_clean["campaign"] = "polio"
+
+        current_run.log_info(
+            "Importation des données de cibles pour la campagne de polio 2026 round 1 terminée."
+        )
+
         return target_polio_2026_r1_clean
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'importation des données de cibles historiques pour la campagne de polio 2026 round 1: {e}"
-        )
-        raise
+        msg = f"Erreur lors de l'importation des données de cibles historiques pour la campagne de polio 2026 round 1: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def match_csi_to_org_unit_id(
@@ -575,12 +589,15 @@ def match_csi_to_org_unit_id(
         )
         target_df_matched = target_df_matched.dropna(subset=["org_unit_id"])
 
+        current_run.log_info(
+            "Appariement des noms CSI aux identifiants des unités organisationnelles terminé."
+        )
+
         return target_df_matched
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'appariement des noms CSI aux identifiants des unités organisationnelles: {e}"
-        )
-        raise
+        msg = f"Erreur lors de l'appariement des noms CSI aux identifiants des unités organisationnelles: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def match_district_to_org_unit_id(
@@ -601,7 +618,9 @@ def match_district_to_org_unit_id(
     Returns:
         target_df_matched (pd.DataFrame): DataFrame with matched organizational unit IDs.
     """
-    current_run.log_info("Matching district names to organizational unit IDs...")
+    current_run.log_info(
+        "Appariement des noms de districts aux identifiants des unités organisationnelles..."
+    )
     try:
         iaso_org_unit_tree_for_matching = iaso_org_unit_tree_df_clean[
             ["org_unit_id", "LVL_3_NAME"]
@@ -626,12 +645,15 @@ def match_district_to_org_unit_id(
                 "Ces entrées seront supprimées des données cibles."
             )
 
+        current_run.log_info(
+            "Appariement des noms de districts aux identifiants des unités organisationnelles terminé."
+        )
+
         return target_df_matched
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'appariement des noms de districts aux identifiants des unités organisationnelles: {e}"
-        )
-        raise
+        msg = f"Erreur lors de l'appariement des noms de districts aux identifiants des unités organisationnelles: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
@@ -646,139 +668,153 @@ def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
         target_df_expanded (pd.DataFrame): DataFrame with rounds and products added.
     """
     current_run.log_info("Ajout des rounds et des produits aux données de cibles...")
-
-    # polio 2024
-    if target_df["campaign"].iloc[0] == "polio" and target_df["year"].iloc[0] == 2024:
-        rounds = ["round 1", "round 2", "round 3", "round 4"]
-        target_df_expanded = pd.DataFrame(
-            np.repeat(target_df.values, len(rounds), axis=0),
-            columns=target_df.columns,
-        )
-        target_df_expanded["round"] = rounds * (len(target_df))
-        target_df_expanded["produit"] = np.where(
-            target_df_expanded["full_name"].str.contains("VPO"),
-            "vaccin polio",
-            np.where(
-                target_df_expanded["full_name"].str.contains("VA"),
-                "vitamine A",
+    try:
+        # polio 2024
+        if (
+            target_df["campaign"].iloc[0] == "polio"
+            and target_df["year"].iloc[0] == 2024
+        ):
+            rounds = ["round 1", "round 2", "round 3", "round 4"]
+            target_df_expanded = pd.DataFrame(
+                np.repeat(target_df.values, len(rounds), axis=0),
+                columns=target_df.columns,
+            )
+            target_df_expanded["round"] = rounds * (len(target_df))
+            target_df_expanded["produit"] = np.where(
+                target_df_expanded["full_name"].str.contains("VPO"),
+                "vaccin polio",
                 np.where(
-                    target_df_expanded["full_name"].str.contains("AL"),
-                    "albendazole",
-                    "produit inconnu",
+                    target_df_expanded["full_name"].str.contains("VA"),
+                    "vitamine A",
+                    np.where(
+                        target_df_expanded["full_name"].str.contains("AL"),
+                        "albendazole",
+                        "produit inconnu",
+                    ),
                 ),
-            ),
-        )
-        target_df_expanded = target_df_expanded.drop(["full_name", "campaign"], axis=1)
+            )
+            target_df_expanded = target_df_expanded.drop(
+                ["full_name", "campaign"], axis=1
+            )
 
-    # rougeole and polio 2025
-    elif (
-        target_df["campaign"].iloc[0] == "polio_rougeole"
-        and target_df["year"].iloc[0] == 2025
-    ):
-        rounds = ["round 1", "round 2"]
-        target_df_expanded = pd.DataFrame(
-            np.repeat(target_df.values, len(rounds), axis=0),
-            columns=target_df.columns,
-        )
-        target_df_expanded["round"] = rounds * (len(target_df))
+        # rougeole and polio 2025
+        elif (
+            target_df["campaign"].iloc[0] == "polio_rougeole"
+            and target_df["year"].iloc[0] == 2025
+        ):
+            rounds = ["round 1", "round 2"]
+            target_df_expanded = pd.DataFrame(
+                np.repeat(target_df.values, len(rounds), axis=0),
+                columns=target_df.columns,
+            )
+            target_df_expanded["round"] = rounds * (len(target_df))
 
-        target_df_expanded_rougeole = target_df_expanded.copy()
-        target_df_expanded_rougeole["produit"] = "rougeole"
-        target_df_expanded_rougeole["age"] = target_df_expanded_rougeole["age"].replace(
-            age_adjustment_rougeole
-        )
-        target_df_expanded_rougeole = target_df_expanded_rougeole[
-            target_df_expanded_rougeole["round"] == "round 1"
-        ]
+            target_df_expanded_rougeole = target_df_expanded.copy()
+            target_df_expanded_rougeole["produit"] = "rougeole"
+            target_df_expanded_rougeole["age"] = target_df_expanded_rougeole[
+                "age"
+            ].replace(age_adjustment_rougeole)
+            target_df_expanded_rougeole = target_df_expanded_rougeole[
+                target_df_expanded_rougeole["round"] == "round 1"
+            ]
 
-        target_df_expanded_polio = target_df_expanded.copy()
-        target_df_expanded_polio["produit"] = "vaccin polio"
+            target_df_expanded_polio = target_df_expanded.copy()
+            target_df_expanded_polio["produit"] = "vaccin polio"
 
-        target_df_expanded_albendazole = target_df_expanded.copy()
-        target_df_expanded_albendazole["produit"] = "albendazole"
-        target_df_expanded_albendazole["age"] = target_df_expanded_albendazole[
-            "age"
-        ].replace(age_adjustment_albendazole)
+            target_df_expanded_albendazole = target_df_expanded.copy()
+            target_df_expanded_albendazole["produit"] = "albendazole"
+            target_df_expanded_albendazole["age"] = target_df_expanded_albendazole[
+                "age"
+            ].replace(age_adjustment_albendazole)
 
-        target_df_expanded_vitA = target_df_expanded.copy()
-        target_df_expanded_vitA["produit"] = "vitamine A"
-        target_df_expanded_vitA["age"] = target_df_expanded_vitA["age"].replace(
-            age_adjustment_vitA
-        )
+            target_df_expanded_vitA = target_df_expanded.copy()
+            target_df_expanded_vitA["produit"] = "vitamine A"
+            target_df_expanded_vitA["age"] = target_df_expanded_vitA["age"].replace(
+                age_adjustment_vitA
+            )
 
-        target_df_expanded = pd.concat(
-            [
-                target_df_expanded_rougeole,
-                target_df_expanded_polio,
-                target_df_expanded_albendazole,
-                target_df_expanded_vitA,
-            ],
-            ignore_index=True,
-        )
-        target_df_expanded = target_df_expanded.drop("campaign", axis=1)
+            target_df_expanded = pd.concat(
+                [
+                    target_df_expanded_rougeole,
+                    target_df_expanded_polio,
+                    target_df_expanded_albendazole,
+                    target_df_expanded_vitA,
+                ],
+                ignore_index=True,
+            )
+            target_df_expanded = target_df_expanded.drop("campaign", axis=1)
 
-    # yellow fever 2025/2026
-    elif (
-        target_df["campaign"].iloc[0] == "fièvre jaune"
-        and target_df["year"].iloc[0] == 2025
-    ):
-        rounds = ["round 1"]
-        target_df_expanded = pd.DataFrame(
-            np.repeat(target_df.values, len(rounds), axis=0),
-            columns=target_df.columns,
-        )
-        target_df_expanded["round"] = rounds * (len(target_df))
-        target_df_expanded["produit"] = "fièvre jaune"
-        target_df_expanded = target_df_expanded.drop("campaign", axis=1)
+        # yellow fever 2025/2026
+        elif (
+            target_df["campaign"].iloc[0] == "fièvre jaune"
+            and target_df["year"].iloc[0] == 2025
+        ):
+            rounds = ["round 1"]
+            target_df_expanded = pd.DataFrame(
+                np.repeat(target_df.values, len(rounds), axis=0),
+                columns=target_df.columns,
+            )
+            target_df_expanded["round"] = rounds * (len(target_df))
+            target_df_expanded["produit"] = "fièvre jaune"
+            target_df_expanded = target_df_expanded.drop("campaign", axis=1)
 
-    elif (
-        target_df["campaign"].iloc[0] == "fièvre jaune"
-        and target_df["year"].iloc[0] == 2026
-    ):
-        rounds = ["round 1"]
-        target_df_expanded = pd.DataFrame(
-            np.repeat(target_df.values, len(rounds), axis=0),
-            columns=target_df.columns,
-        )
-        target_df_expanded["round"] = rounds * (len(target_df))
-        target_df_expanded["produit"] = "fièvre jaune"
-        target_df_expanded = target_df_expanded.drop("campaign", axis=1)
+        elif (
+            target_df["campaign"].iloc[0] == "fièvre jaune"
+            and target_df["year"].iloc[0] == 2026
+        ):
+            rounds = ["round 1"]
+            target_df_expanded = pd.DataFrame(
+                np.repeat(target_df.values, len(rounds), axis=0),
+                columns=target_df.columns,
+            )
+            target_df_expanded["round"] = rounds * (len(target_df))
+            target_df_expanded["produit"] = "fièvre jaune"
+            target_df_expanded = target_df_expanded.drop("campaign", axis=1)
 
-    # men5 and tcv 2025
-    elif (
-        target_df["campaign"].iloc[0] == "men5_tcv"
-        and target_df["year"].iloc[0] == 2025
-    ):
-        rounds = ["round 1", "round 2"]
-        target_df_expanded = pd.DataFrame(
-            np.repeat(target_df.values, len(rounds), axis=0),
-            columns=target_df.columns,
-        )
-        target_df_expanded["round"] = rounds * (len(target_df))
-        target_df_expanded_men5 = target_df_expanded.copy()
-        target_df_expanded_men5["produit"] = "méningite"
-        target_df_expanded_tcv = target_df_expanded.copy()
-        target_df_expanded_tcv["produit"] = "tcv"
-        target_df_expanded = pd.concat(
-            [target_df_expanded_men5, target_df_expanded_tcv],
-            ignore_index=True,
-        )
-        target_df_expanded = target_df_expanded.drop("campaign", axis=1)
+        # men5 and tcv 2025
+        elif (
+            target_df["campaign"].iloc[0] == "men5_tcv"
+            and target_df["year"].iloc[0] == 2025
+        ):
+            rounds = ["round 1", "round 2"]
+            target_df_expanded = pd.DataFrame(
+                np.repeat(target_df.values, len(rounds), axis=0),
+                columns=target_df.columns,
+            )
+            target_df_expanded["round"] = rounds * (len(target_df))
+            target_df_expanded_men5 = target_df_expanded.copy()
+            target_df_expanded_men5["produit"] = "méningite"
+            target_df_expanded_tcv = target_df_expanded.copy()
+            target_df_expanded_tcv["produit"] = "tcv"
+            target_df_expanded = pd.concat(
+                [target_df_expanded_men5, target_df_expanded_tcv],
+                ignore_index=True,
+            )
+            target_df_expanded = target_df_expanded.drop("campaign", axis=1)
 
-    # polio 2026 round 1
-    elif target_df["campaign"].iloc[0] == "polio" and target_df["year"].iloc[0] == 2026:
-        target_df_expanded = target_df.copy()
-        target_df_expanded["round"] = "round 1"
-        target_df_expanded["produit"] = "vaccin polio"
-        target_df_expanded = target_df_expanded.drop("campaign", axis=1)
+        # polio 2026 round 1
+        elif (
+            target_df["campaign"].iloc[0] == "polio"
+            and target_df["year"].iloc[0] == 2026
+        ):
+            target_df_expanded = target_df.copy()
+            target_df_expanded["round"] = "round 1"
+            target_df_expanded["produit"] = "vaccin polio"
+            target_df_expanded = target_df_expanded.drop("campaign", axis=1)
 
-    else:
-        current_run.log_error(
-            "Combinaison campagne et année inconnue. Impossible d'ajouter les rounds et les produits."
-        )
-        return target_df
+        else:
+            current_run.log_error(
+                "Combinaison campagne et année inconnue. Impossible d'ajouter les rounds et les produits."
+            )
+            return target_df
 
-    return target_df_expanded
+        current_run.log_info("Ajout des rounds et des produits terminé.")
+
+        return target_df_expanded
+    except Exception as e:
+        msg = f"Erreur lors de l'ajout des rounds et des produits: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def combine_target_data(
@@ -791,19 +827,21 @@ def combine_target_data(
         dfs (list[pd.DataFrame]): List of DataFrames to be combined.
 
     Returns:
-        target_data_combined (pd.DataFrame): Combined DataFrame containing all target data.
+        target_data_combined(pd.DataFrame): Combined DataFrame containing all target data.
     """
-    current_run.log_info("Combinaison des différentes données de cibles...")
+    current_run.log_info("Combinaison des différentes données de cibles en cours...")
     try:
         target_data_combined = pd.concat(dfs, ignore_index=True)
 
+        current_run.log_info(
+            "Combinaison des différentes données de cibles terminée avec succès."
+        )
         return target_data_combined
 
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de la combinaison des données de cibles: {e}"
-        )
-        raise ValueError(f"Erreur lors de la combinaison des données de cibles: {e}")
+        msg = f"Erreur lors de la combinaison des données de cibles: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def add_region_names(
@@ -830,10 +868,13 @@ def add_region_names(
             on="org_unit_id",
             how="left",
         )
+        current_run.log_info("Ajout des noms de région terminé.")
+
         return target_with_regions_df
     except Exception as e:
-        current_run.log_error(f"Erreur lors de l'ajout des noms de région: {e}")
-        raise
+        msg = f"Erreur lors de l'ajout des noms de région: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def clean_org_unit_id(
@@ -888,20 +929,23 @@ def clean_org_unit_id(
 
         target_data_combined.drop(columns=["final_org_unit_id", "_merge"], inplace=True)
 
+        current_run.log_info(
+            "Récupération des identifiants des unités d'organisation et application de la correspondance un-à-plusieurs terminée avec succès."
+        )
+
         return target_data_combined
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors du processus de récupération des identifiants des unités d'organisation: {e}"
-        )
-        raise
+        msg = f"Erreur lors du processus de récupération des identifiants des unités d'organisation: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def save_file(df: pd.DataFrame, file_name: str) -> None:
     """
-    Save the given DataFrame as a parquet file in the outputs directory with the specified file name.
+    Save the cleaned org unit tree data to a parquet file.
 
     Args:
-        df (pd.DataFrame): DataFrame containing the data to be saved.
+        df (pd.DataFrame): DataFrame containing the cleaned org unit tree data.
         file_name (str): Name of the file to save the DataFrame as.
 
     Returns:
@@ -922,8 +966,9 @@ def save_file(df: pd.DataFrame, file_name: str) -> None:
         )
         current_run.log_info(f"Fichier enregistré avec succès: {file_path}")
     except Exception as e:
-        current_run.log_error(f"Erreur lors de l'enregistrement du fichier: {e}")
-        raise e
+        msg = f"Erreur lors de l'enregistrement du fichier: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 if __name__ == "__main__":

@@ -136,8 +136,9 @@ def load_data(name: str) -> pd.DataFrame:
         return df
 
     except Exception as e:
-        current_run.log_error(f"Erreur lors de l'importation du fichier {name}: {e}")
-        raise
+        msg = f"Erreur lors de l'importation du fichier {name}: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def create_coverage_dataset(
@@ -234,12 +235,14 @@ def create_coverage_dataset(
             )
         df_final = df_final[df_final["_merge"] != "right_only"].drop(columns=["_merge"])
 
+        current_run.log_info("Tableau de couverture vaccinale créé avec succès.")
+
         return cvrg_total, df_final
+
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de la création du tableau de couverture vaccinale: {e}"
-        )
-        raise
+        msg = f"Erreur lors de la création du tableau de couverture vaccinale: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def add_target_data(cvrg_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.DataFrame:
@@ -310,11 +313,16 @@ def add_target_data(cvrg_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.DataFr
             [cvrg_csi_with_targets, cvrg_district_with_targets], ignore_index=True
         )
 
+        current_run.log_info(
+            "Données cibles ajoutées au tableau de couverture vaccinale avec succès."
+        )
+
         return cvrg_with_targets
 
     except Exception as e:
-        current_run.log_error(f"Erreur lors de l'ajout des données cibles: {e}")
-        raise
+        msg = f"Erreur lors de l'ajout des données cibles: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def create_completeness_dataset(
@@ -367,12 +375,14 @@ def create_completeness_dataset(
 
         cmpl = cmpl.reset_index(drop=True)
 
+        current_run.log_info("Tableau de complétude vaccinale créé avec succès.")
+
         return cmpl
+
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de la création du tableau de complétude vaccinale: {e}"
-        )
-        raise
+        msg = f"Erreur lors de la création du tableau de complétude vaccinale: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def create_stocks_dataset(
@@ -488,12 +498,14 @@ def create_stocks_dataset(
         #  vaccinated in PBI
         stock = stock_total_pivot.merge(cvrg_stock, how="left").fillna(0)
 
+        current_run.log_info("Tableau des stocks créé avec succès.")
+
         return stock
+
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de la création du tableau de suivi des stocks: {e}"
-        )
-        raise
+        msg = f"Erreur lors de la création du tableau des stocks: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def create_supervision_dataset(iaso_form_data_df: pd.DataFrame) -> pd.DataFrame:
@@ -575,12 +587,13 @@ def create_supervision_dataset(iaso_form_data_df: pd.DataFrame) -> pd.DataFrame:
             fill_value=0,
         ).reset_index()
 
+        current_run.log_info("Tableau de surveillance créé avec succès.")
+
         return supervision_pivot
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de la création du tableau de surveillance: {e}"
-        )
-        raise
+        msg = f"Erreur lors de la création du tableau de surveillance: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def create_communication_dataset(
@@ -598,7 +611,7 @@ def create_communication_dataset(
         communication_long (pd.DataFrame): Communication dataset DataFrame in long format
         communication_wide (pd.DataFrame): Communication dataset DataFrame in wide format
     """
-    current_run.log_info("Création du tableau de communication...")
+    current_run.log_info("Création des tableaux de stratégies de communication...")
     try:
         id_vars = ["period", "round", "year", "org_unit_id"]
 
@@ -686,12 +699,16 @@ def create_communication_dataset(
             fill_value=0,
         ).reset_index()
 
-        return communication_long, communication_wide
-    except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de la création du tableau des stratégies de communication: {e}"
+        current_run.log_info(
+            "Tableaux de stratégies de communication créés avec succès."
         )
-        raise
+
+        return communication_long, communication_wide
+
+    except Exception as e:
+        msg = f"Erreur lors de la création des tableaux de stratégies de communication: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def create_filter_tables(
@@ -759,6 +776,8 @@ def create_filter_tables(
             ],
         ).to_frame(index=False)
 
+        current_run.log_info("Filtres pour la visualisation créés avec succès.")
+
         return (
             campaign_filter_table,
             round_filter_table,
@@ -767,10 +786,9 @@ def create_filter_tables(
             combination_filter_table,
         )
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de la création des filtres pour la visualisation: {e}"
-        )
-        raise
+        msg = f"Erreur lors de la création des filtres pour la visualisation: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def create_dynamic_org_unit_table(
@@ -823,13 +841,16 @@ def create_dynamic_org_unit_table(
             [spatial_units_choice_0, spatial_units_choice_1], ignore_index=True
         ).reset_index(drop=True)
 
+        current_run.log_info(
+            "Tableau dynamique des unités organisationnelles créé avec succès."
+        )
+
         return spatial_units_combined
 
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de la création du tableau dynamique des unités organisationnelles: {e}"
-        )
-        raise
+        msg = f"Erreur lors de la création du tableau dynamique des unités organisationnelles: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def create_campaign_round_summary_table(
@@ -867,12 +888,16 @@ def create_campaign_round_summary_table(
             .reset_index(drop=True)
         )
 
-        return campaign_round_summary_df
-    except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de la création du tableau de résumé des campagnes, rounds, années et produits: {e}"
+        current_run.log_info(
+            "Tableau de résumé des campagnes, rounds, années et produits créé avec succès."
         )
-        raise
+
+        return campaign_round_summary_df
+
+    except Exception as e:
+        msg = f"Erreur lors de la création du tableau de résumé des campagnes, rounds, années et produits: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def write_to_db(df: pd.DataFrame, table_name: str) -> None:
@@ -899,10 +924,11 @@ def write_to_db(df: pd.DataFrame, table_name: str) -> None:
         current_run.log_info(f"Données écrites dans la table DB {table_name}")
         connection.close()
     except Exception as e:
-        current_run.log_error(
+        msg = (
             f"Erreur lors de l'écriture des données dans la table DB {table_name}: {e}"
         )
-        raise
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 if __name__ == "__main__":

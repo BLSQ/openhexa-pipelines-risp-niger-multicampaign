@@ -65,8 +65,9 @@ def load_data(name: str) -> pd.DataFrame:
         return df
 
     except Exception as e:
-        current_run.log_error(f"Erreur lors de l'importation du fichier {name}: {e}")
-        raise
+        msg = f"Erreur lors de l'importation du fichier {name}: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def align_to_clean_org_tree(
@@ -123,12 +124,15 @@ def align_to_clean_org_tree(
 
         iaso_processed_df = iaso_raw_df.copy()
 
+        current_run.log_info(
+            "Récupération des identifiants des unités organisationnelles terminée avec succès."
+        )
+
         return iaso_processed_df
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de la récupération des identifiants des unités organisationnelles : {str(e)}"
-        )
-        raise
+        msg = f"Erreur lors de la récupération des identifiants des unités organisationnelles : {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def clean_combined_df(
@@ -222,7 +226,7 @@ def clean_combined_df(
         iaso_processed_df = iaso_processed_df.merge(
             expected_periods[["choix_campagne", "period", "year", "round"]],
             on=["choix_campagne", "period"],
-            how="outer",
+            how="left_only",
             validate="many_to_one",
             indicator=True,
         )
@@ -257,12 +261,13 @@ def clean_combined_df(
             columns=["_merge"]
         )
 
+        current_run.log_info("Nettoyage du DataFrame combiné terminé avec succès.")
+
         return iaso_processed_df
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors du nettoyage du DataFrame combiné : {str(e)}"
-        )
-        raise
+        msg = f"Erreur lors du nettoyage du DataFrame combiné : {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def save_file(df: pd.DataFrame, file_name: str) -> None:
@@ -291,8 +296,9 @@ def save_file(df: pd.DataFrame, file_name: str) -> None:
         )
         current_run.log_info(f"Fichier enregistré avec succès: {file_path}")
     except Exception as e:
-        current_run.log_error(f"Erreur lors de l'enregistrement du fichier: {e}")
-        raise e
+        msg = f"Erreur lors de l'enregistrement du fichier: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 if __name__ == "__main__":

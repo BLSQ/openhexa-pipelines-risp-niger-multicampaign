@@ -1,5 +1,5 @@
 import os
-from openhexa.sdk import current_run, pipeline, workspace
+from openhexa.sdk import current_run, pipeline
 import pandas as pd
 from config import (
     OUTPUTS_PATH,
@@ -61,12 +61,15 @@ def load_data(name: str) -> pd.DataFrame:
             f"{name}.parquet",
         )
         df = pd.read_parquet(file_path)
+
         current_run.log_info(f"Fichier importé avec succès: {file_path}")
+
         return df
 
     except Exception as e:
-        current_run.log_error(f"Erreur lors de l'importation du fichier {name}: {e}")
-        raise
+        msg = f"Erreur lors de l'importation du fichier {name}: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def generate_expected_data_structure_for_new_campaigns(
@@ -115,12 +118,13 @@ def generate_expected_data_structure_for_new_campaigns(
             current_run.log_info(
                 "Configurations des nouvelles campagnes ajoutées avec succès au DataFrame combiné."
             )
+
             return combined_df
+
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'ajout des configurations des nouvelles campagnes au DataFrame combiné: {e}"
-        )
-        raise
+        msg = f"Erreur lors de l'ajout des configurations des nouvelles campagnes au DataFrame combiné: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def combine(
@@ -151,12 +155,13 @@ def combine(
         )
 
         current_run.log_info("Combinaison des structures de données attendues réussie.")
+
         return combined_df
+
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de la combinaison des structures de données attendues: {e}"
-        )
-        raise
+        msg = f"Erreur lors de la combinaison des structures de données attendues: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def save_file(df: pd.DataFrame, file_name: str) -> None:
@@ -185,8 +190,9 @@ def save_file(df: pd.DataFrame, file_name: str) -> None:
         )
         current_run.log_info(f"Fichier enregistré avec succès: {file_path}")
     except Exception as e:
-        current_run.log_error(f"Erreur lors de l'enregistrement du fichier: {e}")
-        raise e
+        msg = f"Erreur lors de l'enregistrement du fichier: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 if __name__ == "__main__":

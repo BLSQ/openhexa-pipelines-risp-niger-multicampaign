@@ -42,13 +42,21 @@ def get_iaso_org_unit_tree() -> pd.DataFrame:
     current_run.log_info(
         "Extraction des données de l'arbre des unités organisationnelles IASO..."
     )
+    try:
+        iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
+        iaso_org_unit_tree_df = (
+            iaso_connector_instance.get_ou_tree_dataframe_from_the_form(iaso_form_id)
+        )
 
-    iaso_connector_instance = IASOConnectionHandler(iaso_connector_slug)
-    iaso_org_unit_tree_df = iaso_connector_instance.get_ou_tree_dataframe_from_the_form(
-        iaso_form_id
-    )
+        current_run.log_info(
+            f"Données de l'arbre des unités organisationnelles IASO extraites avec succès. Nombre de lignes extraites: {len(iaso_org_unit_tree_df)}"
+        )
 
-    return iaso_org_unit_tree_df
+        return iaso_org_unit_tree_df
+    except Exception as e:
+        msg = f"Erreur lors de l'extraction des données de l'arbre des unités organisationnelles IASO: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFrame:
@@ -64,35 +72,44 @@ def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFram
     current_run.log_info(
         "Nettoyage des données de l'arbre des unités organisationnelles IASO..."
     )
+    try:
+        iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df[
+            iaso_org_unit_tree_df["Validé"] != "REJECTED"
+        ]
+        iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
+            iaso_org_unit_tree_df_clean["Source"].isin(["SNIS", "SNIS 2025"])
+        ]
+        iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
+            iaso_org_unit_tree_df_clean["LVL_6_NAME"].str.contains(
+                "CSI", case=False, na=False
+            )
+        ]
 
-    iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df[
-        iaso_org_unit_tree_df["Validé"] != "REJECTED"
-    ]
-    iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
-        iaso_org_unit_tree_df_clean["Source"].isin(["SNIS", "SNIS 2025"])
-    ]
-    iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
-        iaso_org_unit_tree_df_clean["LVL_6_NAME"].str.contains(
-            "CSI", case=False, na=False
+        iaso_org_unit_tree_df_clean["LVL_6_UID"] = iaso_org_unit_tree_df_clean.groupby(
+            "LVL_6_NAME"
+        )["LVL_6_UID"].transform("first")
+        iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean.groupby(
+            "LVL_6_UID", as_index=False
+        ).apply(pyramid_selector, include_groups=False)
+
+        iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
+            iaso_org_unit_tree_df_clean["LVL_2_NAME"] != "Niger"
+        ]  # delete 2 incoherent entries
+
+        iaso_org_unit_tree_df_clean["org_unit_id"] = iaso_org_unit_tree_df_clean[
+            "org_unit_id"
+        ].astype(np.int64)
+
+        current_run.log_info(
+            "Données de l'arbre des unités organisationnelles IASO nettoyées avec succès."
         )
-    ]
 
-    iaso_org_unit_tree_df_clean["LVL_6_UID"] = iaso_org_unit_tree_df_clean.groupby(
-        "LVL_6_NAME"
-    )["LVL_6_UID"].transform("first")
-    iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean.groupby(
-        "LVL_6_UID", as_index=False
-    ).apply(pyramid_selector, include_groups=False)
+        return iaso_org_unit_tree_df_clean
 
-    iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
-        iaso_org_unit_tree_df_clean["LVL_2_NAME"] != "Niger"
-    ]  # delete 2 incoherent entries
-
-    iaso_org_unit_tree_df_clean["org_unit_id"] = iaso_org_unit_tree_df_clean[
-        "org_unit_id"
-    ].astype(np.int64)
-
-    return iaso_org_unit_tree_df_clean
+    except Exception as e:
+        msg = f"Erreur lors du nettoyage des données de l'arbre des unités organisationnelles IASO: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def save_file(df: pd.DataFrame, file_name: str) -> None:
@@ -106,7 +123,7 @@ def save_file(df: pd.DataFrame, file_name: str) -> None:
     Returns:
         None
     """
-    current_run.log_info("Enregistrement des données des unités organisationnelles...")
+    current_run.log_info("Enregistrement du fichier dans l'espace de travail...")
     try:
         if not os.path.exists(OUTPUTS_PATH):
             os.makedirs(OUTPUTS_PATH)
@@ -119,12 +136,13 @@ def save_file(df: pd.DataFrame, file_name: str) -> None:
             file_path,
             index=False,
         )
-        current_run.log_info(
-            f"Données des unités organisationnelles enregistrées avec succès: {file_path}"
-        )
+
+        current_run.log_info(f"Fichier enregistré avec succès: {file_path}")
+
     except Exception as e:
-        current_run.log_error(f"Erreur lors de l'enregistrement du fichier: {e}")
-        raise e
+        msg = f"Erreur lors de l'enregistrement du fichier: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 if __name__ == "__main__":

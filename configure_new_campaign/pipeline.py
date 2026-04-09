@@ -181,51 +181,54 @@ def inspect_params(
         None
     """
     current_run.log_info("Vérification des choix des paramètres...")
-
-    # for campaign_scale, if 'Nationale' is present, it cannot coexist with any other choice
-    if "Nationale" in campaign_scale and len(campaign_scale) > 1:
-        current_run.log_error(
-            "Le choix 'Nationale' pour le paramètre 'Échelle de la campagne' ne peut pas être sélectionné avec d'autres choix."
-        )
-        raise
-
-    # year must be a reasonable integer between 2026 and 2050
-    if not isinstance(year, int) or year < 2026 or year > 2050:
-        current_run.log_error(
-            "Le paramètre 'Année' doit être un entier entre 2026 et 2100."
-        )
-        raise
-
-    # campaign_round_start_date and campaign_round_end_date must:
-    # - be in the format YYYY-MM-DD
-    # - campaign_round_start_date must be in the same year as the 'year' parameter
-    # - campaign_round_end_date must be in the same year as the 'year' or the year after
-    # - campaign_round_end_date must be after campaign_round_start_date
     try:
-        start_date = pd.to_datetime(campaign_round_start_date, format="%Y-%m-%d")
-        end_date = pd.to_datetime(campaign_round_end_date, format="%Y-%m-%d")
-        if start_date.year != year:
-            current_run.log_error(
-                "La date de début du round de la campagne doit être dans la même année que le paramètre 'Année'."
-            )
-            raise
-        if end_date.year != year and end_date.year != year + 1:
-            current_run.log_error(
-                "La date de fin du round de la campagne doit être dans la même année que le paramètre 'Année' ou l'année suivante."
-            )
-            raise
-        if end_date <= start_date:
-            current_run.log_error(
-                "La date de fin du round de la campagne doit être après la date de début."
-            )
-            raise
-    except ValueError:
-        current_run.log_error(
-            "Les paramètres 'Date de début du round de la campagne' et 'Date de fin du round de la campagne' doivent être au format AAAA-MM-JJ."
-        )
-        raise
+        # for campaign_scale, if 'Nationale' is present, it cannot coexist with any other choice
+        if "Nationale" in campaign_scale and len(campaign_scale) > 1:
+            msg = "Le choix 'Nationale' pour le paramètre 'Échelle de la campagne' ne peut pas être sélectionné avec d'autres choix."
+            current_run.log_error(msg)
+            raise ValueError(msg)
 
-    current_run.log_info("Choix des paramètres vérifiés: il n'y a pas d'erreur.")
+        # year must be a reasonable integer between 2026 and 2050
+        if not isinstance(year, int) or year < 2026 or year > 2050:
+            msg = "Le paramètre 'Année' doit être un entier entre 2026 et 2050."
+            current_run.log_error(msg)
+            raise ValueError(msg)
+
+        # campaign_round_start_date and campaign_round_end_date must:
+        # - be in the format YYYY-MM-DD
+        # - campaign_round_start_date must be in the same year as the 'year' parameter
+        # - campaign_round_end_date must be in the same year as the 'year' or the year after
+        # - campaign_round_end_date must be after campaign_round_start_date
+        try:
+            start_date = pd.to_datetime(campaign_round_start_date, format="%Y-%m-%d")
+            end_date = pd.to_datetime(campaign_round_end_date, format="%Y-%m-%d")
+
+            if start_date.year != year:
+                msg = f"La date de début du round de la campagne doit être dans la même année que le paramètre 'Année'. Valeur fournie: '{campaign_round_start_date}'"
+                current_run.log_error(msg)
+                raise ValueError(msg)
+
+            if end_date.year != year and end_date.year != year + 1:
+                msg = f"La date de fin du round de la campagne doit être dans la même année que le paramètre 'Année' ou l'année suivante. Valeur fournie: '{campaign_round_end_date}'"
+                current_run.log_error(msg)
+                raise ValueError(msg)
+
+            if end_date <= start_date:
+                msg = f"La date de fin du round de la campagne doit être après la date de début. Valeurs fournies: début='{campaign_round_start_date}', fin='{campaign_round_end_date}'"
+                current_run.log_error(msg)
+                raise ValueError(msg)
+
+        except ValueError:
+            msg = f"Les dates de début et de fin du round de la campagne doivent être au format AAAA-MM-JJ. Valeurs fournies: '{campaign_round_start_date}' et '{campaign_round_end_date}'."
+            current_run.log_error(msg)
+            raise ValueError(msg)
+
+        current_run.log_info("Choix des paramètres vérifiés: il n'y a pas d'erreur.")
+
+    except Exception as e:
+        msg = f"Erreur lors de la vérification des choix des paramètres: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def validate_coherence_of_params(
@@ -283,29 +286,30 @@ def validate_coherence_of_params(
                     )
                     overlap_exists = True
                 else:
-                    raise ValueError(
-                        f"Conflit détecté : La période de la nouvelle campagne chevauche celle du {round} d'une campagne de '{campaign}' déjà existante ({round_period_start.date()} - {round_period_end.date()}). Veuillez soit ajuster les dates de la nouvelle campagne pour éviter ce chevauchement, soit activer l'option pour écraser les configurations existantes."
-                    )
+                    msg = f"Conflit détecté : La période de la nouvelle campagne chevauche celle du {round} d'une campagne de '{campaign}' déjà existante ({round_period_start.date()} - {round_period_end.date()}). Veuillez soit ajuster les dates de la nouvelle campagne pour éviter ce chevauchement, soit activer l'option pour écraser les configurations existantes."
+                    current_run.log_error(msg)
+                    raise ValueError(msg)
 
         # Checking that the campaign exists in the target data for the selected year
         if target_df.empty:
-            raise ValueError(
-                "Aucun fichier de cibles configurées n'est disponible. Veuillez d'abord configurer les données de cibles pour la campagne concernée."
-            )
+            msg = "Aucun fichier de cibles configurées n'est disponible. Veuillez d'abord configurer les données de cibles pour la campagne concernée."
+            current_run.log_error(msg)
+            raise ValueError(msg)
+
         target_data_check_1 = target_df[target_df["produit"] == campaign_cleaned]
         if target_data_check_1.empty:
             choices = list(target_df["produit"].unique())
-            raise ValueError(
-                f"Campagne '{campaign_cleaned}' non trouvée. Options possibles : {choices}"
-            )
+            msg = f"Campagne '{campaign_cleaned}' non trouvée. Options possibles : {choices}"
+            current_run.log_error(msg)
+            raise ValueError(msg)
 
         # Checking that the year exists for the selected campaign in the target data
         target_data_check_2 = target_data_check_1[target_data_check_1["year"] == year]
         if target_data_check_2.empty:
             years = list(target_data_check_1["year"].unique())
-            raise ValueError(
-                f"Année '{year}' non disponible pour '{campaign_cleaned}'. Années en base : {years}"
-            )
+            msg = f"Année '{year}' non disponible pour '{campaign_cleaned}'. Années en base : {years}"
+            current_run.log_error(msg)
+            raise ValueError(msg)
 
         # Checking that the regions selected in campaign_scale are present in the target data for the selected
         # campaign and year
@@ -316,10 +320,9 @@ def validate_coherence_of_params(
                 if r not in target_data_check_2["LVL_2_NAME"].unique()
             ]
             if missing_regions:
-                current_run.log_error(
-                    f"Le choix 'Nationale' nécessite que les cibles soient définies pour toutes les régions. Régions manquantes : {missing_regions}"
-                )
-                raise
+                msg = f"Le choix 'Nationale' nécessite que les cibles soient définies pour toutes les régions. Régions manquantes : {missing_regions}"
+                current_run.log_error(msg)
+                raise ValueError(msg)
         else:
             missing_regions = [
                 r
@@ -327,10 +330,12 @@ def validate_coherence_of_params(
                 if r not in target_data_check_2["LVL_2_NAME"].unique()
             ]
             if missing_regions:
-                current_run.log_error(
-                    f"Les régions sélectionnées ne sont pas toutes présentes dans les données de cibles pour '{campaign_cleaned}' en {year}. Régions manquantes : {missing_regions}"
-                )
-                raise
+                msg = f"Les régions sélectionnées ne sont pas toutes présentes dans les données de cibles pour '{campaign_cleaned}' en {year}. Régions manquantes : {missing_regions}"
+                current_run.log_error(msg)
+                raise ValueError(msg)
+
+        current_run.log_info("Cohérence des paramètres validée: il n'y a pas d'erreur.")
+
         return overlap_exists
 
     except Exception as e:
@@ -363,99 +368,108 @@ def create_configuration_df(
                                   combination of parameters and organizational unit.
     """
     current_run.log_info("Création du dataframe de configuration de la campagne...")
-
-    # identify the round of the campaign, based on prior campaign data in the same year for the same product
-    # if the period overlaps with an existing round, the existing round will be overwritten and the new campaign
-    # will take the round number of the overwritten round;
-    prior_campaigns = expected_structure_df[
-        (expected_structure_df["produit"] == campaign_name_dict[campaign])
-        & (expected_structure_df["year"] == year)
-    ]
-    if prior_campaigns.empty:
-        current_run.log_info(
-            f"Aucune campagne antérieure trouvée pour {campaign_name_dict[campaign]} en {year}. Le round de la campagne sera défini à 1."
-        )
-        campaign_round = "round 1"
-    else:
-        prior_campaigns = prior_campaigns[
-            ["produit", "year", "round"]
-        ].drop_duplicates()
-        prior_campaigns["round_num"] = (
-            prior_campaigns["round"].str.extract("round (\d+)").astype(int)
-        )
-        max_round_num = prior_campaigns["round_num"].max()
-        if overlap_exists:
-            campaign_round = f"round {max_round_num}"
-            current_run.log_info(
-                f"Campagne antérieure trouvée pour {campaign_name_dict[campaign]} en {year} avec périodes de chevauchement. Le round de la campagne sera défini à {campaign_round}."
-            )
-        else:
-            campaign_round = f"round {max_round_num + 1}"
-            current_run.log_info(
-                f"Campagne antérieure trouvée pour {campaign_name_dict[campaign]} en {year} sans périodes de chevauchement. Le round de la campagne sera défini à {campaign_round}."
-            )
-    # create a dataframe with the campaign configuration (use campaign_config_dict to create the columns for
-    # vaccination_status, age_range, site_type, and sex type based on the campaign)
-    config_df = pd.DataFrame(
-        {
-            "produit": [campaign],
-            "round": [campaign_round],
-            "year": [year],
-            "campaign_round_start_date": [campaign_round_start_date],
-            "campaign_round_end_date": [campaign_round_end_date],
-            "vaccination_status": [
-                campaign_config_dict[campaign]["vaccination_status"]
-            ],
-            "age": [campaign_config_dict[campaign]["age"]],
-            "site": [campaign_config_dict[campaign]["site"]],
-            "sexe": [campaign_config_dict[campaign]["sexe"]],
-        }
-    )
-
-    # create "period" and "order_day" columns
-    config_df["campaign_round_start_date"] = pd.to_datetime(
-        config_df["campaign_round_start_date"], format="%Y-%m-%d"
-    )
-    config_df["campaign_round_end_date"] = pd.to_datetime(
-        config_df["campaign_round_end_date"], format="%Y-%m-%d"
-    )
-    config_df["period"] = config_df.apply(
-        lambda row: pd.date_range(
-            row["campaign_round_start_date"], row["campaign_round_end_date"]
-        ),
-        axis=1,
-    )
-    config_df = config_df.explode("period").reset_index(drop=True)
-    config_df["order_day"] = (
-        config_df["period"] - config_df["campaign_round_start_date"]
-    ).dt.days + 1
-
-    # expand vaccination_status, age_range, site_type, and strategy_type columns to have one row per combination
-    # of choices
-    config_df = config_df.explode("vaccination_status").reset_index(drop=True)
-    config_df = config_df.explode("age").reset_index(drop=True)
-    config_df = config_df.explode("site").reset_index(drop=True)
-    config_df = config_df.explode("sexe").reset_index(drop=True)
-
-    # clean product name
-    config_df["produit"] = config_df["produit"].replace(campaign_name_dict)
-
-    # keep only relevant columns
-    config_df = config_df[
-        [
-            "produit",
-            "round",
-            "year",
-            "period",
-            "order_day",
-            "vaccination_status",
-            "age",
-            "site",
-            "sexe",
+    try:
+        # identify the round of the campaign, based on prior campaign data in the same year for the same product
+        # if the period overlaps with an existing round, the existing round will be overwritten and the new campaign
+        # will take the round number of the overwritten round;
+        prior_campaigns = expected_structure_df[
+            (expected_structure_df["produit"] == campaign_name_dict[campaign])
+            & (expected_structure_df["year"] == year)
         ]
-    ]
+        if prior_campaigns.empty:
+            current_run.log_info(
+                f"Aucune campagne antérieure trouvée pour {campaign_name_dict[campaign]} en {year}. Le round de la campagne sera défini à 1."
+            )
+            campaign_round = "round 1"
+        else:
+            prior_campaigns = prior_campaigns[
+                ["produit", "year", "round"]
+            ].drop_duplicates()
+            prior_campaigns["round_num"] = (
+                prior_campaigns["round"].str.extract("round (\d+)").astype(int)
+            )
+            max_round_num = prior_campaigns["round_num"].max()
+            if overlap_exists:
+                campaign_round = f"round {max_round_num}"
+                current_run.log_info(
+                    f"Campagne antérieure trouvée pour {campaign_name_dict[campaign]} en {year} avec périodes de chevauchement. Le round de la campagne sera défini à {campaign_round}."
+                )
+            else:
+                campaign_round = f"round {max_round_num + 1}"
+                current_run.log_info(
+                    f"Campagne antérieure trouvée pour {campaign_name_dict[campaign]} en {year} sans périodes de chevauchement. Le round de la campagne sera défini à {campaign_round}."
+                )
+        # create a dataframe with the campaign configuration (use campaign_config_dict to create the columns for
+        # vaccination_status, age_range, site_type, and sex type based on the campaign)
+        config_df = pd.DataFrame(
+            {
+                "produit": [campaign],
+                "round": [campaign_round],
+                "year": [year],
+                "campaign_round_start_date": [campaign_round_start_date],
+                "campaign_round_end_date": [campaign_round_end_date],
+                "vaccination_status": [
+                    campaign_config_dict[campaign]["vaccination_status"]
+                ],
+                "age": [campaign_config_dict[campaign]["age"]],
+                "site": [campaign_config_dict[campaign]["site"]],
+                "sexe": [campaign_config_dict[campaign]["sexe"]],
+            }
+        )
 
-    return config_df
+        # create "period" and "order_day" columns
+        config_df["campaign_round_start_date"] = pd.to_datetime(
+            config_df["campaign_round_start_date"], format="%Y-%m-%d"
+        )
+        config_df["campaign_round_end_date"] = pd.to_datetime(
+            config_df["campaign_round_end_date"], format="%Y-%m-%d"
+        )
+        config_df["period"] = config_df.apply(
+            lambda row: pd.date_range(
+                row["campaign_round_start_date"], row["campaign_round_end_date"]
+            ),
+            axis=1,
+        )
+        config_df = config_df.explode("period").reset_index(drop=True)
+        config_df["order_day"] = (
+            config_df["period"] - config_df["campaign_round_start_date"]
+        ).dt.days + 1
+
+        # expand vaccination_status, age_range, site_type, and strategy_type columns to have one row per combination
+        # of choices
+        config_df = config_df.explode("vaccination_status").reset_index(drop=True)
+        config_df = config_df.explode("age").reset_index(drop=True)
+        config_df = config_df.explode("site").reset_index(drop=True)
+        config_df = config_df.explode("sexe").reset_index(drop=True)
+
+        # clean product name
+        config_df["produit"] = config_df["produit"].replace(campaign_name_dict)
+
+        # keep only relevant columns
+        config_df = config_df[
+            [
+                "produit",
+                "round",
+                "year",
+                "period",
+                "order_day",
+                "vaccination_status",
+                "age",
+                "site",
+                "sexe",
+            ]
+        ]
+
+        current_run.log_info(
+            "Dataframe de configuration de la campagne créé avec succès."
+        )
+
+        return config_df
+
+    except Exception as e:
+        msg = f"Erreur lors de la création du dataframe de configuration de la campagne: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def load_data(name: str) -> pd.DataFrame:
@@ -482,8 +496,9 @@ def load_data(name: str) -> pd.DataFrame:
         return df
 
     except Exception as e:
-        current_run.log_error(f"Erreur lors de l'importation du fichier {name}: {e}")
-        raise
+        msg = f"Erreur lors de l'importation du fichier {name}: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def add_org_unit_info(
@@ -505,21 +520,33 @@ def add_org_unit_info(
         merged_df (pd.DataFrame): The merged dataframe containing campaign configuration and organizational unit information.
     """
     current_run.log_info("Ajout des informations des unités organisationnelles...")
+    try:
+        if "Nationale" in campaign_scale:
+            merged_df = config_df.merge(
+                org_unit_df[
+                    ["LVL_3_NAME", "LVL_6_NAME", "org_unit_id"]
+                ].drop_duplicates(),
+                how="cross",
+            )
 
-    if "Nationale" in campaign_scale:
-        merged_df = config_df.merge(
-            org_unit_df[["LVL_3_NAME", "LVL_6_NAME", "org_unit_id"]].drop_duplicates(),
-            how="cross",
+        else:
+            merged_df = config_df.merge(
+                org_unit_df[org_unit_df["LVL_2_NAME"].isin(campaign_scale)][
+                    ["LVL_3_NAME", "LVL_6_NAME", "org_unit_id"]
+                ].drop_duplicates(),
+                how="cross",
+            )
+
+        current_run.log_info(
+            "Informations des unités organisationnelles ajoutées avec succès."
         )
 
-    else:
-        merged_df = config_df.merge(
-            org_unit_df[org_unit_df["LVL_2_NAME"].isin(campaign_scale)][
-                ["LVL_3_NAME", "LVL_6_NAME", "org_unit_id"]
-            ].drop_duplicates(),
-            how="cross",
-        )
-    return merged_df
+        return merged_df
+
+    except Exception as e:
+        msg = f"Erreur lors de l'ajout des informations des unités organisationnelles: {str(e)}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def save_file(df: pd.DataFrame, file_name: str) -> None:
@@ -533,12 +560,12 @@ def save_file(df: pd.DataFrame, file_name: str) -> None:
     Returns:
         None
     """
-    current_run.log_info("Enregistrement des données des unités organisationnelles...")
+    current_run.log_info("Enregistrement du fichier dans l'espace de travail...")
     try:
-        if not os.path.exists(CONFIG_PATH):
-            os.makedirs(CONFIG_PATH)
+        if not os.path.exists(OUTPUTS_PATH):
+            os.makedirs(OUTPUTS_PATH)
         file_path = os.path.join(
-            CONFIG_PATH,
+            OUTPUTS_PATH,
             f"{file_name}.parquet",
         )
 
@@ -546,12 +573,11 @@ def save_file(df: pd.DataFrame, file_name: str) -> None:
             file_path,
             index=False,
         )
-        current_run.log_info(
-            f"Données des unités organisationnelles enregistrées avec succès: {file_path}"
-        )
+        current_run.log_info(f"Fichier enregistré avec succès: {file_path}")
     except Exception as e:
-        current_run.log_error(f"Erreur lors de l'enregistrement du fichier: {e}")
-        raise e
+        msg = f"Erreur lors de l'enregistrement du fichier: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def export_to_dataset(df: pd.DataFrame, df_file_path: str, dataset_name: str) -> None:
@@ -566,52 +592,60 @@ def export_to_dataset(df: pd.DataFrame, df_file_path: str, dataset_name: str) ->
     current_run.log_info(
         f"Préparation de l'exportation vers le dataset : {dataset_name}..."
     )
-
-    dataset_slug = dataset_name.lower().strip().replace(" ", "-").replace("_", "-")
-
-    # check if dataset already exists
     try:
-        dataset = workspace.get_dataset(dataset_slug)
-        current_run.log_info(f"Dataset existant trouvé : {dataset_slug}")
-    except Exception:
-        current_run.log_info(f"Dataset {dataset_name} non trouvé. Création en cours...")
-        dataset = workspace.create_dataset(
-            name=dataset_name,
-            description="Données de configuration de campagne (multi-formats)",
+        dataset_slug = dataset_name.lower().strip().replace(" ", "-").replace("_", "-")
+
+        # check if dataset already exists
+        try:
+            dataset = workspace.get_dataset(dataset_slug)
+            current_run.log_info(f"Dataset existant trouvé : {dataset_slug}")
+        except Exception:
+            current_run.log_info(
+                f"Dataset {dataset_name} non trouvé. Création en cours..."
+            )
+            dataset = workspace.create_dataset(
+                name=dataset_name,
+                description="Données de configuration de campagne (multi-formats)",
+            )
+
+        # define versioning
+        latest_version = dataset.latest_version
+        version_number = (
+            int(latest_version.name.lstrip("v")) + 1 if latest_version else 1
         )
+        new_version_name = f"v{version_number}"
 
-    # define versioning
-    latest_version = dataset.latest_version
-    version_number = int(latest_version.name.lstrip("v")) + 1 if latest_version else 1
-    new_version_name = f"v{version_number}"
+        # create local files
+        if not os.path.exists(df_file_path):
+            os.makedirs(df_file_path)
 
-    # create local files
-    if not os.path.exists(df_file_path):
-        os.makedirs(df_file_path)
+        base_path = os.path.join(df_file_path, dataset_name)
+        files_to_upload = {
+            "parquet": f"{base_path}.parquet",
+            "xlsx": f"{base_path}.xlsx",
+            "csv": f"{base_path}.csv",
+        }
 
-    base_path = os.path.join(df_file_path, dataset_name)
-    files_to_upload = {
-        "parquet": f"{base_path}.parquet",
-        "xlsx": f"{base_path}.xlsx",
-        "csv": f"{base_path}.csv",
-    }
+        df.to_parquet(files_to_upload["parquet"], index=False)
+        df.to_excel(files_to_upload["xlsx"], index=False)
+        df.to_csv(files_to_upload["csv"], index=False)
 
-    df.to_parquet(files_to_upload["parquet"], index=False)
-    df.to_excel(files_to_upload["xlsx"], index=False)
-    df.to_csv(files_to_upload["csv"], index=False)
+        # upload to Dataset in OH
+        version = dataset.create_version(new_version_name)
 
-    # upload to Dataset in OH
-    version = dataset.create_version(new_version_name)
+        for format_type, file_path in files_to_upload.items():
+            version.add_file(file_path, os.path.basename(file_path))
+            current_run.log_info(
+                f"Fichier {format_type} ajouté à la version {new_version_name}"
+            )
 
-    for format_type, file_path in files_to_upload.items():
-        version.add_file(file_path, os.path.basename(file_path))
         current_run.log_info(
-            f"Fichier {format_type} ajouté à la version {new_version_name}"
+            f"Exportation terminée avec succès pour {dataset_name} ({new_version_name})"
         )
-
-    current_run.log_info(
-        f"Exportation terminée avec succès pour {dataset_name} ({new_version_name})"
-    )
+    except Exception as e:
+        msg = f"Erreur lors de l'exportation vers le dataset {dataset_name}: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 if __name__ == "__main__":

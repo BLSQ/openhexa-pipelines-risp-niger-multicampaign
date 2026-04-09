@@ -5,12 +5,10 @@ import pandas as pd
 import numpy as np
 from utils import (
     validate_campaign_filename,
-    org_unit_matching,
 )
 from config import (
     OUTPUTS_PATH,
     TARGET_OTHER_DATA_PATH,
-    TEMP_PATH,
     valid_campaigns,
     valid_scales,
     valid_levels,
@@ -19,7 +17,6 @@ from config import (
     campaign_rename_dict,
     cols_for_melting,
     csi_district_rename_dict,
-    csi_matching_failed,
 )
 
 
@@ -113,8 +110,9 @@ def load_data(name: str) -> pd.DataFrame:
         return df
 
     except Exception as e:
-        current_run.log_error(f"Erreur lors de l'importation du fichier {name}: {e}")
-        raise
+        msg = f"Erreur lors de l'importation du fichier {name}: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def process_dataframe(df: pd.DataFrame, aggregation_type: str, meta: dict):
@@ -130,47 +128,59 @@ def process_dataframe(df: pd.DataFrame, aggregation_type: str, meta: dict):
     Returns:
         df_melted (pd.DataFrame): The processed DataFrame in long format with extracted age group information.
     """
-    id_vars = cols_for_melting.copy()
-    if aggregation_type == "csi":
-        id_vars.insert(1, "CSI")
-
-    required = (
-        templates_required_cols_csi
-        if aggregation_type == "csi"
-        else templates_required_cols_district
+    current_run.log_info(
+        f"Traitement du DataFrame pour le fichier {meta.get('file')} avec le type d'agrégation '{aggregation_type}'..."
     )
-    if not all(col in df.columns for col in required):
-        raise ValueError(f"Colonnes manquantes. Colonnes attendues: {required}")
+    try:
+        id_vars = cols_for_melting.copy()
+        if aggregation_type == "csi":
+            id_vars.insert(1, "CSI")
 
-    regex_pattern = r"^Cible (\d+-\d+ (?:mois|ans))$"
-    extra_cols = [col for col in df.columns if col not in required]
-    extra_cols = [col for col in extra_cols if col not in ["year", "produit"]]
-    invalid_format_cols = [
-        col for col in extra_cols if not re.match(regex_pattern, col)
-    ]
+        required = (
+            templates_required_cols_csi
+            if aggregation_type == "csi"
+            else templates_required_cols_district
+        )
+        if not all(col in df.columns for col in required):
+            raise ValueError(f"Colonnes manquantes. Colonnes attendues: {required}")
 
-    if invalid_format_cols:
-        raise ValueError(
-            f"Format de colonne invalide détecté : {invalid_format_cols}. "
-            "Les colonnes de données doivent suivre le format: 'Cible [age] mois/ans'"
+        regex_pattern = r"^Cible (\d+-\d+ (?:mois|ans))$"
+        extra_cols = [col for col in df.columns if col not in required]
+        extra_cols = [col for col in extra_cols if col not in ["year", "produit"]]
+        invalid_format_cols = [
+            col for col in extra_cols if not re.match(regex_pattern, col)
+        ]
+
+        if invalid_format_cols:
+            raise ValueError(
+                f"Format de colonne invalide détecté : {invalid_format_cols}. "
+                "Les colonnes de données doivent suivre le format: 'Cible [age] mois/ans'"
+            )
+
+        value_vars = [col for col in df.columns if col.startswith("Cible ")]
+
+        df_melted = pd.melt(
+            df,
+            id_vars=id_vars,
+            value_vars=value_vars,
+            var_name="age",
+            value_name="cible",
         )
 
-    value_vars = [col for col in df.columns if col.startswith("Cible ")]
+        extracted = df_melted["age"].str.extract(regex_pattern)
 
-    df_melted = pd.melt(
-        df,
-        id_vars=id_vars,
-        value_vars=value_vars,
-        var_name="age",
-        value_name="cible",
-    )
+        df_melted["age"] = extracted[0]
+        df_melted = df_melted.rename(columns=csi_district_rename_dict)
 
-    extracted = df_melted["age"].str.extract(regex_pattern)
+        current_run.log_info(
+            f"DataFrame traité avec succès pour le fichier {meta.get('file')}"
+        )
 
-    df_melted["age"] = extracted[0]
-    df_melted = df_melted.rename(columns=csi_district_rename_dict)
-
-    return df_melted
+        return df_melted
+    except Exception as e:
+        msg = f"Erreur lors du traitement du DataFrame pour le fichier {meta.get('file', 'inconnu')}: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def import_target_data_for_future_campaigns():
@@ -184,7 +194,7 @@ def import_target_data_for_future_campaigns():
         csi_target_df (pd.DataFrame): DataFrame containing the target data at CSI level for future campaigns.
         district_target_df (pd.DataFrame): DataFrame containing the target data at district level for future campaigns.
     """
-    current_run.log_info("Démarrage de l'importation des cibles...")
+    current_run.log_info("Démarrage de l'importation des cibles configurées...")
 
     try:
         if not os.path.exists(TARGET_OTHER_DATA_PATH):
@@ -207,10 +217,9 @@ def import_target_data_for_future_campaigns():
             )
 
             if not is_valid:
-                current_run.log_error(
-                    f"Fichier rejeté: {entry.name} | Raison: {result}"
-                )
-                raise
+                msg = f"Fichier rejeté: {entry.name} | Raison: {result}"
+                current_run.log_error(msg)
+                raise ValueError(msg)
 
             # processing
             metadata = result
@@ -219,16 +228,16 @@ def import_target_data_for_future_campaigns():
                 df = pd.read_excel(entry.path)
 
                 if df.empty:
-                    current_run.log_error(f"Le fichier {entry.name} est vide.")
-                    raise
+                    msg = f"Le fichier {entry.name} est vide."
+                    current_run.log_error(msg)
+                    raise ValueError(msg)
 
                 target_cols = [col for col in df.columns if col.startswith("Cible ")]
                 for col in target_cols:
                     if pd.to_numeric(df[col], errors="coerce").isna().any():
-                        current_run.log_error(
-                            f"Données non numériques dans {entry.name} (colonne '{col}')"
-                        )
-                        raise
+                        msg = f"Données non numériques dans {entry.name} (colonne '{col}')"
+                        current_run.log_error(msg)
+                        raise ValueError(msg)
 
                 df["year"] = metadata["year"]
                 df["produit"] = campaign_rename_dict.get(
@@ -243,8 +252,9 @@ def import_target_data_for_future_campaigns():
                 current_run.log_info(f"Succès: {entry.name}")
 
             except Exception as e:
-                current_run.log_error(f"Erreur technique sur {entry.name}: {e}")
-                raise
+                msg = f"Erreur technique sur {entry.name}: {e}"
+                current_run.log_error(msg)
+                raise ValueError(msg)
 
         csi_target_df = (
             pd.concat(all_data["csi"], ignore_index=True)
@@ -257,11 +267,16 @@ def import_target_data_for_future_campaigns():
             else pd.DataFrame()
         )
 
+        current_run.log_info(
+            "Importation des données de cibles configurées terminée avec succès."
+        )
+
         return csi_target_df, district_target_df
 
     except Exception as e:
-        current_run.log_error(f"Erreur globale d'importation: {e}")
-        raise
+        msg = f"Erreur globale d'importation: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def import_org_unit_ids(
@@ -302,10 +317,9 @@ def import_org_unit_ids(
                 target_with_org_unit_ids_df["_merge"].value_counts().get("left_only", 0)
             )
             if unmatched_count > 0:
-                current_run.log_error(
-                    f"Erreur lors de l'appariement au niveau des districts: {unmatched_count} unités organisationnelles n'ont pas été appariées."
-                )
-                raise
+                msg = f"Erreur lors de l'appariement au niveau des districts: {unmatched_count} unités organisationnelles n'ont pas été appariées."
+                current_run.log_error(msg)
+                raise ValueError(msg)
 
         # csi-level matching
         else:
@@ -320,194 +334,23 @@ def import_org_unit_ids(
                 target_with_org_unit_ids_df["_merge"].value_counts().get("left_only", 0)
             )
             if unmatched_count > 0:
-                current_run.log_error(
-                    f"Erreur lors de l'appariement au niveau des CSI: {unmatched_count} unités organisationnelles n'ont pas été appariées."
-                )
-                raise
+                msg = f"Erreur lors de l'appariement au niveau des CSI: {unmatched_count} unités organisationnelles n'ont pas été appariées."
+                current_run.log_error(msg)
+                raise ValueError(msg)
 
         target_with_org_unit_ids_df = target_with_org_unit_ids_df.drop(
             columns=["_merge"]
         )
 
+        current_run.log_info(
+            "Récupération des identifiants des unités organisationnelles terminée avec succès."
+        )
+
         return target_with_org_unit_ids_df
     except Exception as e:
-        current_run.log_error(f"Erreur lors de l'importation des org unit IDs: {e}")
-        raise
-
-
-def match_csi_to_org_unit_id(
-    csi_level_target_df: pd.DataFrame, iaso_org_unit_tree_df_clean: pd.DataFrame
-) -> pd.DataFrame:
-    """
-    Match CSI names in df containing the CSI-level target data to organizational unit IDs
-    using the IASO org unit tree data.
-
-    NB:
-        - The matching is performed using a fuzzy matching approach based on the Levenshtein distance
-          between the cleaned CSI names in the target data and the cleaned spatial match field in the
-          IASO org unit tree data.
-        - A threshold is applied to determine acceptable matches, and manual corrections are made for
-          known matching failures.
-
-    Args:
-        csi_level_target_df (pd.DataFrame): DataFrame containing the target data at CSI level.
-        iaso_org_unit_tree_df_clean (pd.DataFrame): DataFrame containing the clean organisational units tree data.
-
-    Returns:
-        pd.DataFrame: DataFrame with matched organizational unit IDs.
-    """
-    current_run.log_info(
-        "Appariement des noms CSI aux identifiants des unités organisationnelles..."
-    )
-    try:
-        iaso_org_unit_tree_for_matching = iaso_org_unit_tree_df_clean[
-            ["org_unit_id", "LVL_3_NAME", "LVL_6_NAME"]
-        ].drop_duplicates()
-
-        target_df_matched, org_unit_tree_check = org_unit_matching(
-            csi_level_target_df, iaso_org_unit_tree_for_matching, threshold=50
-        )
-
-        # inspect matching results
-        target_df_matched_check = target_df_matched[
-            [
-                "org_unit_id",
-                "LVL_3_NAME_original",
-                "LVL_6_NAME_original",
-                "LVL_3_NAME",
-                "LVL_6_NAME",
-                "cleansed_target",
-                "cleansed_spatial_match",
-                "match_score",
-            ]
-        ]
-        target_df_matched_check.drop_duplicates(inplace=True)
-
-        if not os.path.exists(TEMP_PATH):
-            os.makedirs(TEMP_PATH)
-
-        target_df_matched_check.to_csv(
-            os.path.join(TEMP_PATH, "target_df_matched_check.csv"),
-            index=False,
-        )
-        org_unit_tree_check.drop_duplicates(inplace=True)
-        org_unit_tree_check.to_csv(
-            os.path.join(TEMP_PATH, "org_unit_tree_check.csv"),
-            index=False,
-        )
-
-        # manually correct matching failures
-        for (
-            csi_concat_original,
-            csi_concat_correct,
-        ) in csi_matching_failed.items():
-            if csi_concat_correct is None:
-                mask = target_df_matched["cleansed_target"] == csi_concat_original
-                target_df_matched.loc[mask, "org_unit_id"] = None
-                target_df_matched.loc[mask, "LVL_3_NAME"] = None
-                target_df_matched.loc[mask, "LVL_6_NAME"] = None
-                continue
-
-            org_unit_tree_row = org_unit_tree_check.loc[
-                org_unit_tree_check["cleansed_spatial"] == csi_concat_correct
-            ]
-            if org_unit_tree_row.empty:
-                continue
-
-            lvl_3_name_correct = org_unit_tree_row["LVL_3_NAME"].values[0]
-            lvl_6_name_correct = org_unit_tree_row["LVL_6_NAME"].values[0]
-            org_unit_id_correct = org_unit_tree_row["org_unit_id"].values[0]
-            mask = target_df_matched["cleansed_target"] == csi_concat_original
-            target_df_matched.loc[mask, "org_unit_id"] = org_unit_id_correct
-            target_df_matched.loc[mask, "LVL_3_NAME"] = lvl_3_name_correct
-            target_df_matched.loc[mask, "LVL_6_NAME"] = lvl_6_name_correct
-
-        target_df_matched["LVL_6_NAME"] = np.where(
-            target_df_matched["org_unit_id"].isna(),
-            target_df_matched["LVL_6_NAME_original"],
-            target_df_matched["LVL_6_NAME"],
-        )
-
-        unmatched_count = target_df_matched["org_unit_id"].isna().sum()
-        total_count = len(target_df_matched)
-        if unmatched_count > 0:
-            unmatched_csis = target_df_matched[target_df_matched["org_unit_id"].isna()][
-                "LVL_6_NAME_original"
-            ].unique()
-            current_run.log_warning(
-                f"{unmatched_count} sur {total_count} entrées n'ont pas pu être appariés à un org_unit_id. "
-                f"CSIs non appariés : {', '.join(map(str, unmatched_csis))}. "
-                "Un appariement manuel est nécessaire pour ces entrées."
-            )
-
-        target_df_matched = target_df_matched.drop(
-            columns=[
-                "LVL_3_NAME_original",
-                "LVL_6_NAME_original",
-                "match_score",
-                "cleansed_target",
-                "cleansed_spatial_match",
-            ]
-        )
-        target_df_matched = target_df_matched.dropna(subset=["org_unit_id"])
-
-        return target_df_matched
-    except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'appariement des noms CSI aux identifiants des unités organisationnelles: {e}"
-        )
-        raise
-
-
-def match_district_to_org_unit_id(
-    district_level_target_df: pd.DataFrame, iaso_org_unit_tree_df_clean: pd.DataFrame
-) -> pd.DataFrame:
-    """
-    Match district names in df containing the district-level target data to organizational unit IDs
-    using the IASO org unit tree data.
-
-    NB:
-        - The matching is performed using a simple merge on the district name field (LVL_3_NAME) which
-          has been cleansed manually in both datasets to ensure consistency.
-
-    Args:
-        district_level_target_df (pd.DataFrame): DataFrame containing the target data at district level.
-        iaso_org_unit_tree_df_clean (pd.DataFrame): DataFrame containing the clean organisational units tree data.
-
-    Returns:
-        target_df_matched (pd.DataFrame): DataFrame with matched organizational unit IDs.
-    """
-    current_run.log_info("Matching district names to organizational unit IDs...")
-    try:
-        iaso_org_unit_tree_for_matching = iaso_org_unit_tree_df_clean[
-            ["org_unit_id", "LVL_3_NAME"]
-        ].drop_duplicates()
-        iaso_org_unit_tree_for_matching = iaso_org_unit_tree_for_matching.groupby(
-            "LVL_3_NAME", as_index=False
-        ).first()
-
-        target_df_matched = district_level_target_df.merge(
-            iaso_org_unit_tree_for_matching, on=["LVL_3_NAME"], how="left"
-        )
-
-        unmatched_count = target_df_matched["org_unit_id"].isna().sum()
-        total_count = len(target_df_matched)
-        if unmatched_count > 0:
-            unmatched_districts = target_df_matched[
-                target_df_matched["org_unit_id"].isna()
-            ]["LVL_3_NAME"].unique()
-            current_run.log_warning(
-                f"{unmatched_count} sur {total_count} entrées n'ont pas pu être appariés à un org_unit_id. "
-                f"Districts non appariés : {', '.join(unmatched_districts)}"
-                "Ces entrées seront supprimées des données cibles."
-            )
-
-        return target_df_matched
-    except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'appariement des noms de districts aux identifiants des unités organisationnelles: {e}"
-        )
-        raise
+        msg = f"Erreur lors de l'importation des org unit IDs: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def combine_target_data(
@@ -522,10 +365,13 @@ def combine_target_data(
     Returns:
         target_data_combined(pd.DataFrame): Combined DataFrame containing all target data.
     """
-    current_run.log_info("Combinaison des différentes données de cibles...")
+    current_run.log_info("Combinaison des différentes données de cibles en cours...")
     try:
         target_data_combined = pd.concat(dfs, ignore_index=True)
 
+        current_run.log_info(
+            "Combinaison des différentes données de cibles terminée avec succès."
+        )
         return target_data_combined
 
     except Exception as e:
@@ -587,12 +433,15 @@ def clean_org_unit_id(
 
         target_data_combined.drop(columns=["final_org_unit_id", "_merge"], inplace=True)
 
+        current_run.log_info(
+            "Récupération des identifiants des unités d'organisation et application de la correspondance un-à-plusieurs terminée avec succès."
+        )
+
         return target_data_combined
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors du processus de récupération des identifiants des unités d'organisation: {e}"
-        )
-        raise
+        msg = f"Erreur lors du processus de récupération des identifiants des unités d'organisation: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def add_round_info_to_configured_target_data(
@@ -613,45 +462,58 @@ def add_round_info_to_configured_target_data(
     current_run.log_info(
         "Ajout des informations de rounds pour les campagnes configurées..."
     )
-    configured_target_df["round"] = np.nan
+    try:
+        configured_target_df["round"] = np.nan
 
-    # if there already exist round info for the same combination of year-produit in the historical data,
-    # create new rounds upto 10 rounds starting from the max round number in the historical data for this
-    # combination. Otherwise, assign round 1 to 10 to the target data of the configured campaigns.
-    historical_target_df_modified = historical_target_df.copy()
-    historical_target_df_modified["round_num"] = (
-        historical_target_df_modified["round"].str.extract(r"round (\d+)").astype(int)
-    )
-    max_rounds_historical = (
-        historical_target_df_modified.groupby(["year", "produit"])["round_num"]
-        .max()
-        .reset_index()
-    )
-    max_rounds_historical["round_start"] = max_rounds_historical["round_num"] + 1
-    max_rounds_historical["round_end"] = 10
+        # if there already exist round info for the same combination of year-produit in the historical data,
+        # create new rounds upto 10 rounds starting from the max round number in the historical data for this
+        # combination. Otherwise, assign round 1 to 10 to the target data of the configured campaigns.
+        historical_target_df_modified = historical_target_df.copy()
+        historical_target_df_modified["round_num"] = (
+            historical_target_df_modified["round"]
+            .str.extract(r"round (\d+)")
+            .astype(int)
+        )
+        max_rounds_historical = (
+            historical_target_df_modified.groupby(["year", "produit"])["round_num"]
+            .max()
+            .reset_index()
+        )
+        max_rounds_historical["round_start"] = max_rounds_historical["round_num"] + 1
+        max_rounds_historical["round_end"] = 10
 
-    configured_target_df = configured_target_df.merge(
-        max_rounds_historical[["year", "produit", "round_start", "round_end"]],
-        on=["year", "produit"],
-        how="left",
-    )
+        configured_target_df = configured_target_df.merge(
+            max_rounds_historical[["year", "produit", "round_start", "round_end"]],
+            on=["year", "produit"],
+            how="left",
+        )
 
-    configured_target_df["round"] = configured_target_df.apply(
-        lambda row: [
-            f"round {i}"
-            for i in range(int(row["round_start"]), int(row["round_end"]) + 1)
-        ]
-        if not pd.isna(row["round_start"])
-        else [f"round {i}" for i in range(1, 11)],
-        axis=1,
-    )
-    configured_target_df = configured_target_df.explode("round").reset_index(drop=True)
+        configured_target_df["round"] = configured_target_df.apply(
+            lambda row: [
+                f"round {i}"
+                for i in range(int(row["round_start"]), int(row["round_end"]) + 1)
+            ]
+            if not pd.isna(row["round_start"])
+            else [f"round {i}" for i in range(1, 11)],
+            axis=1,
+        )
+        configured_target_df = configured_target_df.explode("round").reset_index(
+            drop=True
+        )
 
-    configured_target_with_rounds_df = configured_target_df.drop(
-        columns=["round_start", "round_end"]
-    )
+        configured_target_with_rounds_df = configured_target_df.drop(
+            columns=["round_start", "round_end"]
+        )
 
-    return configured_target_with_rounds_df
+        current_run.log_info(
+            "Ajout des informations de rounds pour les campagnes configurées terminé avec succès."
+        )
+
+        return configured_target_with_rounds_df
+    except Exception as e:
+        msg = f"Erreur lors de l'ajout des informations de rounds: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def save_file(df: pd.DataFrame, file_name: str) -> None:
@@ -680,8 +542,9 @@ def save_file(df: pd.DataFrame, file_name: str) -> None:
         )
         current_run.log_info(f"Fichier enregistré avec succès: {file_path}")
     except Exception as e:
-        current_run.log_error(f"Erreur lors de l'enregistrement du fichier: {e}")
-        raise e
+        msg = f"Erreur lors de l'enregistrement du fichier: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 def export_to_dataset(df: pd.DataFrame, df_file_path: str, dataset_name: str) -> None:
@@ -696,52 +559,60 @@ def export_to_dataset(df: pd.DataFrame, df_file_path: str, dataset_name: str) ->
     current_run.log_info(
         f"Préparation de l'exportation vers le dataset : {dataset_name}..."
     )
-
-    dataset_slug = dataset_name.lower().strip().replace(" ", "-").replace("_", "-")
-
-    # check if dataset already exists
     try:
-        dataset = workspace.get_dataset(dataset_slug)
-        current_run.log_info(f"Dataset existant trouvé : {dataset_slug}")
-    except Exception:
-        current_run.log_info(f"Dataset {dataset_name} non trouvé. Création en cours...")
-        dataset = workspace.create_dataset(
-            name=dataset_name,
-            description="Données de configuration de campagne (multi-formats)",
+        dataset_slug = dataset_name.lower().strip().replace(" ", "-").replace("_", "-")
+
+        # check if dataset already exists
+        try:
+            dataset = workspace.get_dataset(dataset_slug)
+            current_run.log_info(f"Dataset existant trouvé : {dataset_slug}")
+        except Exception:
+            current_run.log_info(
+                f"Dataset {dataset_name} non trouvé. Création en cours..."
+            )
+            dataset = workspace.create_dataset(
+                name=dataset_name,
+                description="Données de configuration de campagne (multi-formats)",
+            )
+
+        # define versioning
+        latest_version = dataset.latest_version
+        version_number = (
+            int(latest_version.name.lstrip("v")) + 1 if latest_version else 1
         )
+        new_version_name = f"v{version_number}"
 
-    # define versioning
-    latest_version = dataset.latest_version
-    version_number = int(latest_version.name.lstrip("v")) + 1 if latest_version else 1
-    new_version_name = f"v{version_number}"
+        # create local files
+        if not os.path.exists(df_file_path):
+            os.makedirs(df_file_path)
 
-    # create local files
-    if not os.path.exists(df_file_path):
-        os.makedirs(df_file_path)
+        base_path = os.path.join(df_file_path, dataset_name)
+        files_to_upload = {
+            "parquet": f"{base_path}.parquet",
+            "xlsx": f"{base_path}.xlsx",
+            "csv": f"{base_path}.csv",
+        }
 
-    base_path = os.path.join(df_file_path, dataset_name)
-    files_to_upload = {
-        "parquet": f"{base_path}.parquet",
-        "xlsx": f"{base_path}.xlsx",
-        "csv": f"{base_path}.csv",
-    }
+        df.to_parquet(files_to_upload["parquet"], index=False)
+        df.to_excel(files_to_upload["xlsx"], index=False)
+        df.to_csv(files_to_upload["csv"], index=False)
 
-    df.to_parquet(files_to_upload["parquet"], index=False)
-    df.to_excel(files_to_upload["xlsx"], index=False)
-    df.to_csv(files_to_upload["csv"], index=False)
+        # upload to Dataset in OH
+        version = dataset.create_version(new_version_name)
 
-    # upload to Dataset in OH
-    version = dataset.create_version(new_version_name)
+        for format_type, file_path in files_to_upload.items():
+            version.add_file(file_path, os.path.basename(file_path))
+            current_run.log_info(
+                f"Fichier {format_type} ajouté à la version {new_version_name}"
+            )
 
-    for format_type, file_path in files_to_upload.items():
-        version.add_file(file_path, os.path.basename(file_path))
         current_run.log_info(
-            f"Fichier {format_type} ajouté à la version {new_version_name}"
+            f"Exportation terminée avec succès pour {dataset_name} ({new_version_name})"
         )
-
-    current_run.log_info(
-        f"Exportation terminée avec succès pour {dataset_name} ({new_version_name})"
-    )
+    except Exception as e:
+        msg = f"Erreur lors de l'exportation vers le dataset {dataset_name}: {e}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
 
 
 if __name__ == "__main__":
