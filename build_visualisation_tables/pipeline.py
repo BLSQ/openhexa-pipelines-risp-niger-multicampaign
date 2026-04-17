@@ -111,34 +111,34 @@ def build_visualisation_tables():
     write_to_db(campaign_round_summary, "ner_vaccination_campaign_round_summary")
 
 
-def load_data(name: str) -> pd.DataFrame:
+def load_data(file_name: str) -> pd.DataFrame:
     """
-    Import data from a specified file in the outputs directory.
-    The file should be in parquet format and the name should be provided without the extension.
+    Load data from a parquet file in the OUTPUTS_PATH.
 
     Args:
-        name (str): Name of the file to be imported (without extension).
+        file_name (str): The name of the file to read from.
 
     Returns:
-        df (pd.DataFrame): DataFrame containing the imported data.
+        df (pd.DataFrame): The dataframe containing the file data.
     """
-    current_run.log_info(f"Importation du fichier {name}...")
-    try:
-        if not os.path.exists(OUTPUTS_PATH):
-            os.makedirs(OUTPUTS_PATH)
+    current_run.log_info(f"Importation du fichier {file_name}...")
+    file_to_import = os.path.join(OUTPUTS_PATH, f"{file_name}.parquet")
 
-        file_path = os.path.join(
-            OUTPUTS_PATH,
-            f"{name}.parquet",
-        )
-        df = pd.read_parquet(file_path)
-        current_run.log_info(f"Fichier importé avec succès: {file_path}")
-        return df
-
-    except Exception as e:
-        msg = f"Erreur lors de l'importation du fichier {name}: {str(e)}"
+    if not os.path.exists(file_to_import):
+        msg = f"Le fichier {file_to_import} n'existe pas."
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise FileNotFoundError(msg)
+
+    try:
+        df = pd.read_parquet(file_to_import)
+        current_run.log_info(
+            f"Données du fichier {file_name} chargées avec succès depuis le fichier {file_to_import}"
+        )
+        return df
+    except Exception as e:
+        msg = f"Erreur lors de la lecture du fichier {file_to_import}: {str(e)}"
+        current_run.log_error(msg)
+        raise
 
 
 def create_coverage_dataset(
@@ -242,7 +242,7 @@ def create_coverage_dataset(
     except Exception as e:
         msg = f"Erreur lors de la création du tableau de couverture vaccinale: {e}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def add_target_data(cvrg_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.DataFrame:
@@ -322,7 +322,7 @@ def add_target_data(cvrg_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.DataFr
     except Exception as e:
         msg = f"Erreur lors de l'ajout des données cibles: {e}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def create_completeness_dataset(
@@ -382,7 +382,7 @@ def create_completeness_dataset(
     except Exception as e:
         msg = f"Erreur lors de la création du tableau de complétude vaccinale: {e}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def create_stocks_dataset(
@@ -505,7 +505,7 @@ def create_stocks_dataset(
     except Exception as e:
         msg = f"Erreur lors de la création du tableau des stocks: {e}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def create_supervision_dataset(iaso_form_data_df: pd.DataFrame) -> pd.DataFrame:
@@ -593,7 +593,7 @@ def create_supervision_dataset(iaso_form_data_df: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         msg = f"Erreur lors de la création du tableau de surveillance: {e}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def create_communication_dataset(
@@ -708,7 +708,7 @@ def create_communication_dataset(
     except Exception as e:
         msg = f"Erreur lors de la création des tableaux de stratégies de communication: {e}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def create_filter_tables(
@@ -788,7 +788,7 @@ def create_filter_tables(
     except Exception as e:
         msg = f"Erreur lors de la création des filtres pour la visualisation: {e}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def create_dynamic_org_unit_table(
@@ -850,7 +850,7 @@ def create_dynamic_org_unit_table(
     except Exception as e:
         msg = f"Erreur lors de la création du tableau dynamique des unités organisationnelles: {e}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def create_campaign_round_summary_table(
@@ -897,7 +897,7 @@ def create_campaign_round_summary_table(
     except Exception as e:
         msg = f"Erreur lors de la création du tableau de résumé des campagnes, rounds, années et produits: {e}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def write_to_db(df: pd.DataFrame, table_name: str) -> None:
@@ -928,7 +928,7 @@ def write_to_db(df: pd.DataFrame, table_name: str) -> None:
             f"Erreur lors de l'écriture des données dans la table DB {table_name}: {e}"
         )
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 if __name__ == "__main__":

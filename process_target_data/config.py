@@ -55,6 +55,21 @@ templates_required_cols_csi = [
     "CSI",
 ]
 
+target_columns_required_dict = {
+    "Polio": ["Cible 0-11 mois", "Cible 12-59 mois"],
+    "Vitamine A": ["Cible 6-11 mois", "Cible 12-24 mois"],
+    "Albendazole": ["Cible 12-23 mois", "Cible 24-59 mois"],
+    "Rougeole": ["Cible 6-9 mois", "Cible 9-11 mois", "Cible 12-59 mois"],
+    "Fièvre jaune": [
+        "Cible 9-11 mois",
+        "Cible 12-23 mois",
+        "Cible 24-59 mois",
+        "Cible 5-14 ans",
+        "Cible 15-60 ans",
+    ],
+    "Méningite": ["Cible 1-4 ans", "Cible 5-14 ans", "Cible 15-19 ans"],
+    "TCV": ["Cible 1-4 ans", "Cible 5-14 ans", "Cible 15-19 ans"],
+}
 
 site_strategy_types_dict = {
     "Ordinaire": "ordinaire",

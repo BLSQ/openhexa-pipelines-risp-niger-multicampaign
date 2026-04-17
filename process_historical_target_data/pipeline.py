@@ -101,36 +101,34 @@ def process_historical_target_data():
     save_file(target_data_combined, "combined_historical_target_data")
 
 
-def load_data(name: str) -> pd.DataFrame:
+def load_data(file_name: str) -> pd.DataFrame:
     """
-    Import data from a specified file in the outputs directory.
-    The file should be in parquet format and the name should be provided without the extension.
+    Load data from a parquet file in the OUTPUTS_PATH.
 
     Args:
-        name (str): Name of the file to be imported (without extension).
+        file_name (str): The name of the file to read from.
 
     Returns:
-        df (pd.DataFrame): DataFrame containing the imported data.
+        df (pd.DataFrame): The dataframe containing the file data.
     """
-    current_run.log_info(f"Importation du fichier {name}...")
-    try:
-        if not os.path.exists(OUTPUTS_PATH):
-            os.makedirs(OUTPUTS_PATH)
+    current_run.log_info(f"Importation du fichier {file_name}...")
+    file_to_import = os.path.join(OUTPUTS_PATH, f"{file_name}.parquet")
 
-        file_path = os.path.join(
-            OUTPUTS_PATH,
-            f"{name}.parquet",
-        )
-        df = pd.read_parquet(file_path)
-
-        current_run.log_info(f"Importation du fichier {name} réussie.")
-
-        return df
-
-    except Exception as e:
-        msg = f"Erreur lors de l'importation du fichier {name}: {str(e)}"
+    if not os.path.exists(file_to_import):
+        msg = f"Le fichier {file_to_import} n'existe pas."
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise FileNotFoundError(msg)
+
+    try:
+        df = pd.read_parquet(file_to_import)
+        current_run.log_info(
+            f"Données du fichier {file_name} chargées avec succès depuis le fichier {file_to_import}"
+        )
+        return df
+    except Exception as e:
+        msg = f"Erreur lors de la lecture du fichier {file_to_import}: {str(e)}"
+        current_run.log_error(msg)
+        raise
 
 
 def import_target_data_for_polio_2024_r1_r4() -> pd.DataFrame:
@@ -143,18 +141,17 @@ def import_target_data_for_polio_2024_r1_r4() -> pd.DataFrame:
     Returns:
         target_polio_2024 (pd.DataFrame): DataFrame containing the target data for Polio campaign 2024 rounds 1 to 4
     """
-    try:
-        if not os.path.exists(TARGETS_HISTORICAL_PATH):
-            os.makedirs(TARGETS_HISTORICAL_PATH)
+    if not os.path.exists(TARGETS_HISTORICAL_PATH):
+        os.makedirs(TARGETS_HISTORICAL_PATH)
 
-        file_path = os.path.join(
-            TARGETS_HISTORICAL_PATH,
-            "Population JNV JNM ET DEPRARASITAGE.xlsx",
-        )
-    except Exception as e:
+    file_path = os.path.join(
+        TARGETS_HISTORICAL_PATH,
+        "Population JNV JNM ET DEPRARASITAGE.xlsx",
+    )
+    if not os.path.exists(file_path):
         msg = f"Erreur d'importation des données de cibles pour la polio 2024 rounds 1 à 4: Impossible d'accéder au fichier: {file_path}. Veuillez vérifier que le fichier existe et que le chemin est correct."
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise FileNotFoundError(msg)
 
     current_run.log_info(
         f"Importation des données de cibles pour la polio 2024 rounds 1 à 4 à partir du fichier {file_path}..."
@@ -201,7 +198,7 @@ def import_target_data_for_polio_2024_r1_r4() -> pd.DataFrame:
     except Exception as e:
         msg = f"Erreur lors de l'importation des données de cibles pour la polio 2024 rounds 1 à 4: {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def import_target_data_for_polio_and_rougeole_2025_r1_r2() -> pd.DataFrame:
@@ -262,7 +259,7 @@ def import_target_data_for_polio_and_rougeole_2025_r1_r2() -> pd.DataFrame:
     except Exception as e:
         msg = f"Erreur lors de l'importation des données historiques de cibles pour les campagnes polio 2025 rounds 1-2 et rougeole 2025 round 1: {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def import_target_data_for_yellow_fever_2025_2026_r1() -> pd.DataFrame:
@@ -340,7 +337,7 @@ def import_target_data_for_yellow_fever_2025_2026_r1() -> pd.DataFrame:
     except Exception as e:
         msg = f"Erreur lors de l'importation des données de cibles pour la fièvre jaune 2025 et 2026 rounds 1: {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def import_target_data_for_men5_and_tcv_2025_r1_r2() -> pd.DataFrame:
@@ -400,7 +397,7 @@ def import_target_data_for_men5_and_tcv_2025_r1_r2() -> pd.DataFrame:
     except Exception as e:
         msg = f"Erreur lors de l'importation des données de cibles historiques pour la campagne Méningite et TCV 2025 rounds 1 et 2: {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def import_target_data_for_polio_2026_r1() -> pd.DataFrame:
@@ -470,7 +467,7 @@ def import_target_data_for_polio_2026_r1() -> pd.DataFrame:
     except Exception as e:
         msg = f"Erreur lors de l'importation des données de cibles historiques pour la campagne de polio 2026 round 1: {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def match_csi_to_org_unit_id(
@@ -519,7 +516,7 @@ def match_csi_to_org_unit_id(
                 "match_score",
             ]
         ]
-        target_df_matched_check.drop_duplicates(inplace=True)
+        target_df_matched_check = target_df_matched_check.drop_duplicates()
 
         if not os.path.exists(TEMP_PATH):
             os.makedirs(TEMP_PATH)
@@ -528,7 +525,7 @@ def match_csi_to_org_unit_id(
             os.path.join(TEMP_PATH, "target_df_matched_check.csv"),
             index=False,
         )
-        org_unit_tree_check.drop_duplicates(inplace=True)
+        org_unit_tree_check = org_unit_tree_check.drop_duplicates()
         org_unit_tree_check.to_csv(
             os.path.join(TEMP_PATH, "org_unit_tree_check.csv"),
             index=False,
@@ -597,7 +594,7 @@ def match_csi_to_org_unit_id(
     except Exception as e:
         msg = f"Erreur lors de l'appariement des noms CSI aux identifiants des unités organisationnelles: {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def match_district_to_org_unit_id(
@@ -653,7 +650,7 @@ def match_district_to_org_unit_id(
     except Exception as e:
         msg = f"Erreur lors de l'appariement des noms de districts aux identifiants des unités organisationnelles: {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
@@ -814,7 +811,7 @@ def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         msg = f"Erreur lors de l'ajout des rounds et des produits: {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def combine_target_data(
@@ -841,7 +838,7 @@ def combine_target_data(
     except Exception as e:
         msg = f"Erreur lors de la combinaison des données de cibles: {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def add_region_names(
@@ -874,7 +871,7 @@ def add_region_names(
     except Exception as e:
         msg = f"Erreur lors de l'ajout des noms de région: {e}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def clean_org_unit_id(
@@ -937,38 +934,38 @@ def clean_org_unit_id(
     except Exception as e:
         msg = f"Erreur lors du processus de récupération des identifiants des unités d'organisation: {e}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def save_file(df: pd.DataFrame, file_name: str) -> None:
     """
-    Save the cleaned org unit tree data to a parquet file.
+    Save a dataframe to a parquet file.
 
     Args:
-        df (pd.DataFrame): DataFrame containing the cleaned org unit tree data.
+        df (pd.DataFrame): DataFrame containing the data to be saved.
         file_name (str): Name of the file to save the DataFrame as.
 
     Returns:
         None
     """
     current_run.log_info("Enregistrement du fichier dans l'espace de travail...")
-    try:
-        if not os.path.exists(OUTPUTS_PATH):
-            os.makedirs(OUTPUTS_PATH)
-        file_path = os.path.join(
-            OUTPUTS_PATH,
-            f"{file_name}.parquet",
-        )
 
+    if not os.path.exists(OUTPUTS_PATH):
+        os.makedirs(OUTPUTS_PATH)
+    file_path = os.path.join(
+        OUTPUTS_PATH,
+        f"{file_name}.parquet",
+    )
+    try:
         df.to_parquet(
             file_path,
             index=False,
         )
         current_run.log_info(f"Fichier enregistré avec succès: {file_path}")
     except Exception as e:
-        msg = f"Erreur lors de l'enregistrement du fichier: {e}"
+        msg = f"Erreur lors de l'enregistrement du fichier: {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 if __name__ == "__main__":

@@ -32,6 +32,7 @@ from config import (
         "Albendazole",
         "Vitamine A",
     ],
+    # default="Polio",
 )
 @parameter(
     "campaign_scale",
@@ -51,6 +52,7 @@ from config import (
         "Zinder",
     ],
     multiple=True,
+    # default=["Nationale"],
 )
 @parameter(
     "year",
@@ -85,6 +87,7 @@ from config import (
         2049,
         2050,
     ],
+    # default=2026,
 )
 @parameter(
     "aggregation_level",
@@ -93,6 +96,7 @@ from config import (
     type=str,
     required=True,
     choices=["CSI", "District"],
+    # default="CSI",
 )
 def generate_targets_templates(
     campaign: str,
@@ -153,24 +157,20 @@ def inspect_params(
         None
     """
     current_run.log_info("Vérification des choix des paramètres...")
-    try:
-        # for campaign_scale, if 'Nationale' is present, it cannot coexist with any other choice
-        if "Nationale" in campaign_scale and len(campaign_scale) > 1:
-            msg = "Le choix 'Nationale' pour le paramètre 'Échelle de la campagne' ne peut pas être sélectionné avec d'autres choix."
-            current_run.log_error(msg)
-            raise ValueError(msg)
 
-        # year must be a reasonable integer between 2026 and 2050
-        if not isinstance(year, int) or year < 2026 or year > 2050:
-            msg = f"Le paramètre 'Année' doit être un entier entre 2026 et 2050. Valeur fournie: {year}"
-            current_run.log_error(msg)
-            raise ValueError(msg)
-
-        current_run.log_info("Les choix des paramètres sont valides.")
-    except Exception as e:
-        msg = f"Erreur lors de la vérification des choix des paramètres: {str(e)}"
+    # for campaign_scale, if 'Nationale' is present, it cannot coexist with any other choice
+    if "Nationale" in campaign_scale and len(campaign_scale) > 1:
+        msg = "Le choix 'Nationale' pour le paramètre 'Échelle de la campagne' ne peut pas être sélectionné avec d'autres choix."
         current_run.log_error(msg)
         raise ValueError(msg)
+
+    # year must be a reasonable integer between 2026 and 2050
+    if not isinstance(year, int) or year < 2026 or year > 2050:
+        msg = f"Le paramètre 'Année' doit être un entier entre 2026 et 2050. Valeur fournie: {year}"
+        current_run.log_error(msg)
+        raise ValueError(msg)
+
+    current_run.log_info("Les choix des paramètres sont valides.")
 
 
 def validate_coherence_of_params(
@@ -181,7 +181,10 @@ def validate_coherence_of_params(
     existing_target_df: pd.DataFrame,
 ) -> None:
     """
-    Validates the coherence of the parameters for campaign, campaign scale, year and aggregation level with the existing target data. If the combination of parameters already exists in the existing target data, an error is raised. If the combination of parameters is new, it is added to the existing target data and returned as a new dataframe.
+    Validates the coherence of the parameters for campaign, campaign scale, year and aggregation level with
+    the existing target data. If the combination of parameters already exists in the existing target data,
+    an error is raised. If the combination of parameters is new, no error is raised and the creation of the
+    template file can proceed.
 
     Args:
         campaign (str): The type of campaign for which to generate the target template.
@@ -197,7 +200,7 @@ def validate_coherence_of_params(
         "Validation de la cohérence des paramètres avec les données de cibles existantes..."
     )
     try:
-        # create a dataframe with the new combination of parameters
+        # create a dataframe with the new combination of parameters that matches tha same structure as the existing target data (to allow checking for overlaps)
         campaign_clean = campaign_names_mapping.get(campaign, campaign)
         if "Nationale" in campaign_scale:
             campaign_scale = regions_list
@@ -241,10 +244,12 @@ def validate_coherence_of_params(
             current_run.log_info(
                 "Les paramètres des cibles choisis sont cohérents avec les données de cibles existantes. La création du fichier template peut se poursuivre."
             )
+    except ValueError:
+        raise
     except Exception as e:
         msg = f"Erreur lors de la validation de la cohérence des paramètres avec les données de cibles existantes: {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def load_data(file_name: str) -> pd.DataFrame:
@@ -257,25 +262,24 @@ def load_data(file_name: str) -> pd.DataFrame:
     Returns:
         df (pd.DataFrame): The dataframe containing the file data.
     """
-    current_run.log_info(
-        f"Lecture des données de la pyramide des unités organisationnelles depuis le fichier {file_name}..."
-    )
+    current_run.log_info(f"Importation du fichier {file_name}...")
+    file_to_import = os.path.join(OUTPUTS_PATH, f"{file_name}.parquet")
+
+    if not os.path.exists(file_to_import):
+        msg = f"Le fichier {file_to_import} n'existe pas."
+        current_run.log_error(msg)
+        raise FileNotFoundError(msg)
+
     try:
-        if not os.path.exists(OUTPUTS_PATH):
-            current_run.log_error(f"Le chemin {OUTPUTS_PATH} n'existe pas.")
-            raise
-        file_to_import = os.path.join(OUTPUTS_PATH, f"{file_name}.parquet")
         df = pd.read_parquet(file_to_import)
-
         current_run.log_info(
-            f"Données de la pyramide des unités organisationnelles chargées avec succès depuis le fichier {file_to_import}"
+            f"Données du fichier {file_name} chargées avec succès depuis le fichier {file_to_import}"
         )
-
         return df
     except Exception as e:
-        msg = f"Erreur lors de la lecture des données de la pyramide des unités organisationnelles depuis le fichier {file_name}: {str(e)}"
+        msg = f"Erreur lors de la lecture du fichier {file_to_import}: {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def create_template_file(
@@ -394,7 +398,7 @@ def create_template_file(
     except Exception as e:
         msg = f"Erreur lors de la création du fichier template: {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 if __name__ == "__main__":

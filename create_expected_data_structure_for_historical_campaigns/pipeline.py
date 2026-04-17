@@ -52,34 +52,34 @@ def create_expected_data_structure_for_historical_campaigns():
     save_file(combined_df, "expected_data_structure_historical_campaigns")
 
 
-def load_data(name: str) -> pd.DataFrame:
+def load_data(file_name: str) -> pd.DataFrame:
     """
-    Import data from a specified file in the outputs directory.
-    The file should be in parquet format and the name should be provided without the extension.
+    Load data from a parquet file in the OUTPUTS_PATH.
 
     Args:
-        name (str): Name of the file to be imported (without extension).
+        file_name (str): The name of the file to read from.
 
     Returns:
-        df (pd.DataFrame): DataFrame containing the imported data.
+        df (pd.DataFrame): The dataframe containing the file data.
     """
-    current_run.log_info(f"Importation du fichier {name}...")
-    try:
-        if not os.path.exists(OUTPUTS_PATH):
-            os.makedirs(OUTPUTS_PATH)
+    current_run.log_info(f"Importation du fichier {file_name}...")
+    file_to_import = os.path.join(OUTPUTS_PATH, f"{file_name}.parquet")
 
-        file_path = os.path.join(
-            OUTPUTS_PATH,
-            f"{name}.parquet",
-        )
-        df = pd.read_parquet(file_path)
-        current_run.log_info(f"Fichier importé avec succès: {file_path}")
-        return df
-
-    except Exception as e:
-        msg = f"Erreur lors de l'importation du fichier {name}: {e}"
+    if not os.path.exists(file_to_import):
+        msg = f"Le fichier {file_to_import} n'existe pas."
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise FileNotFoundError(msg)
+
+    try:
+        df = pd.read_parquet(file_to_import)
+        current_run.log_info(
+            f"Données du fichier {file_name} chargées avec succès depuis le fichier {file_to_import}"
+        )
+        return df
+    except Exception as e:
+        msg = f"Erreur lors de la lecture du fichier {file_to_import}: {str(e)}"
+        current_run.log_error(msg)
+        raise
 
 
 def create_product_site_df() -> pd.DataFrame:
@@ -111,7 +111,7 @@ def create_product_site_df() -> pd.DataFrame:
     except Exception as e:
         msg = f"Erreur lors de la création du DataFrame des sites: {e}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def create_sex_type_df() -> pd.DataFrame:
@@ -132,7 +132,7 @@ def create_sex_type_df() -> pd.DataFrame:
     except Exception as e:
         msg = f"Erreur lors de la création du DataFrame des types de sexe: {e}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def create_age_product_year_round_df(target_df: pd.DataFrame) -> pd.DataFrame:
@@ -160,7 +160,7 @@ def create_age_product_year_round_df(target_df: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         msg = f"Erreur lors de la création du DataFrame des combinaisons âge, produit, round, année: {e}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def create_product_status_df() -> pd.DataFrame:
@@ -191,7 +191,7 @@ def create_product_status_df() -> pd.DataFrame:
     except Exception as e:
         msg = f"Erreur lors de la création du DataFrame des statuts de vaccination: {e}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def create_campaign_period_df() -> pd.DataFrame:
@@ -235,10 +235,12 @@ def create_campaign_period_df() -> pd.DataFrame:
         all_campaigns_df = pd.concat(all_campaigns, ignore_index=True)
 
         return all_campaigns_df
+    except ValueError:
+        raise
     except Exception as e:
         msg = f"Erreur lors de la création du DataFrame des périodes de campagne: {e}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def combine_dfs(
@@ -281,10 +283,10 @@ def combine_dfs(
         )
         unmatched = combined_df[combined_df["_merge"] == "left_only"]
         if not unmatched.empty:
-            current_run.log_error(
-                f"Entrées non appariées trouvées lors de la fusion des DataFrames produit et site : {unmatched}"
-            )
-            raise ValueError()
+            msg = f"Entrées non appariées trouvées lors de la fusion des DataFrames produit et site : {unmatched}"
+            current_run.log_error(msg)
+            raise ValueError(msg)
+
         combined_df = combined_df.drop(columns=["_merge"])
 
         # merge with product statuses
@@ -293,10 +295,10 @@ def combine_dfs(
         )
         unmatched = combined_df[combined_df["_merge"] == "left_only"]
         if not unmatched.empty:
-            current_run.log_error(
-                f"Entrées non appariées trouvées lors de la fusion des DataFrames produit et statut : {unmatched}"
-            )
-            raise ValueError()
+            msg = f"Entrées non appariées trouvées lors de la fusion des DataFrames produit et statut : {unmatched}"
+            current_run.log_error(msg)
+            raise ValueError(msg)
+
         combined_df = combined_df.drop(columns=["_merge"])
 
         # merge with campaign periods
@@ -308,10 +310,9 @@ def combine_dfs(
         )
         unmatched = combined_df[combined_df["_merge"] == "left_only"]
         if not unmatched.empty:
-            current_run.log_error(
-                f"Entrées non appariées trouvées lors de la fusion du DataFrame des périodes de campagne : {unmatched}"
-            )
-            raise ValueError()
+            msg = f"Entrées non appariées trouvées lors de la fusion du DataFrame des périodes de campagne : {unmatched}"
+            current_run.log_error(msg)
+            raise ValueError(msg)
 
         combined_df = combined_df.drop(columns=["_merge"])
 
@@ -339,10 +340,12 @@ def combine_dfs(
 
         return combined_df
 
+    except ValueError:
+        raise
     except Exception as e:
         msg = f"Erreur lors de la combinaison des DataFrames de campagnes historiques: {e}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def adjust_to_specific_campaigns(combined_df: pd.DataFrame) -> pd.DataFrame:
@@ -380,38 +383,38 @@ def adjust_to_specific_campaigns(combined_df: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         msg = f"Erreur lors de l'ajustement du DataFrame combiné pour des campagnes spécifiques: {e}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def save_file(df: pd.DataFrame, file_name: str) -> None:
     """
-    Save the cleaned org unit tree data to a parquet file.
+    Save a dataframe to a parquet file.
 
     Args:
-        df (pd.DataFrame): DataFrame containing the cleaned org unit tree data.
+        df (pd.DataFrame): DataFrame containing the data to be saved.
         file_name (str): Name of the file to save the DataFrame as.
 
     Returns:
         None
     """
     current_run.log_info("Enregistrement du fichier dans l'espace de travail...")
-    try:
-        if not os.path.exists(OUTPUTS_PATH):
-            os.makedirs(OUTPUTS_PATH)
-        file_path = os.path.join(
-            OUTPUTS_PATH,
-            f"{file_name}.parquet",
-        )
 
+    if not os.path.exists(OUTPUTS_PATH):
+        os.makedirs(OUTPUTS_PATH)
+    file_path = os.path.join(
+        OUTPUTS_PATH,
+        f"{file_name}.parquet",
+    )
+    try:
         df.to_parquet(
             file_path,
             index=False,
         )
         current_run.log_info(f"Fichier enregistré avec succès: {file_path}")
     except Exception as e:
-        msg = f"Erreur lors de l'enregistrement du fichier: {e}"
+        msg = f"Erreur lors de l'enregistrement du fichier: {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 if __name__ == "__main__":

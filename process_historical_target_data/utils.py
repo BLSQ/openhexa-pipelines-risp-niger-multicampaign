@@ -37,11 +37,11 @@ def normalize_string(text: str) -> str:
     except Exception as e:
         msg = f"Erreur lors de la normalisation de la chaîne '{text}': {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def org_unit_matching(
-    target_df: pd.DataFrame, spatial_unit_df: pd.DataFrame, threshold: int = 90
+    target_df: pd.DataFrame, spatial_unit_df: pd.DataFrame, threshold: int
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Matches organization unit levels (LVL 3 (ds), LVL 6 (csi)) between two DataFrames using fuzzy string matching.
@@ -49,7 +49,7 @@ def org_unit_matching(
     Args:
         target_df (pd.DataFrame): DataFrame containing the target data for each combination of LVL 2, LVL 3, and LVL 6 names.
         spatial_unit_df (pd.DataFrame): DataFrame containing the org unit IDs for each combination of LVL 2, LVL 3, LVL 4, LVL 5 and LVL 6 names.
-        threshold (int): The minimum fuzzy matching score required to consider a match valid. Default is 90.
+        threshold (int): The minimum fuzzy matching score required to consider a match valid.
 
     Returns:
         final_df (pd.DataFrame): DataFrame containing the original target data along with matched org unit IDs and names from the spatial unit DataFrame.
@@ -185,10 +185,13 @@ def org_unit_matching(
             raise ValueError(
                 f"Erreur lors de la fusion des données: le nombre d'entrées initial ({count_initial}) ne correspond pas au nombre d'entrées final ({count_final})"
             )
+        final_df = final_df.drop(columns=["match_index"])
 
-        return final_df.drop(columns=["match_index"]), spatial
-
+    except ValueError:
+        raise
     except Exception as e:
         msg = f"Erreur lors du matching des unités organisationnelles: {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
+
+    return final_df, spatial

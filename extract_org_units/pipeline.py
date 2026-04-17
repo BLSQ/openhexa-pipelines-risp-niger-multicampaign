@@ -19,9 +19,9 @@ from config import (
 )
 def extract_org_units():
     """
-    This pipeline generates target templates for each campaign type based on the organizational unit tree
-    data from IASO. It retrieves the org unit tree data, cleans it, creates template files for each campaign
-    type, and saves the cleaned org unit tree data for future use.
+    This pipeline extracts organizational unit tree data from the IASO multi-campaign form,
+    cleans it by filtering out rejected entries and selecting relevant records, and then
+    saves both the raw and cleaned data to parquet files in the workspace.
     """
     iaso_org_unit_tree_df = get_iaso_org_unit_tree()
     iaso_org_unit_tree_df_clean = clean_iaso_org_unit_tree(iaso_org_unit_tree_df)
@@ -56,7 +56,7 @@ def get_iaso_org_unit_tree() -> pd.DataFrame:
     except Exception as e:
         msg = f"Erreur lors de l'extraction des données de l'arbre des unités organisationnelles IASO: {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFrame:
@@ -109,40 +109,38 @@ def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFram
     except Exception as e:
         msg = f"Erreur lors du nettoyage des données de l'arbre des unités organisationnelles IASO: {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 def save_file(df: pd.DataFrame, file_name: str) -> None:
     """
-    Save the cleaned org unit tree data to a parquet file.
+    Save a dataframe to a parquet file.
 
     Args:
-        df (pd.DataFrame): DataFrame containing the cleaned org unit tree data.
+        df (pd.DataFrame): DataFrame containing the data to be saved.
         file_name (str): Name of the file to save the DataFrame as.
 
     Returns:
         None
     """
     current_run.log_info("Enregistrement du fichier dans l'espace de travail...")
-    try:
-        if not os.path.exists(OUTPUTS_PATH):
-            os.makedirs(OUTPUTS_PATH)
-        file_path = os.path.join(
-            OUTPUTS_PATH,
-            f"{file_name}.parquet",
-        )
 
+    if not os.path.exists(OUTPUTS_PATH):
+        os.makedirs(OUTPUTS_PATH)
+    file_path = os.path.join(
+        OUTPUTS_PATH,
+        f"{file_name}.parquet",
+    )
+    try:
         df.to_parquet(
             file_path,
             index=False,
         )
-
         current_run.log_info(f"Fichier enregistré avec succès: {file_path}")
-
     except Exception as e:
-        msg = f"Erreur lors de l'enregistrement du fichier: {e}"
+        msg = f"Erreur lors de l'enregistrement du fichier: {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
 
 
 if __name__ == "__main__":

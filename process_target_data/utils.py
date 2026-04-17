@@ -14,14 +14,11 @@ def validate_campaign_filename(filename, valid_campaigns, valid_scales, valid_le
         valid_levels (list): List of valid aggregation levels.
 
     Returns:
-        (bool, dict or str): Tuple where the first element is a boolean
-        indicating if the filename is valid, and the second element is either
-        a dictionary of extracted metadata (if valid) or
-        an error message (if invalid).
+        metadata (dict): Dictionary containing the extracted metadata from the filename.
     """
     current_run.log_info(f"Validation du nom de fichier: '{filename}'")
     try:
-        pattern = r"^Cibles_(?P<camp>[^_]+)_(?P<year>\d{4})_(?P<scale>.+)_(?P<level>[^_]+)\.xlsx$"
+        pattern = r"^Cibles_(?P<camp>[^_]+)_(?P<year>\d{4})_(?P<scale>.+)_(?P<level>[^_]+)\.xlsx$"  # here we don't authorize files ending with the '_template' suffix as the user needs to rename the file by removing that suffix after filling it with te target data. This is to avoid a situation where the user uploads the template file without filling it with the target data.
         match = re.match(pattern, filename)
 
         if not match:
@@ -56,10 +53,15 @@ def validate_campaign_filename(filename, valid_campaigns, valid_scales, valid_le
                 current_run.log_error(msg)
                 raise ValueError(msg)
 
-        current_run.log_info(f"Nom de fichier '{filename}' est valide.")
+        metadata = {"campaign": campaign, "year": year, "level": aggregation_level}
 
-        return True, {"campaign": campaign, "year": year, "level": aggregation_level}
+    except ValueError:
+        raise
     except Exception as e:
         msg = f"Erreur lors de la validation du nom de fichier '{filename}': {str(e)}"
         current_run.log_error(msg)
-        raise ValueError(msg)
+        raise
+
+    current_run.log_info(f"Nom de fichier '{filename}' est valide.")
+
+    return metadata
