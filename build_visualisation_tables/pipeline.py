@@ -30,6 +30,7 @@ from config import (
     supervision_cols_selection_2,
     communication_campaign_map,
     communication_category_groups,
+    months_mapping_dict,
 )
 from utils import (
     new_cols,
@@ -78,13 +79,16 @@ def build_visualisation_tables():
 
     # create datasets
     cvrg_total, cvrg_df = create_coverage_dataset(combined_df, expected_structure_df)
-    cvrg_csi_district = add_target_data(cvrg_df, target_df)
-    cmpl = create_completeness_dataset(combined_df, expected_structure_df)
+    cvrg_csi_district = add_target_data(cvrg_df, target_df, iaso_org_unit_tree_clean_df)
+    cmpl = create_completeness_dataset(
+        combined_df, expected_structure_df, iaso_org_unit_tree_clean_df
+    )
     stock = create_stocks_dataset(combined_df, cvrg_total)
     supervision = create_supervision_dataset(combined_df)
     communication_long, communication = create_communication_dataset(combined_df)
     (
         campaign_filter_table,
+        month_filter_table,
         round_filter_table,
         year_filter_table,
         products_filter_table,
@@ -92,6 +96,15 @@ def build_visualisation_tables():
     ) = create_filter_tables(combined_df, expected_structure_df)
     spatial_units_combined = create_dynamic_org_unit_table(iaso_org_unit_tree_clean_df)
     campaign_round_summary = create_campaign_round_summary_table(cvrg_total)
+
+    # add month col
+    cvrg_total = add_month_column(cvrg_total)
+    cvrg_csi_district = add_month_column(cvrg_csi_district)
+    cmpl = add_month_column(cmpl)
+    stock = add_month_column(stock)
+    supervision = add_month_column(supervision)
+    communication_long = add_month_column(communication_long)
+    communication = add_month_column(communication)
 
     # write to db
     write_to_db(cvrg_total, "ner_vaccination_couverture")
@@ -103,12 +116,41 @@ def build_visualisation_tables():
     write_to_db(communication, "ner_vaccination_communications")
     write_to_db(target_df, "ner_vaccination_cibles_district")
     write_to_db(campaign_filter_table, "ner_vaccination_campaign_filter_table")
+    write_to_db(month_filter_table, "ner_vaccination_month_filter_table")
     write_to_db(round_filter_table, "ner_vaccination_round_filter_table")
     write_to_db(year_filter_table, "ner_vaccination_year_filter_table")
     write_to_db(products_filter_table, "ner_vaccination_products_filter_table")
     write_to_db(combination_filter_table, "ner_vaccination_combination_filter_table")
     write_to_db(spatial_units_combined, "ner_spatial_units")
+    write_to_db(iaso_org_unit_tree_clean_df, "ner_spatial_units_non_dynamic")
     write_to_db(campaign_round_summary, "ner_vaccination_campaign_round_summary")
+
+    # save and export main datasets
+    save_file(cvrg_total, "ner_vaccination_couverture")
+    save_file(cvrg_csi_district, "ner_vaccination_couverture_csi_district_cibled")
+    save_file(cmpl, "ner_vaccination_completude")
+    save_file(stock, "ner_vaccination_stock")
+    save_file(supervision, "ner_vaccination_supervision")
+    save_file(communication_long, "ner_vaccination_communications_long")
+    save_file(communication, "ner_vaccination_communications")
+    save_file(target_df, "ner_vaccination_cibles_district")
+    save_file(spatial_units_combined, "ner_spatial_units")
+
+    export_to_dataset(cvrg_total, OUTPUTS_PATH, "ner_vaccination_couverture")
+    export_to_dataset(
+        cvrg_csi_district,
+        OUTPUTS_PATH,
+        "ner_vaccination_couverture_csi_district_cibled",
+    )
+    export_to_dataset(cmpl, OUTPUTS_PATH, "ner_vaccination_completude")
+    export_to_dataset(stock, OUTPUTS_PATH, "ner_vaccination_stock")
+    export_to_dataset(supervision, OUTPUTS_PATH, "ner_vaccination_supervision")
+    export_to_dataset(
+        communication_long, OUTPUTS_PATH, "ner_vaccination_communications_long"
+    )
+    export_to_dataset(communication, OUTPUTS_PATH, "ner_vaccination_communications")
+    export_to_dataset(target_df, OUTPUTS_PATH, "ner_vaccination_cibles_district")
+    export_to_dataset(spatial_units_combined, OUTPUTS_PATH, "ner_spatial_units")
 
 
 def load_data(file_name: str) -> pd.DataFrame:
@@ -245,7 +287,11 @@ def create_coverage_dataset(
         raise
 
 
-def add_target_data(cvrg_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.DataFrame:
+def add_target_data(
+    cvrg_df: pd.DataFrame,
+    target_df: pd.DataFrame,
+    iaso_org_unit_tree_clean_df: pd.DataFrame,
+) -> pd.DataFrame:
     """
     Add District- and CSI-level target data to the coverage dataset to allow computation of
     coverage ratios at the district and CSI level in PBI.
@@ -268,27 +314,10 @@ def add_target_data(cvrg_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.DataFr
     )
 
     try:
-        # Add district-level targets
-        target_district_df = target_df.groupby(
-            cvrg_district_level_target_keys, as_index=False
-        )["cible"].sum()
-
-        cvrg_district_df = cvrg_df.groupby(
-            cvrg_district_level_group_keys, as_index=False
-        ).agg({"value": "sum", "org_unit_id": "first"})
-
-        cvrg_district_with_targets = process_target_level(
-            cvrg_district_df,
-            target_district_df,
-            cvrg_district_level_target_keys,
-            cvrg_district_level_final_keys,
-            cvrg_district_level_cumsum_keys,
-            "District",
-        )
-
-        # Add CSI-level targets
-        csi_filter_df = target_df[target_df["LVL_6_NAME"].notna()]
-        csi_filter_df = csi_filter_df[["year", "produit", "round"]].drop_duplicates()
+        # 1. Préparation des filtres de campagne
+        csi_filter_df = target_df[target_df["LVL_6_NAME"].notna()][
+            ["year", "produit", "round"]
+        ].drop_duplicates()
 
         target_csi_df = target_df.merge(
             csi_filter_df, on=["year", "produit", "round"], how="inner"
@@ -298,7 +327,9 @@ def add_target_data(cvrg_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.DataFr
         cvrg_csi_df = cvrg_df.merge(
             csi_filter_df, on=["year", "produit", "round"], how="inner"
         )
+        cvrg_csi_df = cvrg_csi_df[cvrg_csi_df["LVL_6_NAME"].notna()]
 
+        # 2. Niveau CSI
         cvrg_csi_with_targets = process_target_level(
             cvrg_csi_df,
             target_csi_df,
@@ -307,26 +338,109 @@ def add_target_data(cvrg_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.DataFr
             cvrg_csi_level_cumsum_keys,
             "CSI",
         )
+        cvrg_csi_with_targets["choice_org_unit_level"] = "CSI"
+        cvrg_csi_with_targets["link_key"] = (
+            cvrg_csi_with_targets["org_unit_id"].astype(str) + "_CSI"
+        )
 
-        # combine
-        cvrg_with_targets = pd.concat(
+        # 3. Niveau District (Logic Optimized for Consistency)
+        rep_ids = (
+            iaso_org_unit_tree_clean_df.sort_values(["LVL_3_NAME", "org_unit_id"])
+            .groupby("LVL_3_NAME")["org_unit_id"]
+            .first()
+            .reset_index()
+            .rename(columns={"org_unit_id": "rep_id"})
+        )
+
+        # Identify unique District/Campaign keys that have CSI-level reporting
+        districts_with_csi_reporting = cvrg_csi_df[
+            cvrg_csi_level_target_keys
+        ].drop_duplicates()
+
+        # cvrg_district_df_2 --> CSI level coverage aggregated at district level
+        cvrg_district_df_2 = cvrg_csi_df.groupby(
+            cvrg_district_level_group_keys, as_index=False
+        ).agg({"value": "sum"})
+
+        # cvrg_district_df_1 --> Coverage for campaigns/districts that ONLY report at District level
+        # We filter the raw coverage for district-level rows (LVL_6 is NA)
+        cvrg_df_pure_district_raw = cvrg_df[cvrg_df["LVL_6_NAME"].isna()]
+
+        # We remove any row that belongs to a campaign/district already covered in the CSI aggregation
+        cvrg_district_df_1 = cvrg_df_pure_district_raw.merge(
+            districts_with_csi_reporting,
+            on=cvrg_csi_level_target_keys,
+            how="left",
+            indicator=True,
+        )
+        cvrg_district_df_1 = cvrg_district_df_1[
+            cvrg_district_df_1["_merge"] == "left_only"
+        ].drop(columns=["_merge"])
+
+        # Aggregating pure district data to ensure structure matches
+        cvrg_district_df_1 = cvrg_district_df_1.groupby(
+            cvrg_district_level_group_keys, as_index=False
+        ).agg({"value": "sum"})
+
+        # Append the two sources of District data
+        cvrg_district_df = pd.concat(
+            [cvrg_district_df_1, cvrg_district_df_2], ignore_index=True
+        )
+
+        cvrg_district_df = cvrg_district_df.merge(rep_ids, on="LVL_3_NAME", how="left")
+        cvrg_district_df["org_unit_id"] = cvrg_district_df["rep_id"]
+        cvrg_district_df["LVL_6_NAME"] = None
+
+        # Aggregate Targets to District level
+        target_df_unique = target_df[
+            cvrg_district_level_target_keys + ["cible"]
+        ].drop_duplicates()
+        target_district_df = target_df_unique.groupby(
+            cvrg_district_level_target_keys, as_index=False
+        )["cible"].sum()
+
+        cvrg_district_with_targets = process_target_level(
+            cvrg_district_df,
+            target_district_df,
+            cvrg_district_level_target_keys,
+            cvrg_district_level_final_keys,
+            cvrg_district_level_cumsum_keys,
+            "District",
+        )
+        cvrg_district_with_targets["choice_org_unit_level"] = "District"
+        cvrg_district_with_targets["link_key"] = (
+            cvrg_district_with_targets["org_unit_id"].astype(str) + "_District"
+        )
+
+        cvrg_csi_district = pd.concat(
             [cvrg_csi_with_targets, cvrg_district_with_targets], ignore_index=True
         )
 
-        current_run.log_info(
-            "Données cibles ajoutées au tableau de couverture vaccinale avec succès."
+        # normalize target values for PBI visualisation
+        unique_target_cols = ["link_key", "year", "round", "produit", "age", "period"]
+        duplication_counts = (
+            cvrg_csi_district.groupby(unique_target_cols)
+            .size()
+            .reset_index(name="row_count")
         )
+        cvrg_csi_district = cvrg_csi_district.merge(
+            duplication_counts, on=unique_target_cols, how="left"
+        )
+        cvrg_csi_district["cible_norm"] = (
+            cvrg_csi_district["cible"] / cvrg_csi_district["row_count"]
+        )
+        cvrg_csi_district = cvrg_csi_district.drop(columns=["row_count"])
 
-        return cvrg_with_targets
-
+        return cvrg_csi_district
     except Exception as e:
-        msg = f"Erreur lors de l'ajout des données cibles: {e}"
-        current_run.log_error(msg)
+        current_run.log_error(f"Erreur: {e}")
         raise
 
 
 def create_completeness_dataset(
-    iaso_form_data_df: pd.DataFrame, expected_structure_df: pd.DataFrame
+    iaso_form_data_df: pd.DataFrame,
+    expected_structure_df: pd.DataFrame,
+    iaso_org_unit_tree_clean_df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
     Create table to calculate the completeness of campaigns (i.e. whether an
@@ -345,16 +459,20 @@ def create_completeness_dataset(
     Args:
         iaso_form_data_df (pd.DataFrame): the dataframe containing the processed data extracted from the IASO multi-campaign form
         expected_structure_df (pd.DataFrame): the dataframe containing the expected structure of the data for each campaign
-
+        iaso_org_unit_tree_clean_df (pd.DataFrame): the dataframe containing the cleaned organizational unit tree
     Returns:
         cmpl (pd.DataFrame): Completeness dataset DataFrame.
     """
     current_run.log_info("Création du tableau de complétude vaccinale...")
     try:
+        iaso_form_data_df = iaso_form_data_df.copy()
         actual = iaso_form_data_df[cmpl_cols_selection_1].copy()
         actual["presence_equipe"] = 1
 
         expected = expected_structure_df[cmpl_cols_selection_2].copy()
+        clean_org_unit_ids = iaso_org_unit_tree_clean_df["org_unit_id"].unique()
+        expected = expected[expected["org_unit_id"].isin(clean_org_unit_ids)]
+
         expected["choix_campagne"] = expected["produit"].map(
             cmpl_product_campaign_mapping
         )
@@ -736,6 +854,12 @@ def create_filter_tables(
             .dropna()
             .reset_index(drop=True)
         )
+        month_filter_table = (
+            iaso_form_data_df[["month"]]
+            .drop_duplicates()
+            .dropna()
+            .reset_index(drop=True)
+        )
         round_filter_table = (
             expected_structure_df[["round"]]
             .drop_duplicates()
@@ -762,6 +886,7 @@ def create_filter_tables(
         combination_filter_table = pd.MultiIndex.from_product(
             [
                 campaign_filter_table["choix_campagne"],
+                month_filter_table["month"],
                 round_filter_table["round"],
                 year_filter_table["year"],
                 products_filter_table["produit"],
@@ -769,6 +894,7 @@ def create_filter_tables(
             ],
             names=[
                 "choix_campagne",
+                "month",
                 "round",
                 "year",
                 "produit",
@@ -780,6 +906,7 @@ def create_filter_tables(
 
         return (
             campaign_filter_table,
+            month_filter_table,
             round_filter_table,
             year_filter_table,
             products_filter_table,
@@ -818,11 +945,23 @@ def create_dynamic_org_unit_table(
         "Création du tableau dynamique des unités organisationnelles..."
     )
     try:
-        spatial_units_choice_0 = iaso_org_unit_tree_clean_df.copy()
+        # DS level choice
+        districts = iaso_org_unit_tree_clean_df.copy()
+        districts = districts.sort_values(["LVL_3_NAME", "org_unit_id"])
+        spatial_units_choice_0 = districts.groupby("LVL_3_NAME", as_index=False).first()
 
         spatial_units_choice_0["choice_org_unit_level"] = "District"
         spatial_units_choice_0["LVL_1_NAME"] = "Niger"
 
+        spatial_units_choice_0["LVL_6_NAME"] = None
+        spatial_units_choice_0["LVL_6_UID"] = None
+
+        spatial_units_choice_0["link_key"] = (
+            spatial_units_choice_0["org_unit_id"].astype(str)
+            + "_"
+            + spatial_units_choice_0["choice_org_unit_level"]
+        )
+        # CSI level choice
         spatial_units_choice_1 = iaso_org_unit_tree_clean_df.copy()
         spatial_units_choice_1["choice_org_unit_level"] = "CSI"
         spatial_units_choice_1["LVL_1_NAME"] = spatial_units_choice_1["LVL_2_NAME"]
@@ -833,10 +972,13 @@ def create_dynamic_org_unit_table(
 
         spatial_units_choice_1["LVL_3_NAME"] = spatial_units_choice_1["LVL_6_NAME"]
         spatial_units_choice_1["LVL_3_UID"] = spatial_units_choice_1["LVL_6_UID"]
+        spatial_units_choice_1["link_key"] = (
+            spatial_units_choice_1["org_unit_id"].astype(str)
+            + "_"
+            + spatial_units_choice_1["choice_org_unit_level"]
+        )
 
-        spatial_units_choice_1["LVL_6_NAME"] = None
-        spatial_units_choice_1["LVL_6_UID"] = None
-
+        # combine
         spatial_units_combined = pd.concat(
             [spatial_units_choice_0, spatial_units_choice_1], ignore_index=True
         ).reset_index(drop=True)
@@ -900,6 +1042,39 @@ def create_campaign_round_summary_table(
         raise
 
 
+def add_month_column(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add a 'month' column to the dataframe based on the columns 'choix_campagne'/'produit', 'year', 'round' and 'period',
+    where it corresponds to the month of the very first period for each unique combination of 'choix_campagne'/'produit',
+      'year' and 'round' to allow filtering by month in PBI.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing a 'period' column in datetime format.
+
+    Returns:
+        df(pd.DataFrame): DataFrame with an added 'month' column representing the month of the 'period'.
+    """
+    current_run.log_info("Ajout de la colonne 'Mois de la campagne'...")
+    try:
+        if "choix_campagne" in df.columns:
+            group_cols = ["choix_campagne", "year", "round"]
+        else:
+            group_cols = ["produit", "year", "round"]
+
+        df["month"] = (
+            df.groupby(group_cols)["period"]
+            .transform("min")
+            .dt.month.map(months_mapping_dict)
+        )
+
+        current_run.log_info("Colonne 'Mois de la campagne' ajoutée avec succès.")
+        return df
+    except Exception as e:
+        msg = f"Erreur lors de l'ajout de la colonne 'Mois de la campagne': {e}"
+        current_run.log_error(msg)
+        raise
+
+
 def write_to_db(df: pd.DataFrame, table_name: str) -> None:
     """
     Write the dataframe to a DB table with a given name. If the table already exists, it will be replaced.
@@ -927,6 +1102,105 @@ def write_to_db(df: pd.DataFrame, table_name: str) -> None:
         msg = (
             f"Erreur lors de l'écriture des données dans la table DB {table_name}: {e}"
         )
+        current_run.log_error(msg)
+        raise
+
+
+def save_file(df: pd.DataFrame, file_name: str) -> None:
+    """
+    Save a dataframe to a parquet file.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing the data to be saved.
+        file_name (str): Name of the file to save the DataFrame as.
+
+    Returns:
+        None
+    """
+    current_run.log_info("Enregistrement du fichier dans l'espace de travail...")
+
+    if not os.path.exists(OUTPUTS_PATH):
+        os.makedirs(OUTPUTS_PATH)
+    file_path = os.path.join(
+        OUTPUTS_PATH,
+        f"{file_name}.parquet",
+    )
+    try:
+        df.to_parquet(
+            file_path,
+            index=False,
+        )
+        current_run.log_info(f"Fichier enregistré avec succès: {file_path}")
+    except Exception as e:
+        msg = f"Erreur lors de l'enregistrement du fichier: {str(e)}"
+        current_run.log_error(msg)
+        raise
+
+
+def export_to_dataset(df: pd.DataFrame, df_file_path: str, dataset_name: str) -> None:
+    """
+    Exports a DataFrame to an OpenHexa dataset in multiple formats (xlsx, parquet, csv).
+
+    Args:
+        df (pd.DataFrame): The configuration dataframe to export.
+        df_file_path (str): The file path where the dataframe is saved.
+        dataset_name (str): The name of the OpenHexa dataset.
+    """
+    current_run.log_info(
+        f"Préparation de l'exportation vers le dataset : {dataset_name}..."
+    )
+    try:
+        dataset_slug = dataset_name.lower().strip().replace(" ", "-").replace("_", "-")
+
+        # check if dataset already exists
+        try:
+            dataset = workspace.get_dataset(dataset_slug)
+            current_run.log_info(f"Dataset existant trouvé : {dataset_slug}")
+        except Exception:
+            current_run.log_info(
+                f"Dataset {dataset_name} non trouvé. Création en cours..."
+            )
+            dataset = workspace.create_dataset(
+                name=dataset_name,
+                description="Données de configuration de campagne (multi-formats)",
+            )
+
+        # define versioning
+        latest_version = dataset.latest_version
+        version_number = (
+            int(latest_version.name.lstrip("v")) + 1 if latest_version else 1
+        )
+        new_version_name = f"v{version_number}"
+
+        # create local files
+        if not os.path.exists(df_file_path):
+            os.makedirs(df_file_path)
+
+        base_path = os.path.join(df_file_path, dataset_name)
+        files_to_upload = {
+            "parquet": f"{base_path}.parquet",
+            # "xlsx": f"{base_path}.xlsx", # commented out to avoid creating excel files as some are too large
+            "csv": f"{base_path}.csv",
+        }
+
+        df.to_parquet(files_to_upload["parquet"], index=False)
+        # df.to_excel(files_to_upload["xlsx"], index=False)
+        df.to_csv(files_to_upload["csv"], index=False)
+
+        # upload to Dataset in OH
+        version = dataset.create_version(new_version_name)
+
+        for format_type, file_path in files_to_upload.items():
+            version.add_file(file_path, os.path.basename(file_path))
+            current_run.log_info(
+                f"Fichier {format_type} ajouté à la version {new_version_name}"
+            )
+
+        current_run.log_info(
+            f"Exportation terminée avec succès pour {dataset_name} ({new_version_name})"
+        )
+    except Exception as e:
+        msg = f"Erreur lors de l'exportation vers le dataset {dataset_name}: {e}"
         current_run.log_error(msg)
         raise
 

@@ -158,34 +158,60 @@ target_polio_2026_r1_columns = [
     "cible",
 ]
 
+# polio 2026 r2
+target_polio_2026_r2_dict = {
+    "Districts": "LVL_3_NAME",
+    "CSI": "LVL_6_NAME",
+    "0-11 Mois": "0-11 mois",
+    "12-59 Mois": "12-59 mois",
+}
+
 # CSI matching
 csi_matching_failed = {
+    ## incorrectly matched
     "agadez sabon gari agadez": "agadez sabongari",  # 3766050
     "boboye birni i": "boboye birni ngaoure",  # 3759984
     "boboye birni ii": "boboye birni 2",  # 3759990
-    "dakoro kalgo": None,
     "dosso bella1": "dosso bella i",  # 3759392
     "dosso bellaii": "dosso bella ii",  # 3759394
-    "fillingue sabon gari": None,
-    "gazaoua gangara": None,
     "guidan roumdji g roumdji": "guidan roumdji guidan roumdji 1",  # 3764387
-    "guidan roumdji n wala": None,
     "kollo lakabia": "kollo latakabia sonrai",  # 3760314
-    "madaoua mallamawa": None,
-    "madarounfa gabi": None,
-    "magaria magaria urbain i": None,
-    "maradi sabongari": None,
+    "madarounfa harounawa": "madarounfa harounaoua",  # 3764938
+    "madarounfa madarounfa": "madarounfa madarounfa 1",  # 3765113
+    "maradi sabongari": "maradi sabongari maradi",  # 3764144
     "maradi zariai": "maradi zaria i",  # 3764129
     "maradi zariaii": "maradi zaria ii",  # 3764165
     "maradi zariaiii": "maradi zaria iii",  # 3764133
-    "niamey i kossey": None,
-    "niamey iv bossey bongou": None,
-    "ouallam diney": None,
-    "tahoua commune sabongari": None,
-    "tahoua sabon gari": None,
-    "tanout zermou": None,
-    "tchintabaraden bagare": None,
-    "tera tessa": None,
-    "tibiri sabon gari": None,
-    "zinder sabongarizinder": None,
+    "matameye danbarto": "matameye dan barto",  # 3763041
+    "matameye matameye 1": "matameye matameye",  # 3763116
+    "zinder sabongarizinder": "zinder sabon gari",  # 3763586
+    "zinder sabongari zinder": "zinder sabon gari",  # 3763586
+    ## unmatched (as of 20/04/2026)
+    # "dakoro kalgo": None,
+    # "fillingue sabon gari": None,
+    # "gazaoua gangara": None,
+    # "guidan roumdji n wala": None,
+    # "illela dangada wanke": None,
+    # "madaoua bouzout": None,
+    # "madaoua mallamawa": None,
+    # "madaoua nakoni": None,
+    # "madaoua tambeye nomade": None,
+    # "madarounfa gabi": None,
+    # "maradi ali dan sofo 2": None,
+    # "magaria magaria": None,
+    # "magaria magaria urbain i": None,
+    # "niamey i kossey": None,
+    # "niamey i tondikoirey": None,
+    # "niamey ii dan zama koira": None,
+    # "niamey iv bossey bongou": None,
+    # "niamey iv nord est sarykoubou": None,
+    # "ouallam diney": None,
+    # "tahoua commune sabongari": None,
+    # "tahoua commune sabon gari": None,
+    # "tahoua sabon gari": None,
+    # "tanout zermou": None,
+    # "tessaoua toudou": None,
+    # "tchintabaraden bagare": None,
+    # "tera tessa": None,
+    # "tibiri sabon gari": None,
 }

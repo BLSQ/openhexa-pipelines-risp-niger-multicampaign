@@ -92,4 +92,5 @@ historical_campaigns_config = {
     (2026, 1, "vitamine A"): {"début": "2026-01-11", "fin": "2026-01-15"},
     (2026, 1, "albendazole"): {"début": "2026-01-11", "fin": "2026-01-15"},
     (2026, 1, "fièvre jaune"): {"début": "2026-01-20", "fin": "2026-01-26"},
+    (2026, 2, "vaccin polio"): {"début": "2026-04-24", "fin": "2026-05-01"},
 }

@@ -400,12 +400,16 @@ class IASOConnectionHandler:
             for instance_json in json_query_answer["instances"]
         ]
 
+        if not instance_full_df:
+            return pd.DataFrame(columns=self.instance_info_cols)
+
         try:
             instance_full_df = pd.concat(instance_full_df, ignore_index=True)
             instance_full_df = instance_full_df.drop_duplicates(subset="uuid")
             instance_full_df.columns = [
                 col.replace("file_content_", "") for col in instance_full_df.columns
             ]
+            return instance_full_df
 
         except Exception as e:
             current_run.log_error(f"Erreur lors de la concaténation des données : {e}")
@@ -446,10 +450,15 @@ class IASOConnectionHandler:
             self.headers,
             f"Form {form_id} Submission Request Page 1",
         )
+
         json_extract = r.json()
         total_pages = json_extract["pages"]
         print(total_pages)
+
         instance_full_df = self._json_iaso_crawler(json_extract)
+        if instance_full_df.empty:
+            return instance_full_df
+
         form_full_df = [instance_full_df]
 
         for page_id in range(2, total_pages + 1):

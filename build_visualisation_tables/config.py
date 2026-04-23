@@ -655,3 +655,18 @@ cols_campaign_map = {
     + communication_activities_men5_cols,
     "tcv": cvrg_tcv_cols + stock_tcv_cols,
 }
+
+months_mapping_dict = {
+    1: "Janvier",
+    2: "Février",
+    3: "Mars",
+    4: "Avril",
+    5: "Mai",
+    6: "Juin",
+    7: "Juillet",
+    8: "Août",
+    9: "Septembre",
+    10: "Octobre",
+    11: "Novembre",
+    12: "Décembre",
+}

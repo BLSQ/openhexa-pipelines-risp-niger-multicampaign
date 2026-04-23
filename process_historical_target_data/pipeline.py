@@ -1,5 +1,5 @@
 import os
-from openhexa.sdk import current_run, pipeline
+from openhexa.sdk import current_run, pipeline, workspace
 import pandas as pd
 import numpy as np
 from utils import (
@@ -19,6 +19,7 @@ from config import (
     target_yellow_fever_2025_2026_age_ranges,
     target_men5_tcv_2025_columns_dict,
     target_polio_2026_r1_columns,
+    target_polio_2026_r2_dict,
     csi_matching_failed,
 )
 
@@ -76,6 +77,11 @@ def process_historical_target_data():
     )
     target_polio_2026_r1 = add_rounds_and_products(target_polio_2026_r1)
 
+    target_polio_2026_r2 = import_target_data_for_polio_2026_r2()
+    target_polio_2026_r2 = match_csi_to_org_unit_id(
+        target_polio_2026_r2, iaso_org_unit_tree_df_clean
+    )
+    target_polio_2026_r2 = add_rounds_and_products(target_polio_2026_r2)
     # combine all target data
     target_data_combined = combine_target_data(
         [
@@ -84,6 +90,7 @@ def process_historical_target_data():
             target_yellow_fever_2025_2026_r1,
             target_men5_tcv_2025_r1_r2,
             target_polio_2026_r1,
+            target_polio_2026_r2,
         ]
     )
 
@@ -99,6 +106,12 @@ def process_historical_target_data():
 
     # save
     save_file(target_data_combined, "combined_historical_target_data")
+
+    export_to_dataset(
+        target_data_combined,
+        OUTPUTS_PATH,
+        "combined_historical_target_data",
+    )
 
 
 def load_data(file_name: str) -> pd.DataFrame:
@@ -457,7 +470,7 @@ def import_target_data_for_polio_2026_r1() -> pd.DataFrame:
             "cible"
         ].astype(int)
         target_polio_2026_r1_clean["year"] = 2026
-        target_polio_2026_r1_clean["campaign"] = "polio"
+        target_polio_2026_r1_clean["campaign"] = "polio_1"
 
         current_run.log_info(
             "Importation des données de cibles pour la campagne de polio 2026 round 1 terminée."
@@ -466,6 +479,67 @@ def import_target_data_for_polio_2026_r1() -> pd.DataFrame:
         return target_polio_2026_r1_clean
     except Exception as e:
         msg = f"Erreur lors de l'importation des données de cibles historiques pour la campagne de polio 2026 round 1: {str(e)}"
+        current_run.log_error(msg)
+        raise
+
+
+def import_target_data_for_polio_2026_r2() -> pd.DataFrame:
+    """
+    Import target data for polio campaign for year 2026 round 2.
+
+    Args:
+        None
+
+    Returns:
+        pd.DataFrame: DataFrame containing the target data for polio campaign year 2026 round 2
+    """
+    current_run.log_info(
+        "Importation des données de cibles historiques pour la campagne de polio 2026 round 2..."
+    )
+    try:
+        file_path = os.path.join(
+            TARGETS_HISTORICAL_PATH,
+            "Cible CSI JNV Avril 2026.xlsx",
+        )
+
+        target_polio_2026_r2 = pd.read_excel(
+            file_path, header=[1], skiprows=0, usecols=[2, 3, 8, 9]
+        )
+
+        target_polio_2026_r2 = target_polio_2026_r2.rename(
+            columns=target_polio_2026_r2_dict
+        )
+
+        target_polio_2026_r2 = target_polio_2026_r2[
+            ~target_polio_2026_r2["LVL_3_NAME"].str.contains("Total")
+        ]
+        target_polio_2026_r2 = target_polio_2026_r2[
+            ~target_polio_2026_r2["LVL_6_NAME"].str.contains("Total|DS|DRS/HP")
+        ]
+
+        target_polio_2026_r2["0-11 mois"] = round(
+            target_polio_2026_r2["0-11 mois"], 0
+        ).astype(int)
+        target_polio_2026_r2["12-59 mois"] = round(
+            target_polio_2026_r2["12-59 mois"], 0
+        ).astype(int)
+
+        target_polio_2026_r2_clean = pd.melt(
+            target_polio_2026_r2,
+            id_vars=["LVL_3_NAME", "LVL_6_NAME"],
+            var_name="age",
+            value_name="cible",
+        ).fillna(0)
+        target_polio_2026_r2_clean["year"] = 2026
+        target_polio_2026_r2_clean["campaign"] = "polio_2"
+
+        current_run.log_info(
+            "Importation des données de cibles pour la campagne de polio 2026 round 2 terminée."
+        )
+
+        return target_polio_2026_r2_clean
+    except Exception as e:
+        msg = f"Erreur lors de l'importation des données de cibles historiques pour la campagne de polio 2026 round 2: {str(e)}"
         current_run.log_error(msg)
         raise
 
@@ -791,11 +865,21 @@ def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
 
         # polio 2026 round 1
         elif (
-            target_df["campaign"].iloc[0] == "polio"
+            target_df["campaign"].iloc[0] == "polio_1"
             and target_df["year"].iloc[0] == 2026
         ):
             target_df_expanded = target_df.copy()
             target_df_expanded["round"] = "round 1"
+            target_df_expanded["produit"] = "vaccin polio"
+            target_df_expanded = target_df_expanded.drop("campaign", axis=1)
+
+        # polio 2026 round 2
+        elif (
+            target_df["campaign"].iloc[0] == "polio_2"
+            and target_df["year"].iloc[0] == 2026
+        ):
+            target_df_expanded = target_df.copy()
+            target_df_expanded["round"] = "round 2"
             target_df_expanded["produit"] = "vaccin polio"
             target_df_expanded = target_df_expanded.drop("campaign", axis=1)
 
@@ -964,6 +1048,74 @@ def save_file(df: pd.DataFrame, file_name: str) -> None:
         current_run.log_info(f"Fichier enregistré avec succès: {file_path}")
     except Exception as e:
         msg = f"Erreur lors de l'enregistrement du fichier: {str(e)}"
+        current_run.log_error(msg)
+        raise
+
+
+def export_to_dataset(df: pd.DataFrame, df_file_path: str, dataset_name: str) -> None:
+    """
+    Exports a DataFrame to an OpenHexa dataset in multiple formats (xlsx, parquet, csv).
+
+    Args:
+        df (pd.DataFrame): The configuration dataframe to export.
+        df_file_path (str): The file path where the dataframe is saved.
+        dataset_name (str): The name of the OpenHexa dataset.
+    """
+    current_run.log_info(
+        f"Préparation de l'exportation vers le dataset : {dataset_name}..."
+    )
+    try:
+        dataset_slug = dataset_name.lower().strip().replace(" ", "-").replace("_", "-")
+
+        # check if dataset already exists
+        try:
+            dataset = workspace.get_dataset(dataset_slug)
+            current_run.log_info(f"Dataset existant trouvé : {dataset_slug}")
+        except Exception:
+            current_run.log_info(
+                f"Dataset {dataset_name} non trouvé. Création en cours..."
+            )
+            dataset = workspace.create_dataset(
+                name=dataset_name,
+                description="Données de configuration de campagne (multi-formats)",
+            )
+
+        # define versioning
+        latest_version = dataset.latest_version
+        version_number = (
+            int(latest_version.name.lstrip("v")) + 1 if latest_version else 1
+        )
+        new_version_name = f"v{version_number}"
+
+        # create local files
+        if not os.path.exists(df_file_path):
+            os.makedirs(df_file_path)
+
+        base_path = os.path.join(df_file_path, dataset_name)
+        files_to_upload = {
+            "parquet": f"{base_path}.parquet",
+            "xlsx": f"{base_path}.xlsx",
+            "csv": f"{base_path}.csv",
+        }
+
+        df.to_parquet(files_to_upload["parquet"], index=False)
+        df.to_excel(files_to_upload["xlsx"], index=False)
+        df.to_csv(files_to_upload["csv"], index=False)
+
+        # upload to Dataset in OH
+        version = dataset.create_version(new_version_name)
+
+        for format_type, file_path in files_to_upload.items():
+            version.add_file(file_path, os.path.basename(file_path))
+            current_run.log_info(
+                f"Fichier {format_type} ajouté à la version {new_version_name}"
+            )
+
+        current_run.log_info(
+            f"Exportation terminée avec succès pour {dataset_name} ({new_version_name})"
+        )
+    except Exception as e:
+        msg = f"Erreur lors de l'exportation vers le dataset {dataset_name}: {e}"
         current_run.log_error(msg)
         raise
 
