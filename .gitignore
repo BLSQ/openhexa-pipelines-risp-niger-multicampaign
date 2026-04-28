@@ -6,3 +6,6 @@
 *.ipynb
 *.parquet
 *.gpkg
+*.csv
+*.xlsx
+*Zone.Identifier

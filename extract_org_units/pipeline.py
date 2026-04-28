@@ -78,16 +78,18 @@ def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFram
     )
     try:
         iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df[
-            iaso_org_unit_tree_df["Validé"] != "REJECTED"
+            iaso_org_unit_tree_df["Validé"] != "REJECTED"  # Keep Valid
         ]
         iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
-            iaso_org_unit_tree_df_clean["Source"].isin(["SNIS", "SNIS 2025"])
+            iaso_org_unit_tree_df_clean["Source"].isin(
+                ["SNIS", "SNIS 2025"]
+            )  # keep SNIS only
         ]
         iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
             iaso_org_unit_tree_df_clean["LVL_6_NAME"].str.contains(
                 "CSI", case=False, na=False
             )
-        ]
+        ]  # use pre-fix instead
 
         iaso_org_unit_tree_df_clean["LVL_6_UID"] = iaso_org_unit_tree_df_clean.groupby(
             "LVL_6_NAME"

@@ -282,7 +282,9 @@ def import_target_data_for_future_campaigns():
         csi_target_df (pd.DataFrame): DataFrame containing the target data at CSI level for future campaigns.
         district_target_df (pd.DataFrame): DataFrame containing the target data at district level for future campaigns.
     """
-    current_run.log_info("Démarrage de l'importation...")
+    current_run.log_info(
+        "Démarrage de l'importation de(s) fichier(s) de cibles configuré(s)..."
+    )
 
     if not os.path.exists(TARGET_OTHER_DATA_PATH):
         raise FileNotFoundError(f"Dossier introuvable: {TARGET_OTHER_DATA_PATH}")

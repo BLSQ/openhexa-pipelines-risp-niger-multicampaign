@@ -485,18 +485,25 @@ def create_completeness_dataset(
             how="left",
         )
 
-        cmpl["presence_equipe"] = cmpl["presence_equipe"].fillna(0).astype(int)
         cmpl = cmpl.sort_values(cmpl_cols_selection_1)
-        cmpl["presence_equipe_cum"] = cmpl.groupby(cmpl_cols_selection_3)[
-            "presence_equipe"
-        ].transform("cummax")
-
-        cmpl = cmpl.reset_index(drop=True)
+        cmpl["_is_visited"] = cmpl["presence_equipe"] == 1
+        cmpl["_first_visit_period"] = (
+            cmpl[cmpl["_is_visited"]]
+            .groupby(cmpl_cols_selection_3)["period"]
+            .transform("min")
+        )
+        cmpl["presence_equipe_cum"] = (
+            (cmpl["period"] == cmpl["_first_visit_period"])
+            & (cmpl["presence_equipe"] == 1)
+        ).astype(int)
+        cmpl = cmpl.drop(columns=["_is_visited", "_first_visit_period"]).reset_index(
+            drop=True
+        )
+        cmpl = cmpl.drop_duplicates()
 
         current_run.log_info("Tableau de complétude vaccinale créé avec succès.")
 
         return cmpl
-
     except Exception as e:
         msg = f"Erreur lors de la création du tableau de complétude vaccinale: {e}"
         current_run.log_error(msg)

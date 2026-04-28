@@ -246,7 +246,7 @@ cmpl_product_campaign_mapping = {
     "tcv": "tcv",
 }
 
-cmpl_cols_selection_1 = ["year", "round", "org_unit_id", "choix_campagne", "period"]
+cmpl_cols_selection_1 = ["choix_campagne", "org_unit_id", "year", "round", "period"]
 cmpl_cols_selection_2 = [
     col for col in cmpl_cols_selection_1 if col != "choix_campagne"
 ] + ["produit"]
