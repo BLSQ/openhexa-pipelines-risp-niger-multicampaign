@@ -503,7 +503,7 @@ def import_target_data_for_polio_2026_r2() -> pd.DataFrame:
         )
 
         target_polio_2026_r2 = pd.read_excel(
-            file_path, header=[1], skiprows=0, usecols=[2, 3, 8, 9]
+            file_path, header=[1], skiprows=0, usecols=[2, 3, 10, 11]
         )
 
         target_polio_2026_r2 = target_polio_2026_r2.rename(

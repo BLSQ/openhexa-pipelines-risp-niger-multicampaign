@@ -162,8 +162,8 @@ target_polio_2026_r1_columns = [
 target_polio_2026_r2_dict = {
     "Districts": "LVL_3_NAME",
     "CSI": "LVL_6_NAME",
-    "0-11 Mois": "0-11 mois",
-    "12-59 Mois": "12-59 mois",
+    "0-11 Mois (corrigé)": "0-11 mois",
+    "12-59 Mois (corrigé)": "12-59 mois",
 }
 
 # CSI matching
