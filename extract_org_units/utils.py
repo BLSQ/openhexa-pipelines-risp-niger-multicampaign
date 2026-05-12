@@ -162,7 +162,7 @@ class IASOConnectionHandler:
             "latest_form_version",
         ]
         url = f"{self.iaso_connector.url}/api/forms/{form_id}/?fields={','.join(fields_scope_list)}"
-        current_run.log_info("URL for form metadata:", url)
+        current_run.log_info(f"URL for form metadata: {url}")
         r = requests.get(url, headers=self.headers)
         form_metadata_dict = json.loads(r.content)
         return form_metadata_dict
@@ -188,7 +188,7 @@ class IASOConnectionHandler:
             + f"{org_unit_type_id}"
             + "%22}]&xlsx=true"
         )  # rajouter filtre sur la dernière version du formulaire
-        current_run.log_info("URL for org unit tree frame:", url)
+        current_run.log_info(f"URL for org unit tree frame: {url}")
         r = request_with_explanation(
             url, self.headers, "file recover from IASO Instance for OrgType Info"
         )

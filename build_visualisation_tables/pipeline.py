@@ -3,6 +3,11 @@ import pandas as pd
 import numpy as np
 import sqlalchemy as sa
 from openhexa.sdk import current_run, workspace, pipeline
+from shared_utils import (
+    load_data,
+    save_file,
+)
+
 from config import (
     OUTPUTS_PATH,
     cvrg_campaign_map,
@@ -98,89 +103,43 @@ def build_visualisation_tables():
     campaign_round_summary = create_campaign_round_summary_table(cvrg_total)
 
     # add month col
-    cvrg_total = add_month_column(cvrg_total)
-    cvrg_csi_district = add_month_column(cvrg_csi_district)
-    cmpl = add_month_column(cmpl)
-    stock = add_month_column(stock)
-    supervision = add_month_column(supervision)
-    communication_long = add_month_column(communication_long)
-    communication = add_month_column(communication)
+    df_to_modify = [
+        cvrg_total,
+        cvrg_csi_district,
+        cmpl,
+        stock,
+        supervision,
+        communication_long,
+        communication,
+    ]
+    for df in df_to_modify:
+        df = add_month_column(df)
 
     # write to db
-    write_to_db(cvrg_total, "ner_vaccination_couverture")
-    write_to_db(cvrg_csi_district, "ner_vaccination_couverture_csi_district_cibled")
-    write_to_db(cmpl, "ner_vaccination_completude")
-    write_to_db(stock, "ner_vaccination_stock")
-    write_to_db(supervision, "ner_vaccination_supervision")
-    write_to_db(communication_long, "ner_vaccination_communications_long")
-    write_to_db(communication, "ner_vaccination_communications")
-    write_to_db(target_df, "ner_vaccination_cibles_district")
-    write_to_db(campaign_filter_table, "ner_vaccination_campaign_filter_table")
-    write_to_db(month_filter_table, "ner_vaccination_month_filter_table")
-    write_to_db(round_filter_table, "ner_vaccination_round_filter_table")
-    write_to_db(year_filter_table, "ner_vaccination_year_filter_table")
-    write_to_db(products_filter_table, "ner_vaccination_products_filter_table")
-    write_to_db(combination_filter_table, "ner_vaccination_combination_filter_table")
-    write_to_db(spatial_units_combined, "ner_spatial_units")
-    write_to_db(iaso_org_unit_tree_clean_df, "ner_spatial_units_non_dynamic")
-    write_to_db(campaign_round_summary, "ner_vaccination_campaign_round_summary")
+    outputs_dict = {
+        "ner_vaccination_couverture": cvrg_total,
+        "ner_vaccination_couverture_csi_district_cibled": cvrg_csi_district,
+        "ner_vaccination_completude": cmpl,
+        "ner_vaccination_stock": stock,
+        "ner_vaccination_supervision": supervision,
+        "ner_vaccination_communications_long": communication_long,
+        "ner_vaccination_communications": communication,
+        "ner_vaccination_cibles_district": target_df,
+        "ner_vaccination_campaign_filter_table": campaign_filter_table,
+        "ner_vaccination_month_filter_table": month_filter_table,
+        "ner_vaccination_round_filter_table": round_filter_table,
+        "ner_vaccination_year_filter_table": year_filter_table,
+        "ner_vaccination_products_filter_table": products_filter_table,
+        "ner_vaccination_combination_filter_table": combination_filter_table,
+        "ner_spatial_units": spatial_units_combined,
+        "ner_spatial_units_non_dynamic": iaso_org_unit_tree_clean_df,
+        "ner_vaccination_campaign_round_summary": campaign_round_summary,
+    }
 
-    # save and export main datasets
-    save_file(cvrg_total, "ner_vaccination_couverture")
-    save_file(cvrg_csi_district, "ner_vaccination_couverture_csi_district_cibled")
-    save_file(cmpl, "ner_vaccination_completude")
-    save_file(stock, "ner_vaccination_stock")
-    save_file(supervision, "ner_vaccination_supervision")
-    save_file(communication_long, "ner_vaccination_communications_long")
-    save_file(communication, "ner_vaccination_communications")
-    save_file(target_df, "ner_vaccination_cibles_district")
-    save_file(spatial_units_combined, "ner_spatial_units")
-
-    export_to_dataset(cvrg_total, OUTPUTS_PATH, "ner_vaccination_couverture")
-    export_to_dataset(
-        cvrg_csi_district,
-        OUTPUTS_PATH,
-        "ner_vaccination_couverture_csi_district_cibled",
-    )
-    export_to_dataset(cmpl, OUTPUTS_PATH, "ner_vaccination_completude")
-    export_to_dataset(stock, OUTPUTS_PATH, "ner_vaccination_stock")
-    export_to_dataset(supervision, OUTPUTS_PATH, "ner_vaccination_supervision")
-    export_to_dataset(
-        communication_long, OUTPUTS_PATH, "ner_vaccination_communications_long"
-    )
-    export_to_dataset(communication, OUTPUTS_PATH, "ner_vaccination_communications")
-    export_to_dataset(target_df, OUTPUTS_PATH, "ner_vaccination_cibles_district")
-    export_to_dataset(spatial_units_combined, OUTPUTS_PATH, "ner_spatial_units")
-
-
-def load_data(file_name: str) -> pd.DataFrame:
-    """
-    Load data from a parquet file in the OUTPUTS_PATH.
-
-    Args:
-        file_name (str): The name of the file to read from.
-
-    Returns:
-        df (pd.DataFrame): The dataframe containing the file data.
-    """
-    current_run.log_info(f"Importation du fichier {file_name}...")
-    file_to_import = os.path.join(OUTPUTS_PATH, f"{file_name}.parquet")
-
-    if not os.path.exists(file_to_import):
-        msg = f"Le fichier {file_to_import} n'existe pas."
-        current_run.log_error(msg)
-        raise FileNotFoundError(msg)
-
-    try:
-        df = pd.read_parquet(file_to_import)
-        current_run.log_info(
-            f"Données du fichier {file_name} chargées avec succès depuis le fichier {file_to_import}"
-        )
-        return df
-    except Exception as e:
-        msg = f"Erreur lors de la lecture du fichier {file_to_import}: {str(e)}"
-        current_run.log_error(msg)
-        raise
+    for table_name, df in outputs_dict.items():
+        write_to_db(df, table_name)
+        save_file(df, table_name)
+        export_to_dataset(df, OUTPUTS_PATH, table_name)
 
 
 def create_coverage_dataset(
@@ -465,7 +424,6 @@ def create_completeness_dataset(
     """
     current_run.log_info("Création du tableau de complétude vaccinale...")
     try:
-        iaso_form_data_df = iaso_form_data_df.copy()
         actual = iaso_form_data_df[cmpl_cols_selection_1].copy()
         actual["presence_equipe"] = 1
 
@@ -1113,37 +1071,6 @@ def write_to_db(df: pd.DataFrame, table_name: str) -> None:
         raise
 
 
-def save_file(df: pd.DataFrame, file_name: str) -> None:
-    """
-    Save a dataframe to a parquet file.
-
-    Args:
-        df (pd.DataFrame): DataFrame containing the data to be saved.
-        file_name (str): Name of the file to save the DataFrame as.
-
-    Returns:
-        None
-    """
-    current_run.log_info("Enregistrement du fichier dans l'espace de travail...")
-
-    if not os.path.exists(OUTPUTS_PATH):
-        os.makedirs(OUTPUTS_PATH)
-    file_path = os.path.join(
-        OUTPUTS_PATH,
-        f"{file_name}.parquet",
-    )
-    try:
-        df.to_parquet(
-            file_path,
-            index=False,
-        )
-        current_run.log_info(f"Fichier enregistré avec succès: {file_path}")
-    except Exception as e:
-        msg = f"Erreur lors de l'enregistrement du fichier: {str(e)}"
-        current_run.log_error(msg)
-        raise
-
-
 def export_to_dataset(df: pd.DataFrame, df_file_path: str, dataset_name: str) -> None:
     """
     Exports a DataFrame to an OpenHexa dataset in multiple formats (xlsx, parquet, csv).
@@ -1180,9 +1107,7 @@ def export_to_dataset(df: pd.DataFrame, df_file_path: str, dataset_name: str) ->
         new_version_name = f"v{version_number}"
 
         # create local files
-        if not os.path.exists(df_file_path):
-            os.makedirs(df_file_path)
-
+        os.makedirs(df_file_path, exist_ok=True)
         base_path = os.path.join(df_file_path, dataset_name)
         files_to_upload = {
             "parquet": f"{base_path}.parquet",
