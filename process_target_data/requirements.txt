@@ -1,7 +1,0 @@
-numpy
-pandas
-sqlalchemy
-pyarrow
-openpyxl
-fuzzywuzzy
-python-Levenshtein

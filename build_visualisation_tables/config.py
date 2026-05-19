@@ -4,9 +4,7 @@ from openhexa.sdk import workspace
 # paths
 PROJECT_FOLDER = "multi-campagne"
 WORKSPACE_PATH = workspace.files_path
-# WORKSPACE_PATH = os.path.join(
-#     os.getcwd(), "build_visualisation_tables", "workspace"
-# )  # local only
+# WORKSPACE_PATH = os.path.join(os.getcwd(), "build_visualisation_tables", "workspace")
 OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "outputs")
 
 # campaign name cleaning and mapping
@@ -142,18 +140,6 @@ cvrg_rougeole_cols = (
         "nombre_dose_12_fixe",
         "nombre_vacine_12_fixe",
     ]
-    # + [  # Lionel: why do we add these columns for rougeole coverage (they are specific to Polio)? Check with Fernando
-    #     "zero_dose_vpo_0_11_mois_fois_site_ordinaire",
-    #     "zero_dose_vpo_0_11_mois_fois_site_speciaux",
-    #     "zero_dose_vpo_0_11_mois_fois_site_speciaux_postefron",
-    #     "zero_dose_vpo_0_11_mois_fois_site_trans_front_cote_front",
-    #     "zero_dose_vpo_0_11_mois_fois_site_trans_front_cote_niger",
-    #     "zero_dose_vpo_12_59_mois_fois_site_ordinaire",
-    #     "zero_dose_vpo_12_59_mois_fois_site_speciaux",
-    #     "zero_dose_vpo_12_59_mois_fois_site_speciaux_postefron",
-    #     "zero_dose_vpo_12_59_mois_fois_site_trans_front_cote_front",
-    #     "zero_dose_vpo_12_59_mois_fois_site_trans_front_cote_niger",
-    # ]
     + [
         "nombre_zero_dose_6_avance",
         "nombre_vacine_6_avance",
@@ -192,7 +178,30 @@ cvrg_campaign_map = {
     "tcv": cvrg_tcv_cols,
 }
 
-district_level_target_keys = [
+cvrg_yellow_fever_age_adjustment = {
+    "12-23 mois": "12-59 mois",
+    "24-59 mois": "12-59 mois",
+    "0-11 mois": "9-11 mois",
+}
+
+cvrg_rougeole_age_adjustment = {
+    "6-9 mois": "6-11 mois",
+    "9-11 mois": "6-11 mois",
+}
+
+cvrg_group_by_cols = [
+    "year",
+    "round",
+    "period",
+    "age",
+    "sexe",
+    "org_unit_id",
+    "produit",
+    "vaccination_status",
+    "site",
+]
+
+cvrg_district_level_target_keys = [
     "year",
     "round",
     "age",
@@ -200,7 +209,7 @@ district_level_target_keys = [
     "LVL_3_NAME",
 ]
 
-district_level_group_keys = district_level_target_keys + [
+cvrg_district_level_group_keys = cvrg_district_level_target_keys + [
     "period",
     "order_day",
     "sexe",
@@ -208,38 +217,26 @@ district_level_group_keys = district_level_target_keys + [
     "site",
 ]
 
-district_level_final_keys = district_level_group_keys + [
+cvrg_district_level_final_keys = cvrg_district_level_group_keys + [
     "org_unit_id",
     "value",
     "cible",
 ]
 
-district_level_cumsum_keys = list(
-    (set(district_level_group_keys) | {"org_unit_id"}) - {"period"} - {"order_day"}
+cvrg_district_level_cumsum_keys = list(
+    (set(cvrg_district_level_group_keys) | {"org_unit_id"}) - {"period"} - {"order_day"}
 )
 
-csi_level_target_keys = list(
-    (set(district_level_target_keys) | {"org_unit_id"}) - {"LVL_3_NAME"}
+cvrg_csi_level_target_keys = list(
+    (set(cvrg_district_level_target_keys) | {"org_unit_id"}) - {"LVL_3_NAME"}
 )
 
-csi_level_final_keys = district_level_final_keys + ["LVL_6_NAME"]
+cvrg_csi_level_final_keys = cvrg_district_level_final_keys + ["LVL_6_NAME"]
 
-csi_level_cumsum_keys = district_level_cumsum_keys + ["LVL_6_NAME"]
-
-csi_level_config = {
-    2025: {
-        "fièvre jaune": ["round 1"],
-        "méningite": ["round 1", "round 2"],
-        "tcv": ["round 1", "round 2"],
-    },
-    2026: {
-        "fièvre jaune": ["round 1"],
-        "vaccin polio": ["round 1"],
-    },
-}
+cvrg_csi_level_cumsum_keys = cvrg_district_level_cumsum_keys + ["LVL_6_NAME"]
 
 # completeness table
-product_campaign_mapping = {
+cmpl_product_campaign_mapping = {
     "vaccin polio": "polio",
     "vitamine A": "polio",
     "albendazole": "polio",
@@ -248,6 +245,12 @@ product_campaign_mapping = {
     "méningite": "méningite",
     "tcv": "tcv",
 }
+
+cmpl_cols_selection_1 = ["choix_campagne", "org_unit_id", "year", "round", "period"]
+cmpl_cols_selection_2 = [
+    col for col in cmpl_cols_selection_1 if col != "choix_campagne"
+] + ["produit"]
+cmpl_cols_selection_3 = [col for col in cmpl_cols_selection_1 if col != "period"]
 
 # stocks table
 stock_polio_cols = (
@@ -308,6 +311,10 @@ stock_tcv_cols = (
     ]
 )
 
+stocks_cols_selection_1 = ["period", "round", "year", "org_unit_id"]
+stocks_cols_selection_2 = stocks_cols_selection_1 + ["produit", "product_status"]
+stocks_cols_selection_3 = stocks_cols_selection_1 + ["produit"]
+
 stocks_campaign_map = {
     "polio": stock_polio_cols,
     "fièvre jaune": stock_fjaune_cols,
@@ -326,34 +333,37 @@ stock_ratios_config = {
     "tcv": 1,
 }
 
-# surveillance table
-surveillance_polio_cols = [
+# supervision table
+supervision_polio_cols = [
     "nbre_cas_pfa_notifie",
     "nbre_cas_mapi_notifie_mapi",
     "nbre_cas_mapi_majeur_notifie_mapi",
 ]
-surveillance_rougeole_cols = [
+supervision_rougeole_cols = [
     "nombre_MAPI_non_grave",
     "nombre_MAPI_graves",
 ]
-surveillance_fjaune_cols = [
+supervision_fjaune_cols = [
     "nbre_cas_pfa_notifie_fievre_jaune",
     "nbre_cas_fievre_jaune_notifie_fievre_jaune",
     "nbre_cas_mapi_notifie_mapi_fievre_jaune",
     "nbre_cas_mapi_majeur_notifie_mapi_fievre_jaune",
 ]
-surveillance_men5_cols = [
+supervision_men5_cols = [
     "men5_total_de_cas_de_pfa_signales",
     "men5_mapi_mineurs",
     "men5_mapi_graves",
 ]
 
-surveillance_campaign_map = {
-    "polio": surveillance_polio_cols,
-    "rougeole": surveillance_rougeole_cols,
-    "fièvre jaune": surveillance_fjaune_cols,
-    "méningite": surveillance_men5_cols,
+supervision_campaign_map = {
+    "polio": supervision_polio_cols,
+    "rougeole": supervision_rougeole_cols,
+    "fièvre jaune": supervision_fjaune_cols,
+    "méningite": supervision_men5_cols,
 }
+
+supervision_cols_selection_1 = ["period", "round", "year", "org_unit_id"]
+supervision_cols_selection_2 = supervision_cols_selection_1 + ["choix_campagne"]
 
 # communication table
 communication_deployment_polio = [
@@ -609,7 +619,7 @@ communication_category_groups = {
 cols_campaign_map = {
     "polio": cvrg_polio_cols
     + stock_polio_cols
-    + surveillance_polio_cols
+    + supervision_polio_cols
     + communication_deployment_polio
     + communication_denombrement_polio
     + communication_reach_polio
@@ -618,7 +628,7 @@ cols_campaign_map = {
     + communication_activities_polio,
     "fièvre jaune": cvrg_fjaune_cols
     + stock_fjaune_cols
-    + surveillance_fjaune_cols
+    + supervision_fjaune_cols
     + communication_deployment_fjaune
     + communication_denombrement_fjaune
     + communication_reach_fjaune
@@ -627,7 +637,7 @@ cols_campaign_map = {
     + communication_activities_fjaune,
     "rougeole": cvrg_rougeole_cols
     + stock_rougeole_cols
-    + surveillance_rougeole_cols
+    + supervision_rougeole_cols
     + communication_deployment_rougeole
     + communication_denombrement_rougeole
     + communication_reach_rougeole
@@ -636,7 +646,7 @@ cols_campaign_map = {
     + communication_activities_rougeole,
     "méningite": cvrg_meningite_cols
     + stock_men5_cols
-    + surveillance_men5_cols
+    + supervision_men5_cols
     + communication_deployment_men5_cols
     + communication_denombrement_men5_cols
     + communication_reach_men5_cols
@@ -644,4 +654,153 @@ cols_campaign_map = {
     + communication_cas_men5_cols
     + communication_activities_men5_cols,
     "tcv": cvrg_tcv_cols + stock_tcv_cols,
+}
+
+months_mapping_dict = {
+    1: "Janvier",
+    2: "Février",
+    3: "Mars",
+    4: "Avril",
+    5: "Mai",
+    6: "Juin",
+    7: "Juillet",
+    8: "Août",
+    9: "Septembre",
+    10: "Octobre",
+    11: "Novembre",
+    12: "Décembre",
+}
+
+# config for utils
+ages_mapping = {
+    "0_11_mois": "0-11 mois",
+    "12_59_mois": "12-59 mois",
+    "6_11_mois": "6-11 mois",
+    "12_24_mois": "12-24 mois",
+    "12_23": "12-23 mois",
+    "24_59": "24-59 mois",
+    "e_6_": "6-9 mois",
+    "e_9_": "9-11 mois",
+    "e_12_": "12-59 mois",
+    "9_11_mois": "9-11 mois",
+    "5_14_ans": "5-14 ans",
+    "15_60_ans": "15-60 ans",
+    "1_4_ans": "1-4 ans",
+    "15_19_ans": "15-19 ans",
+}
+
+sites_mapping = {
+    "site_ordinaire": "ordinaire",
+    "site_speciaux_nomad": "spécial",
+    "site_speciaux_gares": "spécial",
+    "site_speciaux_marche": "spécial",
+    "site_speciaux_point_eau": "spécial",
+    "site_speciaux_postefron": "frontalier",
+    "site_trans_front_cote_front": "transfrontalier : étranger",
+    "site_trans_front_cote_niger": "transfrontalier : Niger",
+    "site_speciaux_deplace_int": "spécial",
+    "site_speciaux_refugie": "spécial",
+    "site_speciaux": "spécial",
+    "site_speciaux_autre": "spécial",
+    "fixe": "fixe",
+    "avance": "avancé",
+    "mobile": "mobile",
+}
+
+products_mapping = {
+    "vitamine_a": "vitamine A",
+    "vit_a": "vitamine A",
+    "vpo": "vaccin polio",
+    "polio": "vaccin polio",
+    "albendazole": "albendazole",
+    "depara": "albendazole",
+    "nombre_": "rougeole",  # beware
+    "fievre_jaune": "fièvre jaune",
+    "men5_men5": "méningite",
+    "men5_tcv": "tcv",
+}
+
+products_mapping_stocks = {
+    "vitamine_a": "vitamine A",
+    "vit_a": "vitamine A",
+    "vpo": "vaccin polio",
+    "polio": "vaccin polio",
+    "albendazole": "albendazole",
+    "depara": "albendazole",
+    "nombre_": "rougeole",  # beware
+    "fievre_jaune": "fièvre jaune",
+    "men5": "méningite",
+    "tcv": "tcv",
+}
+
+status_mapping = {"zero_dose": "zéro dose", "deja_recu": "déjà reçu"}
+
+stock_status_mapping = {
+    "stock": "stock",
+    "restants": "stock",
+    "recu": "reçu",
+    "utilise": "utilisé",
+}
+
+surveillance_category_mapping = {
+    "pfa": "pfa",
+    "nbre_cas_fievre_jaune_notifie": "fievre_jaune_notifie",
+    "mapi_notifie_mapi": "mapi_mineur",
+    "MAPI_non_grave": "mapi_mineur",
+    "mapi_mineur": "mapi_mineur",
+    "mapi_majeur": "mapi_majeur",
+    "MAPI_grave": "mapi_majeur",
+    "mapi_grave": "mapi_majeur",
+}
+
+communication_category_mapping = {
+    "appel_leader": "appel_leader",
+    "appels_de_leaders": "appel_leader",
+    "rumeur": "cas_notifies",
+    "cas_fievre_jaune_signale": "cas_notifies",
+    "pfa": "cas_pfa_notifies",
+    "nbre_causerie": "causerie_ordinaire",
+    "causeries_au_niveau_des_sites_ordinaires": "causerie_ordinaire",
+    "causeri_marche": "causerie_marche",
+    "causeries_au_niveau_des_marches": "causerie_marche",
+    "causerie_refugie": "causerie_refugie",
+    "causeries_au_niveau_des_camps_des_refugies": "causerie_refugie",
+    "causerie_nomade": "causerie_nomade",
+    "causeries_au_niveau_des_camps_des_nomades": "causerie_nomade",
+    "causerie_fontalier": "causerie_frontalier",
+    "causeries_au_niveau_des_villages_frontaliers": "causerie_frontalier",
+    "concession_visite": "concessions_visitees",
+    "concessions_visitees": "concessions_visitees",
+    "concession_non_favorable": "concessions_non_favorables",
+    "concessions_non_favorables": "concessions_non_favorables",
+    "debats": "debats",
+    "debats_organises": "debats",
+    "dialoge_commutaire": "dialogue_communautaire",
+    "dialogues_communautaires_tenus": "dialogue_communautaire",
+    "emission_publique": "emission_publique",
+    "emissions_publiques_diffusees": "emission_publique",
+    "enfant_0_5_ans_demonbre": "denombrement_0_5_ans",
+    "enfants_de_0_5_ans_dans_les_concessions_visitees": "denombrement_0_5_ans",
+    "personnes_5_14_ans_demonbre": "denombrement_5_14_ans",
+    "personnes_15_60_ans_demonbre": "denombrement_15_60_ans",
+    "enfant_9_11_mois_demonbre": "denombrement_9_11_mois",
+    "enfant_12_23_mois_demonbre": "denombrement_12_23_mois",
+    "enfant_24_59_mois_demonbre": "denombrement_24_59_mois",
+    "interviews": "interviews",
+    "leader_engage": "leader_engage",
+    "leaders_engages": "leader_engage",
+    "personne_touche_nomande": "personnes_touchees_nomades",
+    "personnes_touchees_au_niveau_des_camps_des_nomades": "personnes_touchees_nomades",
+    "personne_touche_par_refugie": "personnes_touchees_refugies",
+    "personnes_touchees_au_niveau_des_camps_des_refugies": "personnes_touchees_refugies",
+    "personne_touche_zone_frontaliere": "personnes_touchees_frontaliers",
+    "personnes_touchees_au_niveau_des_villages_sites_frontaliers": "personnes_touchees_frontaliers",
+    "personne_touche_par_relais": "personnes_touchees_relais",
+    "personnes_touchees_par_le_relais": "personnes_touchees_relais",
+    "radio": "radios_impliquees",
+    "nbre_relais": "nbre_relais_mobilises",
+    "relais_mobilises": "nbre_relais_mobilises",
+    "plaidoyer": "reunions_plaidoyer",
+    "spots": "spots_diffuses",
+    "population_expose": "population_exposee",
 }

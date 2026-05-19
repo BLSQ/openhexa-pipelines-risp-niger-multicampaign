@@ -1,31 +1,25 @@
 import os
-import re
 from openhexa.sdk import current_run, pipeline
 import pandas as pd
 import numpy as np
+from shared_utils import (
+    load_data,
+    save_file,
+    export_to_dataset,
+)
 from utils import (
-    org_unit_matching,
+    validate_campaign_filename,
 )
 from config import (
     OUTPUTS_PATH,
-    TARGETS_HISTORICAL_PATH,
     TARGET_OTHER_DATA_PATH,
-    TEMP_PATH,
-    target_polio_2024_cols,
-    polio_2024_dict_districts_cibles_iaso,
-    target_polio_rougeole_2025_columns,
-    age_adjustment_rougeole,
-    age_adjustment_albendazole,
-    age_adjustment_vitA,
-    target_yellow_fever_2025_2026_columns,
-    target_yellow_fever_2025_2026_age_ranges,
-    target_men5_tcv_2025_columns_dict,
-    target_polio_2026_r1_columns,
-    csi_matching_failed,
+    valid_campaigns,
+    valid_scales,
+    valid_levels,
     templates_required_cols_csi,
     templates_required_cols_district,
+    target_columns_required_dict,
     campaign_rename_dict,
-    site_strategy_types_dict,
     cols_for_melting,
     csi_district_rename_dict,
 )
@@ -33,750 +27,120 @@ from config import (
 
 @pipeline(
     "process_target_data",
-    name="multi-campagne - Import et traitement des données de cibles",
+    name="multi-campagne - 02 Pipeline d'importation et traitement des données de cibles",
 )
 def process_target_data():
     """
-    Main pipeline function to process target data from various campaigns.
+    This pipeline processes the target data of newly configured campaigns and merge them with the historical target data.
+    The target data of the newly configured campaigns is generated based on template Excel files that are uploaded to the
+    TARGET_OTHER_DATA_PATH.
+
+    It performs the following steps:
+     - imports and processes target data for newly configured campaigns from template Excel files
+     - adds historical target data
+     - retrieves all org unit IDs from the raw IASO tree associated to the org unit names in the combined target data
+     - saves the combined target data and exports it to a dataset.
     """
+
+    # load data
     iaso_org_unit_tree_df = load_data("iaso_org_unit_tree_raw")
     iaso_org_unit_tree_df_clean = load_data("iaso_org_unit_tree_clean")
+    historical_target_data = load_data("combined_historical_target_data")
 
-    # district-level historical target data
-    targets_polio_2024_r1_r4 = import_target_data_for_polio_2024_r1_r4()
-    targets_polio_2024_r1_r4 = match_district_to_org_unit_id(
-        targets_polio_2024_r1_r4, iaso_org_unit_tree_df_clean
-    )
-    targets_polio_2024_r1_r4 = add_rounds_and_products(targets_polio_2024_r1_r4)
-
-    target_polio_rougeole_2025_r1_r2 = (
-        import_target_data_for_polio_and_rougeole_2025_r1_r2()
-    )
-    target_polio_rougeole_2025_r1_r2 = match_district_to_org_unit_id(
-        target_polio_rougeole_2025_r1_r2, iaso_org_unit_tree_df_clean
-    )
-    target_polio_rougeole_2025_r1_r2 = add_rounds_and_products(
-        target_polio_rougeole_2025_r1_r2
-    )
-
-    # csi-level historical target data
-    target_yellow_fever_2025_2026_r1 = (
-        import_target_data_for_yellow_fever_2025_2026_r1()
-    )
-    target_yellow_fever_2025_2026_r1 = match_csi_to_org_unit_id(
-        target_yellow_fever_2025_2026_r1, iaso_org_unit_tree_df_clean
-    )
-    target_yellow_fever_2025_2026_r1 = add_rounds_and_products(
-        target_yellow_fever_2025_2026_r1
-    )
-
-    target_men5_tcv_2025_r1_r2 = import_target_data_for_men5_and_tcv_2025_r1_r2()
-    target_men5_tcv_2025_r1_r2 = match_csi_to_org_unit_id(
-        target_men5_tcv_2025_r1_r2, iaso_org_unit_tree_df_clean
-    )
-    target_men5_tcv_2025_r1_r2 = add_rounds_and_products(target_men5_tcv_2025_r1_r2)
-
-    target_polio_2026_r1 = import_target_data_for_polio_2026_r1()
-    target_polio_2026_r1 = match_csi_to_org_unit_id(
-        target_polio_2026_r1, iaso_org_unit_tree_df_clean
-    )
-    target_polio_2026_r1 = add_rounds_and_products(target_polio_2026_r1)
-
-    # future target data
+    # process configured target data
     all_target_data_csi_combined, all_target_data_district_combined = (
         import_target_data_for_future_campaigns()
     )
     if not all_target_data_csi_combined.empty:
-        all_target_data_csi_combined = match_csi_to_org_unit_id(
+        all_target_data_csi_combined = add_org_unit_ids(
             all_target_data_csi_combined, iaso_org_unit_tree_df_clean
         )
     if not all_target_data_district_combined.empty:
-        all_target_data_district_combined = match_district_to_org_unit_id(
+        all_target_data_district_combined = add_org_unit_ids(
             all_target_data_district_combined, iaso_org_unit_tree_df_clean
         )
 
-    # combine all target data
-    target_data_combined = combine_target_data(
+    target_data_configured_combined = combine_target_data(
         [
-            targets_polio_2024_r1_r4,
-            target_polio_rougeole_2025_r1_r2,
-            target_yellow_fever_2025_2026_r1,
-            target_men5_tcv_2025_r1_r2,
-            target_polio_2026_r1,
             all_target_data_csi_combined,
             all_target_data_district_combined,
         ]
     )
 
-    # clean up org unit
-    target_data_combined = clean_org_unit_id(
-        target_data_combined, iaso_org_unit_tree_df, iaso_org_unit_tree_df_clean
+    target_data_configured_combined = add_round_info_to_configured_target_data(
+        target_data_configured_combined, historical_target_data
+    )
+
+    target_data_configured_combined = clean_org_unit_id(
+        target_data_configured_combined,
+        iaso_org_unit_tree_df,
+        iaso_org_unit_tree_df_clean,
+    )
+
+    # combine with historical target data
+    target_data_combined = combine_target_data(
+        [
+            target_data_configured_combined,
+            historical_target_data,
+        ]
     )
 
     # save
-    save_output(target_data_combined)
+    save_file(target_data_configured_combined, "combined_configured_target_data")
+    save_file(target_data_combined, "combined_target_data")
+    export_to_dataset(target_data_combined, OUTPUTS_PATH, "combined_target_data")
 
 
-def load_data(name: str) -> pd.DataFrame:
+def inspect_dataframe(df: pd.DataFrame, aggregation_type: str, meta: dict):
     """
-    Import data from a specified file in the outputs directory.
-    The file should be in parquet format and the name should be provided without the extension.
+    Performs validation checks on the structure of the configured target data:
+        - Verifies presence of required columns based on aggregation type.
+        - Verifies that target data columns follow the 'Cible [age] mois/ans' format.
 
     Args:
-        name (str): Name of the file to be imported (without extension).
-    Returns:
-        pd.DataFrame: DataFrame containing the imported data.
+        df (pd.DataFrame): The input DataFrame to inspect.
+        aggregation_type (str): Either "csi" or "district".
+        meta (dict): Metadata containing the file name for logging.
     """
-    current_run.log_info(f"Importation du fichier {name}...")
-    try:
-        if not os.path.exists(OUTPUTS_PATH):
-            os.makedirs(OUTPUTS_PATH)
-
-        file_path = os.path.join(
-            OUTPUTS_PATH,
-            f"{name}.parquet",
-        )
-        df = pd.read_parquet(file_path)
-
-        return df
-
-    except Exception as e:
-        current_run.log_error(f"Erreur lors de l'importation du fichier {name}: {e}")
-        raise
-
-
-def import_target_data_for_polio_2024_r1_r4() -> pd.DataFrame:
-    """
-    Import target data for Polio 2024 rounds 1 to 4
-
-    Args:
-        None
-
-    Returns:
-        pd.DataFrame: DataFrame containing the target data for Polio 2024 rounds 1 to 4
-    """
-    current_run.log_info(
-        "Importation des données de cibles pour la polio 2024 rounds 1 à 4..."
-    )
-    try:
-        if not os.path.exists(TARGETS_HISTORICAL_PATH):
-            os.makedirs(TARGETS_HISTORICAL_PATH)
-
-        file_path = os.path.join(
-            TARGETS_HISTORICAL_PATH,
-            "Population JNV JNM ET DEPRARASITAGE.xlsx",
-        )
-        target_polio_2024 = pd.read_excel(
-            file_path, skiprows=6, header=None, usecols=[1, 2, 3, 6, 7, 9, 10]
-        )
-
-        target_polio_2024.columns = target_polio_2024_cols
-
-        target_polio_2024 = target_polio_2024[
-            ~target_polio_2024["LVL_3_NAME"]
-            .str.contains("Région|TOTAL", case=False)
-            .fillna(True)
-        ]
-
-        target_polio_2024["LVL_3_NAME"] = target_polio_2024["LVL_3_NAME"].map(
-            polio_2024_dict_districts_cibles_iaso
-        )
-        target_polio_2024 = pd.melt(
-            target_polio_2024,
-            id_vars="LVL_3_NAME",
-            var_name="full_name",
-            value_name="cible",
-        )
-
-        target_polio_2024["age"] = target_polio_2024["full_name"].str.split(
-            "_", expand=True
-        )[1]
-
-        # adjust age category 12-59 mois to 12-24 mois for Vit A (this is b/c this age category is found in the IASO data instead of 12-59 mois)
-        target_polio_2024["age"] = np.where(
-            target_polio_2024["full_name"].str.contains("VA_12-59 mois"),
-            "12-24 mois",
-            target_polio_2024["age"],
-        )
-
-        target_polio_2024["cible"] = target_polio_2024["cible"].astype(int)
-        target_polio_2024["year"] = 2024
-        target_polio_2024["campaign"] = "polio"
-
-        return target_polio_2024
-    except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'importation des données de cibles pour la polio 2024: {e}"
-        )
-        raise
-
-
-def import_target_data_for_polio_and_rougeole_2025_r1_r2() -> pd.DataFrame:
-    """
-    Import target data for polio and rougeole campaigns for year 2025 rounds 1 and 2
-
-    Args:
-        None
-
-    Returns:
-        pd.DataFrame: DataFrame containing the target data for polio and rougeole campaigns year 2025 rounds 1 and 2
-    """
-    current_run.log_info(
-        "Importation des données de cibles pour la polio et rougeole 2025..."
-    )
+    file_name = meta.get("file", "inconnu")
+    current_run.log_info(f"Inspection du fichier de cible configuré {file_name}...")
 
     try:
-        file_path = os.path.join(
-            TARGETS_HISTORICAL_PATH,
-            "cible_niger_et_refugies_2025.xlsx",
+        # check for required org unit cols
+        required = (
+            templates_required_cols_csi
+            if aggregation_type == "csi"
+            else templates_required_cols_district
         )
+        if not all(col in df.columns for col in required):
+            missing = [col for col in required if col not in df.columns]
+            msg = f"Colonnes manquantes dans {file_name}. Manquantes: {missing}. Attendues: {required}"
+            current_run.log_error(msg)
+            raise ValueError(msg)
 
-        target_polio_rougeole_2025 = pd.read_excel(
-            file_path, header=[0], skiprows=1, usecols=[0, 9, 10]
-        )
+        # check for required target cols
+        for campaign, required_target_cols in target_columns_required_dict.items():
+            if campaign in file_name:
+                missing = list(set(required_target_cols) - set(df.columns))
+                if missing:
+                    msg = f"Colonnes cibles manquantes dans {file_name}. Manquantes: {missing}. Attendues: {required_target_cols}."
+                    current_run.log_error(msg)
+                    raise ValueError(msg)
 
-        target_polio_rougeole_2025.columns = target_polio_rougeole_2025_columns
+        current_run.log_info(f"Inspection réussie pour {file_name}.")
 
-        target_polio_rougeole_2025 = target_polio_rougeole_2025.dropna(
-            subset=["LVL_3_NAME"]
-        )
-        target_polio_rougeole_2025 = target_polio_rougeole_2025[
-            ~target_polio_rougeole_2025["LVL_3_NAME"]
-            .str.contains("Région|TOTAL|Refugie", case=False)
-            .fillna(True)
-        ]
-        target_polio_rougeole_2025 = pd.melt(
-            target_polio_rougeole_2025,
-            id_vars="LVL_3_NAME",
-            var_name="age",
-            value_name="cible",
-        ).fillna(0)
-
-        target_polio_rougeole_2025["LVL_3_NAME"] = target_polio_rougeole_2025[
-            "LVL_3_NAME"
-        ].map(polio_2024_dict_districts_cibles_iaso)
-        target_polio_rougeole_2025["cible"] = target_polio_rougeole_2025[
-            "cible"
-        ].astype(int)
-        target_polio_rougeole_2025["year"] = 2025
-        target_polio_rougeole_2025["campaign"] = "polio_rougeole"
-
-        return target_polio_rougeole_2025
-    except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'importation des données historiques de cibles pour les campagnes polio 2025 rounds 1-2 et rougeole 2025 round 1: {e}"
-        )
+    except ValueError:
         raise
-
-
-def import_target_data_for_yellow_fever_2025_2026_r1() -> pd.DataFrame:
-    """
-    Import target data for yellow fever campaign for year 2025 and 2026 rounds 1 for the regions of Dosso and Tahoua
-
-    Args:
-        None
-
-    Returns:
-        pd.DataFrame: DataFrame containing the target data for yellow fever campaign year 2025 and 2026 rounds 1 for the regions of Dosso and Tahoua
-    """
-    current_run.log_info(
-        "Importation des données de cibles historiques pour la campagne fièvre jaune 2025/2026 rounds 1..."
-    )
-    try:
-        file_path = os.path.join(
-            TARGETS_HISTORICAL_PATH,
-            "cible_csi_fj_dosso_tahoua.xlsx",
-        )
-
-        target_yellow_fever_2025_r1 = pd.read_excel(
-            file_path,
-            header=[0],
-            skiprows=10,
-            usecols=[2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 17],
-        )
-
-        target_yellow_fever_2025_r1.columns = target_yellow_fever_2025_2026_columns
-        target_yellow_fever_2025_r1 = target_yellow_fever_2025_r1[
-            ~target_yellow_fever_2025_r1["LVL_3_NAME"].str.contains("Total")
-        ]
-        target_yellow_fever_2025_r1 = target_yellow_fever_2025_r1[
-            ~(target_yellow_fever_2025_r1["LVL_6_NAME"] == "DS")
-        ]
-
-        for age in target_yellow_fever_2025_2026_age_ranges:
-            target_yellow_fever_2025_r1[age] = (
-                target_yellow_fever_2025_r1[age + "_urban"]
-                + target_yellow_fever_2025_r1[age + "_avancee"]
-                + target_yellow_fever_2025_r1[age + "_mobile"]
-            )
-            target_yellow_fever_2025_r1[age] = target_yellow_fever_2025_r1[age].astype(
-                int
-            )
-        target_yellow_fever_2025_r1_clean = target_yellow_fever_2025_r1[
-            ["LVL_3_NAME", "LVL_6_NAME"] + target_yellow_fever_2025_2026_age_ranges
-        ]
-        target_yellow_fever_2025_r1_clean = pd.melt(
-            target_yellow_fever_2025_r1_clean,
-            id_vars=["LVL_3_NAME", "LVL_6_NAME"],
-            var_name="age",
-            value_name="cible",
-        ).fillna(0)
-
-        target_yellow_fever_2025_r1_clean["cible"] = target_yellow_fever_2025_r1_clean[
-            "cible"
-        ].astype(int)
-        target_yellow_fever_2025_r1_clean["year"] = 2025
-        target_yellow_fever_2025_r1_clean["campaign"] = "fièvre jaune"
-
-        target_yellow_fever_2026_r1_clean = target_yellow_fever_2025_r1_clean.copy()
-        target_yellow_fever_2026_r1_clean["year"] = 2026
-
-        target_yellow_fever_2025_2026_r1 = pd.concat(
-            [target_yellow_fever_2025_r1_clean, target_yellow_fever_2026_r1_clean],
-            ignore_index=True,
-        )
-
-        return target_yellow_fever_2025_2026_r1
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'importation des données de cibles pour la fièvre jaune 2025 et 2026 rounds 1: {e}"
-        )
+        msg = f"Erreur lors de l'inspection du fichier {file_name}: {e}"
+        current_run.log_error(msg)
         raise
-
-
-def import_target_data_for_men5_and_tcv_2025_r1_r2() -> pd.DataFrame:
-    """
-    Import target data for men5 and tcv campaigns for year 2025 rounds 1 and 2
-
-    Args:
-        None
-
-    Returns:
-        pd.DataFrame: DataFrame containing the target data for yellow fever campaign year 2025 rounds 1 and 2
-    """
-    current_run.log_info(
-        "Importation des données de cibles pour la campagne Méningite et TCV 2025..."
-    )
-
-    try:
-        file_path = os.path.join(
-            TARGETS_HISTORICAL_PATH,
-            "Cible Men5-TCV CSI.xlsx",
-        )
-
-        target_men5_tcv_2025 = pd.read_excel(
-            file_path,
-            skiprows=3,
-            usecols=[1, 2, 4, 5, 6],
-        )
-
-        target_men5_tcv_2025.columns = [
-            target_men5_tcv_2025_columns_dict[col]
-            for col in target_men5_tcv_2025_columns_dict
-        ]
-
-        target_men5_tcv_2025_clean = pd.melt(
-            target_men5_tcv_2025,
-            id_vars=["LVL_3_NAME", "LVL_6_NAME"],
-            value_vars=["1-4 ans", "5-14 ans", "15-19 ans"],
-            var_name="age",
-            value_name="cible",
-        )
-
-        target_men5_tcv_2025_clean["cible"] = target_men5_tcv_2025_clean[
-            "cible"
-        ].astype(int)
-        target_men5_tcv_2025_clean["year"] = 2025
-        target_men5_tcv_2025_clean = target_men5_tcv_2025_clean[
-            ["LVL_3_NAME", "LVL_6_NAME", "age", "cible", "year"]
-        ].drop_duplicates()
-        target_men5_tcv_2025_clean["campaign"] = "men5_tcv"
-
-        return target_men5_tcv_2025_clean
-
-    except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'importation des données de cibles historiques pour la campagne Méningite et TCV 2025 rounds 1 et 2: {e}"
-        )
-        raise
-
-
-def import_target_data_for_polio_2026_r1() -> pd.DataFrame:
-    """
-    Import target data for polio campaign for year 2026 round 1
-
-    Args:
-        None
-
-    Returns:
-        pd.DataFrame: DataFrame containing the target data for polio campaign year 2026 round 1
-    """
-    current_run.log_info(
-        "Importation des données de cibles historiques pour la campagne de polio 2026 round 1..."
-    )
-    try:
-        file_path = os.path.join(
-            TARGETS_HISTORICAL_PATH,
-            "cible_jnv_polio_2025.xlsx",
-        )
-
-        target_polio_2026_r1 = pd.read_excel(
-            file_path, header=[0], skiprows=9, usecols=[1, 2, 3, 7]
-        )
-
-        target_polio_2026_r1.columns = target_polio_2026_r1_columns
-        target_polio_2026_r1 = target_polio_2026_r1.dropna(subset=["LVL_3_NAME"])
-        target_polio_2026_r1 = target_polio_2026_r1.dropna(subset=["cible"])
-
-        target_polio_2026_r1 = target_polio_2026_r1[
-            ~target_polio_2026_r1["LVL_3_NAME"].str.contains("Total")
-        ]
-        target_polio_2026_r1 = target_polio_2026_r1[
-            ~(target_polio_2026_r1["LVL_6_NAME"] == "DS")
-        ]
-
-        target_polio_2026_r1["cible"] = target_polio_2026_r1["cible"].astype(int)
-        target_polio_2026_r1["0-11 mois"] = (
-            target_polio_2026_r1["cible"] * 0.119140832
-        ).round(0)
-        target_polio_2026_r1["12-59 mois"] = (
-            target_polio_2026_r1["cible"] * 0.880859168
-        ).round(0)
-        target_polio_2026_r1 = target_polio_2026_r1.dropna(subset=["LVL_6_NAME"])
-        target_polio_2026_r1.drop(["cible", "LVL_2_NAME"], axis=1, inplace=True)
-
-        target_polio_2026_r1_clean = pd.melt(
-            target_polio_2026_r1,
-            id_vars=["LVL_3_NAME", "LVL_6_NAME"],
-            var_name="age",
-            value_name="cible",
-        ).fillna(0)
-
-        target_polio_2026_r1_clean["cible"] = target_polio_2026_r1_clean[
-            "cible"
-        ].astype(int)
-        target_polio_2026_r1_clean["year"] = 2026
-        target_polio_2026_r1_clean["campaign"] = "polio"
-        return target_polio_2026_r1_clean
-    except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'importation des données de cibles historiques pour la campagne de polio 2026 round 1: {e}"
-        )
-        raise
-
-
-def match_csi_to_org_unit_id(
-    csi_level_target_df: pd.DataFrame, iaso_org_unit_tree_df_clean: pd.DataFrame
-) -> pd.DataFrame:
-    """
-    Match CSI names in df containing the CSI-level target data to organizational unit IDs using spatial data.
-
-    Args:
-        csi_level_target_df (pd.DataFrame): DataFrame containing the target data at CSI level.
-        iaso_org_unit_tree_df_clean (pd.DataFrame): DataFrame containing the clean organisational units tree data.
-
-    Returns:
-        pd.DataFrame: DataFrame with matched organizational unit IDs.
-    """
-    current_run.log_info(
-        "Appariement des noms CSI aux identifiants des unités organisationnelles..."
-    )
-    try:
-        iaso_org_unit_tree_for_matching = iaso_org_unit_tree_df_clean[
-            ["org_unit_id", "LVL_3_NAME", "LVL_6_NAME"]
-        ].drop_duplicates()
-
-        target_df_matched, org_unit_tree_check = org_unit_matching(
-            csi_level_target_df, iaso_org_unit_tree_for_matching, threshold=50
-        )
-
-        # inspect matching results
-        target_df_matched_check = target_df_matched[
-            [
-                "org_unit_id",
-                "LVL_3_NAME_original",
-                "LVL_6_NAME_original",
-                "LVL_3_NAME",
-                "LVL_6_NAME",
-                "cleansed_target",
-                "cleansed_spatial_match",
-                "match_score",
-            ]
-        ]
-        target_df_matched_check.drop_duplicates(inplace=True)
-
-        if not os.path.exists(TEMP_PATH):
-            os.makedirs(TEMP_PATH)
-
-        target_df_matched_check.to_csv(
-            os.path.join(TEMP_PATH, "target_df_matched_check.csv"),
-            index=False,
-        )
-        org_unit_tree_check.drop_duplicates(inplace=True)
-        org_unit_tree_check.to_csv(
-            os.path.join(TEMP_PATH, "org_unit_tree_check.csv"),
-            index=False,
-        )
-
-        # manually correct matching failures
-        for (
-            csi_concat_original,
-            csi_concat_correct,
-        ) in csi_matching_failed.items():
-            if csi_concat_correct is None:
-                mask = target_df_matched["cleansed_target"] == csi_concat_original
-                target_df_matched.loc[mask, "org_unit_id"] = None
-                target_df_matched.loc[mask, "LVL_3_NAME"] = None
-                target_df_matched.loc[mask, "LVL_6_NAME"] = None
-                continue
-
-            org_unit_tree_row = org_unit_tree_check.loc[
-                org_unit_tree_check["cleansed_spatial"] == csi_concat_correct
-            ]
-            if org_unit_tree_row.empty:
-                continue
-
-            lvl_3_name_correct = org_unit_tree_row["LVL_3_NAME"].values[0]
-            lvl_6_name_correct = org_unit_tree_row["LVL_6_NAME"].values[0]
-            org_unit_id_correct = org_unit_tree_row["org_unit_id"].values[0]
-            mask = target_df_matched["cleansed_target"] == csi_concat_original
-            target_df_matched.loc[mask, "org_unit_id"] = org_unit_id_correct
-            target_df_matched.loc[mask, "LVL_3_NAME"] = lvl_3_name_correct
-            target_df_matched.loc[mask, "LVL_6_NAME"] = lvl_6_name_correct
-
-        target_df_matched["LVL_6_NAME"] = np.where(
-            target_df_matched["org_unit_id"].isna(),
-            target_df_matched["LVL_6_NAME_original"],
-            target_df_matched["LVL_6_NAME"],
-        )
-
-        unmatched_count = target_df_matched["org_unit_id"].isna().sum()
-        total_count = len(target_df_matched)
-        if unmatched_count > 0:
-            unmatched_csis = target_df_matched[target_df_matched["org_unit_id"].isna()][
-                "LVL_6_NAME_original"
-            ].unique()
-            current_run.log_warning(
-                f"{unmatched_count} sur {total_count} entrées n'ont pas pu être appariés à un org_unit_id. "
-                f"CSIs non appariés : {', '.join(map(str, unmatched_csis))}. "
-                "Un appariement manuel est nécessaire pour ces entrées."
-            )
-
-        target_df_matched = target_df_matched.drop(
-            columns=[
-                "LVL_3_NAME_original",
-                "LVL_6_NAME_original",
-                "match_score",
-                "cleansed_target",
-                "cleansed_spatial_match",
-            ]
-        )
-        target_df_matched = target_df_matched.dropna(subset=["org_unit_id"])
-
-        return target_df_matched
-    except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'appariement des noms CSI aux identifiants des unités organisationnelles: {e}"
-        )
-        raise
-
-
-def match_district_to_org_unit_id(
-    district_level_target_df: pd.DataFrame, iaso_org_unit_tree_df_clean: pd.DataFrame
-) -> pd.DataFrame:
-    """
-    Match district names in df containing the district-level target data to organizational unit IDs using iaso_org_unit_tree data.
-
-    Args:
-        district_level_target_df (pd.DataFrame): DataFrame containing the target data at district level.
-        iaso_org_unit_tree_df_clean (pd.DataFrame): DataFrame containing the clean organisational units tree data.
-
-    Returns:
-        pd.DataFrame: DataFrame with matched organizational unit IDs.
-    """
-    current_run.log_info("Matching district names to organizational unit IDs...")
-    try:
-        iaso_org_unit_tree_for_matching = iaso_org_unit_tree_df_clean[
-            ["org_unit_id", "LVL_3_NAME"]
-        ].drop_duplicates()
-        iaso_org_unit_tree_for_matching = iaso_org_unit_tree_for_matching.groupby(
-            "LVL_3_NAME", as_index=False
-        ).first()
-
-        target_df_matched = district_level_target_df.merge(
-            iaso_org_unit_tree_for_matching, on=["LVL_3_NAME"], how="left"
-        )
-
-        unmatched_count = target_df_matched["org_unit_id"].isna().sum()
-        total_count = len(target_df_matched)
-        if unmatched_count > 0:
-            unmatched_districts = target_df_matched[
-                target_df_matched["org_unit_id"].isna()
-            ]["LVL_3_NAME"].unique()
-            current_run.log_warning(
-                f"{unmatched_count} sur {total_count} entrées n'ont pas pu être appariés à un org_unit_id. "
-                f"Districts non appariés : {', '.join(unmatched_districts)}"
-                "Ces entrées seront supprimées des données cibles."
-            )
-
-        return target_df_matched
-    except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de l'appariement des noms de districts aux identifiants des unités organisationnelles: {e}"
-        )
-        raise
-
-
-def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Create rounds for the target data.
-
-    Args:
-        target_df (pd.DataFrame): DataFrame containing the target data.
-
-    Returns:
-        pd.DataFrame: DataFrame with rounds added.
-    """
-    current_run.log_info("Ajout des rounds et des produits aux données de cibles...")
-
-    # polio 2024
-    if target_df["campaign"].iloc[0] == "polio" and target_df["year"].iloc[0] == 2024:
-        rounds = ["round 1", "round 2", "round 3", "round 4"]
-        target_df_expanded = pd.DataFrame(
-            np.repeat(target_df.values, len(rounds), axis=0),
-            columns=target_df.columns,
-        )
-        target_df_expanded["round"] = rounds * (len(target_df))
-        target_df_expanded["produit"] = np.where(
-            target_df_expanded["full_name"].str.contains("VPO"),
-            "vaccin polio",
-            np.where(
-                target_df_expanded["full_name"].str.contains("VA"),
-                "vitamine A",
-                np.where(
-                    target_df_expanded["full_name"].str.contains("AL"),
-                    "albendazole",
-                    "produit inconnu",
-                ),
-            ),
-        )
-        target_df_expanded = target_df_expanded.drop(["full_name", "campaign"], axis=1)
-
-    # rougeole and polio 2025
-    elif (
-        target_df["campaign"].iloc[0] == "polio_rougeole"
-        and target_df["year"].iloc[0] == 2025
-    ):
-        rounds = ["round 1", "round 2"]
-        target_df_expanded = pd.DataFrame(
-            np.repeat(target_df.values, len(rounds), axis=0),
-            columns=target_df.columns,
-        )
-        target_df_expanded["round"] = rounds * (len(target_df))
-
-        target_df_expanded_rougeole = target_df_expanded.copy()
-        target_df_expanded_rougeole["produit"] = "rougeole"
-        target_df_expanded_rougeole["age"] = target_df_expanded_rougeole["age"].replace(
-            age_adjustment_rougeole
-        )
-        target_df_expanded_rougeole = target_df_expanded_rougeole[
-            target_df_expanded_rougeole["round"] == "round 1"
-        ]
-
-        target_df_expanded_polio = target_df_expanded.copy()
-        target_df_expanded_polio["produit"] = "vaccin polio"
-
-        target_df_expanded_albendazole = target_df_expanded.copy()
-        target_df_expanded_albendazole["produit"] = "albendazole"
-        target_df_expanded_albendazole["age"] = target_df_expanded_albendazole[
-            "age"
-        ].replace(age_adjustment_albendazole)
-
-        target_df_expanded_vitA = target_df_expanded.copy()
-        target_df_expanded_vitA["produit"] = "vitamine A"
-        target_df_expanded_vitA["age"] = target_df_expanded_vitA["age"].replace(
-            age_adjustment_vitA
-        )
-
-        target_df_expanded = pd.concat(
-            [
-                target_df_expanded_rougeole,
-                target_df_expanded_polio,
-                target_df_expanded_albendazole,
-                target_df_expanded_vitA,
-            ],
-            ignore_index=True,
-        )
-        target_df_expanded = target_df_expanded.drop("campaign", axis=1)
-
-    # yellow fever 2025/2026
-    elif (
-        target_df["campaign"].iloc[0] == "fièvre jaune"
-        and target_df["year"].iloc[0] == 2025
-    ):
-        rounds = ["round 1"]
-        target_df_expanded = pd.DataFrame(
-            np.repeat(target_df.values, len(rounds), axis=0),
-            columns=target_df.columns,
-        )
-        target_df_expanded["round"] = rounds * (len(target_df))
-        target_df_expanded["produit"] = "fièvre jaune"
-        target_df_expanded = target_df_expanded.drop("campaign", axis=1)
-
-    elif (
-        target_df["campaign"].iloc[0] == "fièvre jaune"
-        and target_df["year"].iloc[0] == 2026
-    ):
-        rounds = ["round 1"]
-        target_df_expanded = pd.DataFrame(
-            np.repeat(target_df.values, len(rounds), axis=0),
-            columns=target_df.columns,
-        )
-        target_df_expanded["round"] = rounds * (len(target_df))
-        target_df_expanded["produit"] = "fièvre jaune"
-        target_df_expanded = target_df_expanded.drop("campaign", axis=1)
-
-    # men5 and tcv 2025
-    elif (
-        target_df["campaign"].iloc[0] == "men5_tcv"
-        and target_df["year"].iloc[0] == 2025
-    ):
-        rounds = ["round 1", "round 2"]
-        target_df_expanded = pd.DataFrame(
-            np.repeat(target_df.values, len(rounds), axis=0),
-            columns=target_df.columns,
-        )
-        target_df_expanded["round"] = rounds * (len(target_df))
-        target_df_expanded_men5 = target_df_expanded.copy()
-        target_df_expanded_men5["produit"] = "méningite"
-        target_df_expanded_tcv = target_df_expanded.copy()
-        target_df_expanded_tcv["produit"] = "tcv"
-        target_df_expanded = pd.concat(
-            [target_df_expanded_men5, target_df_expanded_tcv],
-            ignore_index=True,
-        )
-        target_df_expanded = target_df_expanded.drop("campaign", axis=1)
-
-    # polio 2026 round 1
-    elif target_df["campaign"].iloc[0] == "polio" and target_df["year"].iloc[0] == 2026:
-        target_df_expanded = target_df.copy()
-        target_df_expanded["round"] = "round 1"
-        target_df_expanded["produit"] = "vaccin polio"
-        target_df_expanded = target_df_expanded.drop("campaign", axis=1)
-
-    else:
-        current_run.log_error(
-            "Combinaison campagne et année inconnue. Impossible d'ajouter les rounds et les produits."
-        )
-        return target_df
-
-    return target_df_expanded
 
 
 def process_dataframe(df: pd.DataFrame, aggregation_type: str, meta: dict):
     """
     This function processes the input DataFrame by melting it from wide to long format,
-    extracting age and site/strategy information, and cleaning up the resulting DataFrame.
+    extracting age group information, and cleaning up the resulting DataFrame.
 
     Args:
         df (pd.DataFrame): The input DataFrame to be processed.
@@ -784,119 +148,230 @@ def process_dataframe(df: pd.DataFrame, aggregation_type: str, meta: dict):
         meta (dict): A dictionary containing metadata about the DataFrame, such as the source file name.
 
     Returns:
-        pd.DataFrame: The processed DataFrame in long format with extracted age and site/strategy information.
+        df_melted (pd.DataFrame): The processed DataFrame in long format with extracted age group information.
     """
-    id_vars = cols_for_melting.copy()
-    if aggregation_type == "csi":
-        id_vars.insert(1, "CSI")
-
-    required = (
-        templates_required_cols_csi
-        if aggregation_type == "csi"
-        else templates_required_cols_district
+    file_name = meta.get("file", "inconnu")
+    current_run.log_info(
+        f"Traitement du DataFrame pour le fichier {file_name} avec le type d'agrégation '{aggregation_type}'..."
     )
-    if not all(col in df.columns for col in required):
-        raise ValueError(f"Colonnes manquantes. Attendu: {required}")
+    try:
+        id_vars = cols_for_melting.copy()
+        if aggregation_type == "csi":
+            id_vars.insert(1, "CSI")
 
-    value_vars = [col for col in df.columns if col.startswith("Cible ")]
+        value_vars = [col for col in df.columns if col.startswith("Cible ")]
+        regex_pattern = r"^Cible (\d+-\d+ (?:mois|ans))$"
 
-    df_melted = pd.melt(
-        df,
-        id_vars=id_vars,
-        value_vars=value_vars,
-        var_name="age_site_strategy",
-        value_name="cible",
-    )
+        df_melted = pd.melt(
+            df,
+            id_vars=id_vars,
+            value_vars=value_vars,
+            var_name="age",
+            value_name="cible",
+        )
 
-    regex_extract = r"Cible (\d+-\d+ (?:mois|ans))(?:_(.+))?"
-    extracted = df_melted["age_site_strategy"].str.extract(regex_extract)
+        extracted = df_melted["age"].str.extract(regex_pattern)
+        df_melted["age"] = extracted[0]
+        df_melted = df_melted.rename(columns=csi_district_rename_dict)
 
-    df_melted["age"] = extracted[0]
-    df_melted["site_strategy"] = extracted[1].replace(site_strategy_types_dict)
-    df_melted.drop(columns=["age_site_strategy"], inplace=True)
-    df_melted = df_melted.rename(columns=csi_district_rename_dict)
+        current_run.log_info(
+            f"DataFrame traité avec succès pour le fichier {file_name}"
+        )
 
-    return df_melted
+        return df_melted
+
+    except Exception as e:
+        msg = f"Erreur lors du traitement du DataFrame pour le fichier {file_name}: {e}"
+        current_run.log_error(msg)
+        raise
+
+
+def process_single_target_file(file: os.DirEntry, metadata: dict) -> pd.DataFrame:
+    """
+    Processes a single target data file by reading it, validating its content, and transforming it into
+    the desired format.
+
+    Args:
+        file (os.DirEntry): The file entry to be processed, containing the file path and name.
+        metadata (dict): A dictionary containing metadata about the file (campaign, year, aggregation level).
+
+    Returns:
+        df_processed (pd.DataFrame): The processed DataFrame.
+    """
+    current_run.log_info(f"Traitement du fichier {file.name}...")
+    try:
+        df = pd.read_excel(file.path)
+
+        if df.empty:
+            msg = f"Le fichier {file.name} est vide."
+            current_run.log_error(msg)
+            raise ValueError(msg)
+
+        # check content
+        target_cols = [col for col in df.columns if col.startswith("Cible ")]
+        for col in target_cols:
+            # empty cells (NaN/None) or 0 values
+            empty_count = df[col].isnull().sum() + (df[col] == 0).sum()
+            if empty_count > 0:
+                current_run.log_warning(
+                    f"Attention: {empty_count} cellule(s) vide(s) ou nulles détectée(s) dans la colonne '{col}' du fichier {file.name}. "
+                    "Ces cellules seront traitées comme des valeurs manquantes."
+                )
+            # non-numeric values
+            numeric_series = pd.to_numeric(df[col], errors="coerce")
+            if numeric_series.isna().sum() > empty_count:
+                msg = f"Données non numériques détectées dans {file.name} (colonne '{col}')"
+                current_run.log_error(msg)
+                raise ValueError(msg)
+
+        # assign metadata
+        df["year"] = metadata["year"]
+        df["produit"] = campaign_rename_dict.get(
+            metadata["campaign"], metadata["campaign"]
+        )
+
+        # inspect and process
+        inspect_dataframe(df, metadata["level"], {"file": file.name})
+        df_processed = process_dataframe(df, metadata["level"], {"file": file.name})
+
+        current_run.log_info(f"Fichier {file.name} traité avec succès.")
+
+        return df_processed
+
+    except ValueError:
+        raise
+    except Exception as e:
+        msg = f"Erreur sur {file.name} : {str(e)}"
+        current_run.log_error(msg)
+        raise
 
 
 def import_target_data_for_future_campaigns():
     """
-    Placeholder function for importing target data for future campaigns.
+    Imports target data for future campaigns.
 
     Args:
         None
 
     Returns:
-        pd.DataFrame: DataFrame containing the target data for future campaigns.
+        csi_target_df (pd.DataFrame): DataFrame containing the target data at CSI level for future campaigns.
+        district_target_df (pd.DataFrame): DataFrame containing the target data at district level for future campaigns.
     """
-    current_run.log_info("Importation et traitement des données non-historiques...")
+    current_run.log_info(
+        "Démarrage de l'importation de(s) fichier(s) de cibles configuré(s)..."
+    )
 
     if not os.path.exists(TARGET_OTHER_DATA_PATH):
-        os.makedirs(TARGET_OTHER_DATA_PATH)
-        return pd.DataFrame(), pd.DataFrame()
+        raise FileNotFoundError(f"Dossier introuvable: {TARGET_OTHER_DATA_PATH}")
 
     all_data = {"csi": [], "district": []}
 
-    file_pattern = re.compile(r"Cibles_(.+)_(\d{4})_(r\d+)_(csi|district)\.csv")
-
-    current_run.log_info(
-        "Importation et traitement des données non-historiques de cibles..."
-    )
-
-    # loop through each file
-    for entry in os.scandir(TARGET_OTHER_DATA_PATH):
+    for file in os.scandir(TARGET_OTHER_DATA_PATH):
         if not (
-            entry.is_file()
-            and entry.name.endswith(".csv")
-            and not entry.name.startswith("~$")
+            file.is_file()
+            and file.name.endswith(".xlsx")
+            and not file.name.startswith("~$")
         ):
             continue
 
-        match = file_pattern.match(entry.name)
-        if not match:
-            current_run.log_warning(f"Format de nommage invalide : '{entry.name}'")
-            continue
+        metadata = validate_campaign_filename(
+            file.name, valid_campaigns, valid_scales, valid_levels
+        )
 
-        campaign, year, round_code, agg = match.groups()
+        processed_df = process_single_target_file(file, metadata)
+        all_data[metadata["level"]].append(processed_df)
+        current_run.log_info(f"Succès: {file.name}")
 
-        if campaign not in campaign_rename_dict:
-            current_run.log_warning(f"Campagne invalide '{campaign}' dans {entry.name}")
-            continue
-
-        try:
-            df = pd.read_csv(entry.path)
-            if df.empty:
-                continue
-
-            df["year"] = int(year)
-            df["produit"] = campaign_rename_dict.get(campaign, campaign)
-            df["round"] = round_code.replace("r", "round ")
-
-            processed_df = process_dataframe(df, agg, {"file": entry.name})
-            all_data[agg].append(processed_df)
-
-            current_run.log_info(f"Fichier {entry.name} traité.")
-
-        except Exception as e:
-            current_run.log_error(f"Erreur sur {entry.name} : {str(e)}")
-
-    # combine results
-    df_csi = (
+    csi_target_df = (
         pd.concat(all_data["csi"], ignore_index=True)
         if all_data["csi"]
         else pd.DataFrame()
     )
-    df_dist = (
+    district_target_df = (
         pd.concat(all_data["district"], ignore_index=True)
         if all_data["district"]
         else pd.DataFrame()
     )
 
+    return csi_target_df, district_target_df
+
+
+def add_org_unit_ids(
+    target_df: pd.DataFrame,
+    iaso_org_unit_tree_df_clean: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Enrich the target data with the org unit IDs from the cleansed IASO org unit tree
+    using org unit names for matching.
+
+    Args:
+        target_df (pd.DataFrame): DataFrame containing the target data with org unit names.
+        iaso_org_unit_tree_df_clean (pd.DataFrame): DataFrame containing the clean IASO org unit tree with org unit IDs.
+
+    Returns:
+         target_with_org_unit_ids_df (pd.DataFrame): DataFrame containing the target data with matched org unit IDs.
+    """
     current_run.log_info(
-        f"Importation des fichiers de cibles non-historiques terminée: CSI: {len(all_data['csi'])}, District: {len(all_data['district'])}"
+        "Récupération des identifiants des unités organisationnelles à partir de la pyramide IASO..."
+    )
+    try:
+        district_org_unit_ids_df = iaso_org_unit_tree_df_clean[
+            ["org_unit_id", "LVL_3_NAME"]
+        ].drop_duplicates()
+        csi_org_unit_ids_df = iaso_org_unit_tree_df_clean[
+            ["org_unit_id", "LVL_3_NAME", "LVL_6_NAME"]
+        ].drop_duplicates()
+
+        # district-level matching
+        if target_df["LVL_6_NAME"].isna().all():
+            target_with_org_unit_ids_df = target_df.merge(
+                district_org_unit_ids_df,
+                left_on=["LVL_3_NAME"],
+                right_on=["LVL_3_NAME"],
+                how="left",
+                indicator=True,
+            )
+            unmatched_count = (
+                target_with_org_unit_ids_df["_merge"].value_counts().get("left_only", 0)
+            )
+            if unmatched_count > 0:
+                msg = f"Erreur lors de l'appariement au niveau des districts: {unmatched_count} unités organisationnelles n'ont pas été appariées."
+                current_run.log_error(msg)
+                raise ValueError(msg)
+
+        # csi-level matching
+        else:
+            target_with_org_unit_ids_df = target_df.merge(
+                csi_org_unit_ids_df,
+                left_on=["LVL_3_NAME", "LVL_6_NAME"],
+                right_on=["LVL_3_NAME", "LVL_6_NAME"],
+                how="left",
+                indicator=True,
+            )
+            unmatched_count = (
+                target_with_org_unit_ids_df["_merge"].value_counts().get("left_only", 0)
+            )
+            if unmatched_count > 0:
+                msg = f"Erreur lors de l'appariement au niveau des CSI: {unmatched_count} unités organisationnelles n'ont pas été appariées."
+                current_run.log_error(msg)
+                raise ValueError(msg)
+
+        target_with_org_unit_ids_df = target_with_org_unit_ids_df.drop(
+            columns=["_merge"]
+        )
+
+    except ValueError:
+        raise
+    except Exception as e:
+        msg = f"Erreur lors de l'importation des org unit IDs: {e}"
+        current_run.log_error(msg)
+        raise
+
+    current_run.log_info(
+        "Récupération des identifiants des unités organisationnelles terminée avec succès."
     )
 
-    return df_csi, df_dist
+    return target_with_org_unit_ids_df
 
 
 def combine_target_data(
@@ -909,24 +384,33 @@ def combine_target_data(
         dfs (list[pd.DataFrame]): List of DataFrames to be combined.
 
     Returns:
-        pd.DataFrame: Combined DataFrame containing all target data.
+        target_data_combined(pd.DataFrame): Combined DataFrame containing all target data.
     """
-    current_run.log_info("Combinaison des différentes données de cibles...")
+    current_run.log_info("Combinaison des différentes données de cibles en cours...")
     try:
-        target_data_combined = pd.concat(dfs, ignore_index=True)
+        valid_dfs = [df for df in dfs if df is not None and not df.empty]
+        if not valid_dfs:
+            current_run.log_warning(
+                "Aucune donnée valide à combiner. Retour d'un DataFrame vide."
+            )
+            return pd.DataFrame()
 
+        target_data_combined = pd.concat(valid_dfs, ignore_index=True)
+
+        current_run.log_info(
+            "Combinaison des différentes données de cibles terminée avec succès."
+        )
         return target_data_combined
 
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors de la combinaison des données de cibles: {e}"
-        )
+        msg = f"Erreur lors de la combinaison des données de cibles: {e}"
+        current_run.log_error(msg)
         raise
 
 
 def clean_org_unit_id(
     target_data_combined: pd.DataFrame,
-    iaso_org_unit_tree_df: pd.DataFrame,
+    iaso_org_unit_tree_raw_df: pd.DataFrame,
     iaso_org_unit_tree_clean_df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
@@ -934,21 +418,27 @@ def clean_org_unit_id(
     to the corresponding LVL_6_UID org_unit_id from the cleaned org unit tree.
 
     Args:
-        target_data_combined (pd.DataFrame): DataFrame containing the combined target data.
-        iaso_org_unit_tree_df (pd.DataFrame): DataFrame containing the org unit tree data.
+        target_data_combined (pd.DataFrame): DataFrame containing the combined configured target data.
+        iaso_org_unit_tree_raw_df (pd.DataFrame): DataFrame containing the raw org unit tree data.
         iaso_org_unit_tree_clean_df (pd.DataFrame): DataFrame containing the cleaned org unit tree data.
 
     Returns:
-        pd.DataFrame: DataFrame with cleaned org_unit_id column.
+        target_data_combined(pd.DataFrame): DataFrame with
     """
     current_run.log_info(
         "Récupération des identifiants des unités d'organisation et application de la correspondance un-à-plusieurs..."
     )
     try:
+        if target_data_combined.empty:
+            current_run.log_info(
+                "Aucune donnée de cible configurée à traiter pour le nettoyage des org unit IDs."
+            )
+            return pd.DataFrame()
+
         uid_to_org_id_df_clean = iaso_org_unit_tree_clean_df[
             ["LVL_6_UID", "org_unit_id"]
         ].drop_duplicates()
-        uid_to_org_id_df_raw = iaso_org_unit_tree_df.copy()
+        uid_to_org_id_df_raw = iaso_org_unit_tree_raw_df.copy()
         uid_to_org_id_df_raw["LVL_6_UID"] = uid_to_org_id_df_raw.groupby("LVL_6_NAME")[
             "LVL_6_UID"
         ].transform("first")
@@ -962,7 +452,7 @@ def clean_org_unit_id(
             uid_to_org_id_df_raw, on="LVL_6_UID", how="inner"
         )
         mapping_df = mapping_df[["org_unit_id", "final_org_unit_id"]].drop_duplicates()
-
+        target_data_combined = target_data_combined.copy()
         target_data_combined = pd.merge(
             target_data_combined,
             mapping_df,
@@ -976,35 +466,95 @@ def clean_org_unit_id(
 
         target_data_combined.drop(columns=["final_org_unit_id", "_merge"], inplace=True)
 
+        current_run.log_info(
+            "Récupération des identifiants des unités d'organisation et application de la correspondance un-à-plusieurs terminée avec succès."
+        )
+
         return target_data_combined
     except Exception as e:
-        current_run.log_error(
-            f"Erreur lors du processus de récupération des identifiants des unités d'organisation: {e}"
-        )
+        msg = f"Erreur lors du processus de récupération des identifiants des unités d'organisation: {e}"
+        current_run.log_error(msg)
         raise
 
 
-def save_output(target_data_combined: pd.DataFrame):
+def add_round_info_to_configured_target_data(
+    configured_target_df: pd.DataFrame, historical_target_df: pd.DataFrame
+) -> pd.DataFrame:
     """
-    Save the combined target data to a parquet file.
+    Add round information to the combined target data for the configured campaigns, assuming that
+    the target data applies to all rounds of the campaign, except if there already exist round information
+    in the historical data for the campaign.
 
     Args:
-        target_data_combined (pd.DataFrame): DataFrame containing the combined target data.
+        configured_target_df (pd.DataFrame): DataFrame containing the configured target data.
+        historical_target_df (pd.DataFrame): DataFrame containing the historical target data.
 
     Returns:
-        None
+        configured_target_with_rounds_df(pd.DataFrame): DataFrame with added round information for the configured campaigns.
     """
-    current_run.log_info("Enregistrement des données cibles combinées...")
-
-    if not os.path.exists(OUTPUTS_PATH):
-        os.makedirs(OUTPUTS_PATH)
-
-    file_path = os.path.join(
-        OUTPUTS_PATH,
-        "combined_target_data.parquet",
+    current_run.log_info(
+        "Ajout des informations de rounds pour les campagnes configurées..."
     )
-    target_data_combined.to_parquet(file_path, index=False)
-    current_run.log_info(f"Données cibles combinées enregistrées dans {file_path}.")
+    try:
+        if configured_target_df.empty:
+            current_run.log_info(
+                "Aucune donnée de cible configurée à traiter pour l'ajout des rounds."
+            )
+            return (
+                pd.DataFrame()
+            )  # return empty DataFrame if there is no configured target data to process
+
+        configured_target_df["round"] = np.nan
+
+        # if there already exist round info for the same combination of year-produit in the historical data,
+        # create new rounds upto 10 rounds starting from the max round number in the historical data for this
+        # combination. Otherwise, assign round 1 to 10 to the target data of the configured campaigns.
+        historical_target_df_modified = historical_target_df.copy()
+        historical_target_df_modified["round_num"] = (
+            historical_target_df_modified["round"]
+            .str.extract(r"round (\d+)")
+            .astype(int)
+        )
+        max_rounds_historical = (
+            historical_target_df_modified.groupby(["year", "produit"])["round_num"]
+            .max()
+            .reset_index()
+        )
+        max_rounds_historical["round_start"] = max_rounds_historical["round_num"] + 1
+        max_rounds_historical["round_end"] = 10
+
+        configured_target_df = configured_target_df.merge(
+            max_rounds_historical[["year", "produit", "round_start", "round_end"]],
+            on=["year", "produit"],
+            how="left",
+        )
+
+        configured_target_df["round"] = configured_target_df.apply(
+            lambda row: [
+                f"round {i}"
+                for i in range(int(row["round_start"]), int(row["round_end"]) + 1)
+            ]
+            if not pd.isna(row["round_start"])
+            else [f"round {i}" for i in range(1, 11)],
+            axis=1,
+        )
+        configured_target_df = configured_target_df.explode("round").reset_index(
+            drop=True
+        )
+
+        configured_target_with_rounds_df = configured_target_df.drop(
+            columns=["round_start", "round_end"]
+        )
+
+        current_run.log_info(
+            "Ajout des informations de rounds pour les campagnes configurées terminé avec succès."
+        )
+
+        return configured_target_with_rounds_df
+    except Exception as e:
+        msg = f"Erreur lors de l'ajout des informations de rounds: {e}"
+        current_run.log_error(msg)
+        raise
 
 
 if __name__ == "__main__":
