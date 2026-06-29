@@ -82,11 +82,11 @@ def process_historical_target_data():
     )
     target_polio_2026_r1 = add_rounds_and_products(target_polio_2026_r1)
 
-    target_polio_2026_r2 = import_target_data_for_polio_2026_r2()
-    target_polio_2026_r2 = match_csi_to_org_unit_id(
-        target_polio_2026_r2, iaso_org_unit_tree_df_clean
+    target_polio_2026_r2_r3 = import_target_data_for_polio_2026_r2_r3()
+    target_polio_2026_r2_r3 = match_csi_to_org_unit_id(
+        target_polio_2026_r2_r3, iaso_org_unit_tree_df_clean
     )
-    target_polio_2026_r2 = add_rounds_and_products(target_polio_2026_r2)
+    target_polio_2026_r2_r3 = add_rounds_and_products(target_polio_2026_r2_r3)
     # combine all target data
     target_data_combined = combine_target_data(
         [
@@ -95,7 +95,7 @@ def process_historical_target_data():
             target_yellow_fever_2025_2026_r1,
             target_men5_tcv_2025_r1_r2,
             target_polio_2026_r1,
-            target_polio_2026_r2,
+            target_polio_2026_r2_r3,
         ]
     )
 
@@ -458,18 +458,18 @@ def import_target_data_for_polio_2026_r1() -> pd.DataFrame:
         raise
 
 
-def import_target_data_for_polio_2026_r2() -> pd.DataFrame:
+def import_target_data_for_polio_2026_r2_r3() -> pd.DataFrame:
     """
-    Import target data for polio campaign for year 2026 round 2.
+    Import target data for polio campaign for year 2026 round 2 and round 3.
 
     Args:
         None
 
     Returns:
-        pd.DataFrame: DataFrame containing the target data for polio campaign year 2026 round 2
+        pd.DataFrame: DataFrame containing the target data for polio campaign year 2026 round 2 and round 3
     """
     current_run.log_info(
-        "Importation des données de cibles historiques pour la campagne de polio 2026 round 2..."
+        "Importation des données de cibles historiques pour la campagne de polio 2026 round 2 et round 3..."
     )
     try:
         file_path = os.path.join(
@@ -477,44 +477,44 @@ def import_target_data_for_polio_2026_r2() -> pd.DataFrame:
             "Cible CSI JNV Avril 2026.xlsx",
         )
 
-        target_polio_2026_r2 = pd.read_excel(
+        target_polio_2026_r2_r3 = pd.read_excel(
             file_path, header=[1], skiprows=0, usecols=[2, 3, 10, 11]
         )
 
-        target_polio_2026_r2 = target_polio_2026_r2.rename(
+        target_polio_2026_r2_r3 = target_polio_2026_r2_r3.rename(
             columns=target_polio_2026_r2_dict
         )
 
-        target_polio_2026_r2 = target_polio_2026_r2[
-            ~target_polio_2026_r2["LVL_3_NAME"].str.contains("Total")
+        target_polio_2026_r2_r3 = target_polio_2026_r2_r3[
+            ~target_polio_2026_r2_r3["LVL_3_NAME"].str.contains("Total")
         ]
-        target_polio_2026_r2 = target_polio_2026_r2[
-            ~target_polio_2026_r2["LVL_6_NAME"].str.contains("Total|DS|DRS/HP")
+        target_polio_2026_r2_r3 = target_polio_2026_r2_r3[
+            ~target_polio_2026_r2_r3["LVL_6_NAME"].str.contains("Total|DS|DRS/HP")
         ]
 
-        target_polio_2026_r2["0-11 mois"] = round(
-            target_polio_2026_r2["0-11 mois"], 0
+        target_polio_2026_r2_r3["0-11 mois"] = round(
+            target_polio_2026_r2_r3["0-11 mois"], 0
         ).astype(int)
-        target_polio_2026_r2["12-59 mois"] = round(
-            target_polio_2026_r2["12-59 mois"], 0
+        target_polio_2026_r2_r3["12-59 mois"] = round(
+            target_polio_2026_r2_r3["12-59 mois"], 0
         ).astype(int)
 
-        target_polio_2026_r2_clean = pd.melt(
-            target_polio_2026_r2,
+        target_polio_2026_r2_r3_clean = pd.melt(
+            target_polio_2026_r2_r3,
             id_vars=["LVL_3_NAME", "LVL_6_NAME"],
             var_name="age",
             value_name="cible",
         ).fillna(0)
-        target_polio_2026_r2_clean["year"] = 2026
-        target_polio_2026_r2_clean["campaign"] = "polio_2"
+        target_polio_2026_r2_r3_clean["year"] = 2026
+        target_polio_2026_r2_r3_clean["campaign"] = "polio_2"
 
         current_run.log_info(
-            "Importation des données de cibles pour la campagne de polio 2026 round 2 terminée."
+            "Importation des données de cibles pour la campagne de polio 2026 round 2 et round 3 terminée."
         )
 
-        return target_polio_2026_r2_clean
+        return target_polio_2026_r2_r3_clean
     except Exception as e:
-        msg = f"Erreur lors de l'importation des données de cibles historiques pour la campagne de polio 2026 round 2: {str(e)}"
+        msg = f"Erreur lors de l'importation des données de cibles historiques pour la campagne de polio 2026 round 2 et round 3 : {str(e)}"
         current_run.log_error(msg)
         raise
 
@@ -848,16 +848,20 @@ def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
             target_df_expanded["produit"] = "vaccin polio"
             target_df_expanded = target_df_expanded.drop("campaign", axis=1)
 
-        # polio 2026 round 2
+        # polio 2026 rounds 2 , 3
         elif (
             target_df["campaign"].iloc[0] == "polio_2"
             and target_df["year"].iloc[0] == 2026
         ):
-            target_df_expanded = target_df.copy()
-            target_df_expanded["round"] = "round 2"
-            target_df_expanded["produit"] = "vaccin polio"
-            target_df_expanded = target_df_expanded.drop("campaign", axis=1)
-
+            target_df_expanded_r2 = target_df.copy()
+            target_df_expanded_r2["round"] = "round 2"
+            target_df_expanded_r2["produit"] = "vaccin polio"
+            target_df_expanded_r2 = target_df_expanded_r2.drop("campaign", axis=1)
+            target_df_expanded_r3 = target_df_expanded_r2.copy()
+            target_df_expanded_r3["round"] = "round 3"
+            target_df_expanded = pd.concat(
+                [target_df_expanded_r2, target_df_expanded_r3], ignore_index=True
+            )
         else:
             current_run.log_error(
                 "Combinaison campagne et année inconnue. Impossible d'ajouter les rounds et les produits."

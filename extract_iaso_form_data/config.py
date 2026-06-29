@@ -5,7 +5,7 @@ import os
 PROJECT_FOLDER = "multi-campagne"
 WORKSPACE_PATH = workspace.files_path
 # WORKSPACE_PATH = os.path.join(
-#     os.getcwd(), "extract_process_iaso_form_data", "workspace"
+#     os.getcwd(), "extract_iaso_form_data", "workspace"
 # )  # local only
 OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "outputs")
 IASO_EXTRACTION_PATH = os.path.join(OUTPUTS_PATH, "iaso_données_extraites")

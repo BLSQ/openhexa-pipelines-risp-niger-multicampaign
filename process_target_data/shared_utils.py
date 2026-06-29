@@ -3,9 +3,7 @@ from openhexa.sdk import current_run, workspace
 import pandas as pd
 
 WORKSPACE_PATH = workspace.files_path
-# WORKSPACE_PATH = os.path.join(
-#     os.getcwd(), "process_historical_target_data", "workspace"
-# )  # local
+# WORKSPACE_PATH = os.path.join(os.getcwd(), "process_target_data", "workspace")  # local
 PROJECT_FOLDER = "multi-campagne"
 OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "outputs")
 
