@@ -853,15 +853,36 @@ def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
             target_df["campaign"].iloc[0] == "polio_2"
             and target_df["year"].iloc[0] == 2026
         ):
-            target_df_expanded_r2 = target_df.copy()
-            target_df_expanded_r2["round"] = "round 2"
-            target_df_expanded_r2["produit"] = "vaccin polio"
-            target_df_expanded_r2 = target_df_expanded_r2.drop("campaign", axis=1)
-            target_df_expanded_r3 = target_df_expanded_r2.copy()
-            target_df_expanded_r3["round"] = "round 3"
-            target_df_expanded = pd.concat(
-                [target_df_expanded_r2, target_df_expanded_r3], ignore_index=True
+            rounds = ["round 2", "round 3"]
+            target_df_expanded = pd.DataFrame(
+                np.repeat(target_df.values, len(rounds), axis=0),
+                columns=target_df.columns,
             )
+            target_df_expanded["round"] = rounds * (len(target_df))
+            target_df_expanded_polio = target_df_expanded.copy()
+            target_df_expanded_polio["produit"] = "vaccin polio"
+
+            target_df_expanded_vitA = target_df_expanded.copy()
+            target_df_expanded_vitA["produit"] = "vitamine A"
+            target_df_expanded_vitA["age"] = target_df_expanded_vitA["age"].replace(
+                age_adjustment_vitA
+            )
+
+            target_df_expanded_albendazole = target_df_expanded.copy()
+            target_df_expanded_albendazole["produit"] = "albendazole"
+            target_df_expanded_albendazole["age"] = target_df_expanded_albendazole[
+                "age"
+            ].replace(age_adjustment_albendazole)
+
+            target_df_expanded = pd.concat(
+                [
+                    target_df_expanded_polio,
+                    target_df_expanded_vitA,
+                    target_df_expanded_albendazole,
+                ],
+                ignore_index=True,
+            )
+            target_df_expanded = target_df_expanded.drop("campaign", axis=1)
         else:
             current_run.log_error(
                 "Combinaison campagne et année inconnue. Impossible d'ajouter les rounds et les produits."
