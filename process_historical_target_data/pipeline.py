@@ -20,6 +20,7 @@ from config import (
     target_men5_tcv_2025_columns_dict,
     target_polio_2026_r1_columns,
     target_polio_2026_r2_dict,
+    target_albendazole_vitA_2026_r3_dict,
     csi_matching_failed,
 )
 from shared_utils import (
@@ -59,6 +60,14 @@ def process_historical_target_data():
         target_polio_rougeole_2025_r1_r2
     )
 
+    target_albendazole_vitA_2026_r3 = import_target_data_for_albendazole_vitA_2026_r3()
+    target_albendazole_vitA_2026_r3 = match_district_to_org_unit_id(
+        target_albendazole_vitA_2026_r3, iaso_org_unit_tree_df_clean
+    )
+    target_albendazole_vitA_2026_r3 = add_rounds_and_products(
+        target_albendazole_vitA_2026_r3
+    )
+
     # csi-level historical target data
     target_yellow_fever_2025_2026_r1 = (
         import_target_data_for_yellow_fever_2025_2026_r1()
@@ -82,11 +91,12 @@ def process_historical_target_data():
     )
     target_polio_2026_r1 = add_rounds_and_products(target_polio_2026_r1)
 
-    target_polio_2026_r2_r3 = import_target_data_for_polio_2026_r2_r3()
-    target_polio_2026_r2_r3 = match_csi_to_org_unit_id(
-        target_polio_2026_r2_r3, iaso_org_unit_tree_df_clean
+    target_polio_2026_r2 = import_target_data_for_polio_2026_r2()
+    target_polio_2026_r2 = match_csi_to_org_unit_id(
+        target_polio_2026_r2, iaso_org_unit_tree_df_clean
     )
-    target_polio_2026_r2_r3 = add_rounds_and_products(target_polio_2026_r2_r3)
+    target_polio_2026_r2 = add_rounds_and_products(target_polio_2026_r2)
+
     # combine all target data
     target_data_combined = combine_target_data(
         [
@@ -95,7 +105,8 @@ def process_historical_target_data():
             target_yellow_fever_2025_2026_r1,
             target_men5_tcv_2025_r1_r2,
             target_polio_2026_r1,
-            target_polio_2026_r2_r3,
+            target_polio_2026_r2,
+            target_albendazole_vitA_2026_r3,
         ]
     )
 
@@ -458,18 +469,18 @@ def import_target_data_for_polio_2026_r1() -> pd.DataFrame:
         raise
 
 
-def import_target_data_for_polio_2026_r2_r3() -> pd.DataFrame:
+def import_target_data_for_polio_2026_r2() -> pd.DataFrame:
     """
-    Import target data for polio campaign for year 2026 round 2 and round 3.
+    Import target data for polio campaign for year 2026 round 2.
 
     Args:
         None
 
     Returns:
-        pd.DataFrame: DataFrame containing the target data for polio campaign year 2026 round 2 and round 3
+        pd.DataFrame: DataFrame containing the target data for polio campaign year 2026 round 2
     """
     current_run.log_info(
-        "Importation des données de cibles historiques pour la campagne de polio 2026 round 2 et round 3..."
+        "Importation des données de cibles historiques pour la campagne de polio 2026 round 2..."
     )
     try:
         file_path = os.path.join(
@@ -477,44 +488,107 @@ def import_target_data_for_polio_2026_r2_r3() -> pd.DataFrame:
             "Cible CSI JNV Avril 2026.xlsx",
         )
 
-        target_polio_2026_r2_r3 = pd.read_excel(
+        target_polio_2026_r2 = pd.read_excel(
             file_path, header=[1], skiprows=0, usecols=[2, 3, 10, 11]
         )
 
-        target_polio_2026_r2_r3 = target_polio_2026_r2_r3.rename(
+        target_polio_2026_r2 = target_polio_2026_r2.rename(
             columns=target_polio_2026_r2_dict
         )
 
-        target_polio_2026_r2_r3 = target_polio_2026_r2_r3[
-            ~target_polio_2026_r2_r3["LVL_3_NAME"].str.contains("Total")
+        target_polio_2026_r2 = target_polio_2026_r2[
+            ~target_polio_2026_r2["LVL_3_NAME"].str.contains("Total")
         ]
-        target_polio_2026_r2_r3 = target_polio_2026_r2_r3[
-            ~target_polio_2026_r2_r3["LVL_6_NAME"].str.contains("Total|DS|DRS/HP")
+        target_polio_2026_r2 = target_polio_2026_r2[
+            ~target_polio_2026_r2["LVL_6_NAME"].str.contains("Total|DS|DRS/HP")
         ]
 
-        target_polio_2026_r2_r3["0-11 mois"] = round(
-            target_polio_2026_r2_r3["0-11 mois"], 0
+        target_polio_2026_r2["0-11 mois"] = round(
+            target_polio_2026_r2["0-11 mois"], 0
         ).astype(int)
-        target_polio_2026_r2_r3["12-59 mois"] = round(
-            target_polio_2026_r2_r3["12-59 mois"], 0
+        target_polio_2026_r2["12-59 mois"] = round(
+            target_polio_2026_r2["12-59 mois"], 0
         ).astype(int)
 
-        target_polio_2026_r2_r3_clean = pd.melt(
-            target_polio_2026_r2_r3,
+        target_polio_2026_r2_clean = pd.melt(
+            target_polio_2026_r2,
             id_vars=["LVL_3_NAME", "LVL_6_NAME"],
             var_name="age",
             value_name="cible",
         ).fillna(0)
-        target_polio_2026_r2_r3_clean["year"] = 2026
-        target_polio_2026_r2_r3_clean["campaign"] = "polio_2"
+        target_polio_2026_r2_clean["year"] = 2026
+        target_polio_2026_r2_clean["campaign"] = "polio_2"
 
         current_run.log_info(
-            "Importation des données de cibles pour la campagne de polio 2026 round 2 et round 3 terminée."
+            "Importation des données de cibles pour la campagne de polio 2026 round 2 terminée."
         )
 
-        return target_polio_2026_r2_r3_clean
+        return target_polio_2026_r2_clean
     except Exception as e:
-        msg = f"Erreur lors de l'importation des données de cibles historiques pour la campagne de polio 2026 round 2 et round 3 : {str(e)}"
+        msg = f"Erreur lors de l'importation des données de cibles historiques pour la campagne de polio 2026 round 2 : {str(e)}"
+        current_run.log_error(msg)
+        raise
+
+
+def import_target_data_for_albendazole_vitA_2026_r3() -> pd.DataFrame:
+    """
+    Import target data for albendazole and vitamin A campaign for year 2026 round 3.
+
+    Args:
+        None
+
+    Returns:
+        pd.DataFrame: DataFrame containing the target data for albendazole and vitamin A campaign year 2026 round 3
+    """
+    current_run.log_info(
+        "Importation des données de cibles historiques pour la campagne d'albendazole et vitamine A 2026 round 3..."
+    )
+    try:
+        file_path = os.path.join(
+            TARGETS_HISTORICAL_PATH,
+            "Population Niger_2026.xlsx",
+        )
+
+        target_albendazole_vitA_2026_r3 = pd.read_excel(
+            file_path, header=[1], skiprows=13, usecols=[1, 4, 7, 8, 9]
+        )
+
+        target_albendazole_vitA_2026_r3 = target_albendazole_vitA_2026_r3.rename(
+            columns=target_albendazole_vitA_2026_r3_dict
+        )
+
+        target_albendazole_vitA_2026_r3 = target_albendazole_vitA_2026_r3.dropna(
+            subset=["6-11 mois"]
+        )
+        target_albendazole_vitA_2026_r3 = target_albendazole_vitA_2026_r3[
+            ~target_albendazole_vitA_2026_r3["LVL_3_NAME"]
+            .str.contains("Région|Total", case=False)
+            .fillna(True)
+        ]
+
+        target_albendazole_vitA_2026_r3["LVL_3_NAME"] = target_albendazole_vitA_2026_r3[
+            "LVL_3_NAME"
+        ].map(polio_2024_dict_districts_cibles_iaso)
+        target_albendazole_vitA_2026_r3 = pd.melt(
+            target_albendazole_vitA_2026_r3,
+            id_vars="LVL_3_NAME",
+            var_name="age",
+            value_name="cible",
+        ).fillna(0)
+
+        target_albendazole_vitA_2026_r3["cible"] = target_albendazole_vitA_2026_r3[
+            "cible"
+        ].astype(int)
+        target_albendazole_vitA_2026_r3["year"] = 2026
+        target_albendazole_vitA_2026_r3["campaign"] = "albendazole_vitA_3"
+
+        current_run.log_info(
+            "Importation des données de cibles pour la campagne d'albendazole et vitamine A 2026 round 3 terminée."
+        )
+
+        return target_albendazole_vitA_2026_r3
+    except Exception as e:
+        msg = f"Erreur lors de l'importation des données historiques de cibles pour les campagnes d'albendazole et vitamine A 2026 round 3: {str(e)}"
         current_run.log_error(msg)
         raise
 
@@ -838,27 +912,18 @@ def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
             )
             target_df_expanded = target_df_expanded.drop("campaign", axis=1)
 
-        # polio 2026 round 1
+        # polio, albendazole, vitA 2026 round 1
         elif (
             target_df["campaign"].iloc[0] == "polio_1"
             and target_df["year"].iloc[0] == 2026
         ):
-            target_df_expanded = target_df.copy()
-            target_df_expanded["round"] = "round 1"
-            target_df_expanded["produit"] = "vaccin polio"
-            target_df_expanded = target_df_expanded.drop("campaign", axis=1)
-
-        # polio 2026 rounds 2 , 3
-        elif (
-            target_df["campaign"].iloc[0] == "polio_2"
-            and target_df["year"].iloc[0] == 2026
-        ):
-            rounds = ["round 2", "round 3"]
+            rounds = ["round 1"]
             target_df_expanded = pd.DataFrame(
                 np.repeat(target_df.values, len(rounds), axis=0),
                 columns=target_df.columns,
             )
             target_df_expanded["round"] = rounds * (len(target_df))
+
             target_df_expanded_polio = target_df_expanded.copy()
             target_df_expanded_polio["produit"] = "vaccin polio"
 
@@ -879,6 +944,76 @@ def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
                     target_df_expanded_polio,
                     target_df_expanded_vitA,
                     target_df_expanded_albendazole,
+                ],
+                ignore_index=True,
+            )
+            target_df_expanded = target_df_expanded.drop("campaign", axis=1)
+
+        # polio, albendazole, vitA 2026 rounds 2
+        elif (
+            target_df["campaign"].iloc[0] == "polio_2"
+            and target_df["year"].iloc[0] == 2026
+        ):
+            rounds = ["round 2"]
+            target_df_expanded = pd.DataFrame(
+                np.repeat(target_df.values, len(rounds), axis=0),
+                columns=target_df.columns,
+            )
+            target_df_expanded["round"] = rounds * (len(target_df))
+
+            target_df_expanded_polio = target_df_expanded.copy()
+            target_df_expanded_polio["produit"] = "vaccin polio"
+
+            target_df_expanded_vitA = target_df_expanded.copy()
+            target_df_expanded_vitA["produit"] = "vitamine A"
+            target_df_expanded_vitA["age"] = target_df_expanded_vitA["age"].replace(
+                age_adjustment_vitA
+            )
+
+            target_df_expanded_albendazole = target_df_expanded.copy()
+            target_df_expanded_albendazole["produit"] = "albendazole"
+            target_df_expanded_albendazole["age"] = target_df_expanded_albendazole[
+                "age"
+            ].replace(age_adjustment_albendazole)
+
+            target_df_expanded = pd.concat(
+                [
+                    target_df_expanded_polio,
+                    target_df_expanded_vitA,
+                    target_df_expanded_albendazole,
+                ],
+                ignore_index=True,
+            )
+            target_df_expanded = target_df_expanded.drop("campaign", axis=1)
+
+        # albendazole, vitA 2026 rounds 3
+        elif (
+            target_df["campaign"].iloc[0] == "albendazole_vitA_3"
+            and target_df["year"].iloc[0] == 2026
+        ):
+            rounds = ["round 3"]
+            target_df_expanded = pd.DataFrame(
+                np.repeat(target_df.values, len(rounds), axis=0),
+                columns=target_df.columns,
+            )
+            target_df_expanded["round"] = rounds * (len(target_df))
+
+            target_df_expanded_albendazole = target_df_expanded.copy()
+            target_df_expanded_albendazole["produit"] = "albendazole"
+            target_df_expanded_albendazole = target_df_expanded_albendazole[
+                target_df_expanded_albendazole["age"].isin(["12-23 mois", "24-59 mois"])
+            ]
+
+            target_df_expanded_vitA = target_df_expanded.copy()
+            target_df_expanded_vitA["produit"] = "vitamine A"
+            target_df_expanded_vitA = target_df_expanded_vitA[
+                target_df_expanded_vitA["age"].isin(["6-11 mois", "12-59 mois"])
+            ]
+
+            target_df_expanded = pd.concat(
+                [
+                    target_df_expanded_albendazole,
+                    target_df_expanded_vitA,
                 ],
                 ignore_index=True,
             )
