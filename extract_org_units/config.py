@@ -1,5 +1,15 @@
 from openhexa.sdk import workspace
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# # set up env (for local testing only)
+# dotenv_path = Path(__file__).parent / ".env"
+# if dotenv_path.exists():
+#     load_dotenv(dotenv_path)
+# os.environ["HEXA_WORKSPACE"] = os.getenv("HEXA_WORKSPACE")
+# os.environ["HEXA_SERVER_URL"] = os.getenv("HEXA_SERVER_URL")
+# os.environ["HEXA_TOKEN"] = os.getenv("HEXA_TOKEN")
 
 # configs
 connection = workspace.get_connection("iaso-pev-niger")

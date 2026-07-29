@@ -166,6 +166,17 @@ target_polio_2026_r2_dict = {
     "12-59 Mois (corrigé)": "12-59 mois",
 }
 
+# albendazole and vitamin A 2026 r3
+target_albendazole_vitA_2026_r3_dict = {
+    "DISTRICTS": "LVL_3_NAME",
+    "0 - 11 mois": "0-11 mois",  # polio
+    " 6-11 mois ": "6-11 mois",  # vit A
+    "12- 59 mois ": "12-59 mois",  # vit A, polio
+    " 12-23 mois": "12-23 mois",  # albendazole
+    " 24- 59 mois ": "24-59 mois",  # albendazole
+}
+
+
 # CSI matching
 csi_matching_failed = {
     ## incorrectly matched

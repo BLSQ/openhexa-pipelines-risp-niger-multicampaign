@@ -11,7 +11,6 @@ from config import (
     OUTPUTS_PATH,
     campaign_name_cleaning_dict,
     campaign_name_mapping_dict,
-    campaign_product_name_mapping_dict,
     months_mapping_dict,
     cols_campaign_map,
 )
@@ -124,6 +123,7 @@ def clean_combined_df(
         - assigning rounds and checking for entries outside the range of campaign rounds
         - dropping entries whose period is outside the expected campaign periods
         - adding the column 'month' identifying the month when each campaign round starts
+        - distinguish between 'polio' and 'jnm' campaigns
     Args:
         iaso_processed_df (pd.DataFrame): The dataframe containing the processed data from the IASO multi-campaign form.
         expected_data_structure (pd.DataFrame): DataFrame containing the expected data structure.
@@ -179,6 +179,13 @@ def clean_combined_df(
             )
         ]
 
+        # distinguish between 'polio' and 'jnm' campaigns based on vaccination_polio_yes_no col
+        iaso_processed_df["choix_campagne"] = np.where(
+            iaso_processed_df["vaccination_polio_yes_no"] == "jnm",
+            "jnm",
+            iaso_processed_df["choix_campagne"],
+        )
+
         # check duplicates and remove them keeping the last entry
         duplicates_df = iaso_processed_df.duplicated(
             subset=["uuid", "org_unit_id", "period", "choix_campagne"], keep=False
@@ -197,14 +204,10 @@ def clean_combined_df(
 
         # drop entries that are not in the expected campaign periods
         expected_periods = expected_data_structure[
-            ["produit", "period", "year", "round"]
+            ["choix_campagne", "period", "year", "round"]
         ].drop_duplicates()
-        expected_periods["choix_campagne"] = expected_periods["produit"].map(
-            campaign_product_name_mapping_dict
-        )
-        expected_periods = expected_periods.drop(columns=["produit"]).drop_duplicates()
         iaso_processed_df = iaso_processed_df.merge(
-            expected_periods[["choix_campagne", "period", "year", "round"]],
+            expected_periods,
             on=["choix_campagne", "period"],
             how="left",
             validate="many_to_one",
@@ -248,6 +251,7 @@ def clean_combined_df(
             .transform("min")
             .dt.month.map(months_mapping_dict)
         )
+
         current_run.log_info("Nettoyage du DataFrame combiné terminé avec succès.")
 
         return iaso_processed_df

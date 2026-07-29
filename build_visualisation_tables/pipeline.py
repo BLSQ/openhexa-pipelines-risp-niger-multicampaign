@@ -21,10 +21,8 @@ from config import (
     cvrg_csi_level_target_keys,
     cvrg_csi_level_final_keys,
     cvrg_csi_level_cumsum_keys,
-    cmpl_cols_selection_1,
+    cmpl_cols_selection,
     cmpl_cols_selection_2,
-    cmpl_cols_selection_3,
-    cmpl_product_campaign_mapping,
     stocks_campaign_map,
     stocks_cols_selection_1,
     stocks_cols_selection_2,
@@ -81,10 +79,17 @@ def build_visualisation_tables():
     target_df = load_data("combined_target_data")
     expected_structure_df = load_data("expected_data_structure")
     iaso_org_unit_tree_clean_df = load_data("iaso_org_unit_tree_clean")
+    iaso_org_unit_tree_raw_df = load_data("iaso_org_unit_tree_raw")
+
+    # combined_df = combined_df[(combined_df["year"] == 2026)]
+    # target_df = target_df[(target_df["year"] == 2026)]
+    # expected_structure_df = expected_structure_df[expected_structure_df["year"] == 2026]
 
     # create datasets
     cvrg_total, cvrg_df = create_coverage_dataset(combined_df, expected_structure_df)
-    cvrg_csi_district = add_target_data(cvrg_df, target_df, iaso_org_unit_tree_clean_df)
+    cvrg_csi_district = add_target_data(
+        cvrg_df, target_df, iaso_org_unit_tree_clean_df, iaso_org_unit_tree_raw_df
+    )
     cmpl = create_completeness_dataset(
         combined_df, expected_structure_df, iaso_org_unit_tree_clean_df
     )
@@ -180,6 +185,12 @@ def create_coverage_dataset(
             all_campaign_data.append(temp_df)
 
         df = pd.concat(all_campaign_data, ignore_index=True)
+
+        # drop duplicates in terms of all cols except campaign (keep "jnm" campaign only). This is b/c jnm and polio share the same fields in the form and so they get counted twice.
+        dup_cols = df.columns.difference(["campaign"]).tolist()
+        df = df.sort_values(by="campaign", key=lambda x: x == "jnm", ascending=False)
+        df = df.drop_duplicates(subset=dup_cols, keep="first")
+
         df = new_cols(
             df,
             "categorizer",
@@ -220,13 +231,18 @@ def create_coverage_dataset(
             )
 
         # merge with expected combined campaign data to ensure all combinations are present
-        df_final = expected_structure_df.merge(
-            cvrg_total,
+        cvrg_total["year"] = cvrg_total["year"].astype("Int64")
+        cvrg_total["org_unit_id"] = cvrg_total["org_unit_id"].astype("Int64")
+        expected_structure = expected_structure_df[
+            cvrg_group_by_cols + ["order_day", "choix_campagne"]
+        ].drop_duplicates()
+        df_final = cvrg_total.merge(
+            expected_structure,
             on=cvrg_group_by_cols,
-            how="left",
+            how="outer",
             indicator=True,
         )
-        unmatched_entries_in_iaso = df_final[df_final["_merge"] == "right_only"]
+        unmatched_entries_in_iaso = df_final[df_final["_merge"] == "left_only"]
         if not unmatched_entries_in_iaso.empty:
             proportion_unmatched_in_iaso = len(unmatched_entries_in_iaso) / len(
                 df_final
@@ -234,7 +250,15 @@ def create_coverage_dataset(
             current_run.log_warning(
                 f"{len(unmatched_entries_in_iaso)} entrées ({proportion_unmatched_in_iaso:.2%}) n'ont pas le même format que le Dataframe de la structure attendue. Ces entrées seront supprimées."
             )
-        df_final = df_final[df_final["_merge"] != "right_only"].drop(columns=["_merge"])
+        df_final = df_final[df_final["_merge"] != "left_only"].drop(columns=["_merge"])
+
+        # # add back LVL_3 and LVL_6 names from expected structure
+        # expected_structure_subset = expected_structure_df[
+        #     ["org_unit_id", "LVL_3_NAME", "LVL_6_NAME"]
+        # ].drop_duplicates()
+        # df_final = df_final.merge(
+        #     expected_structure_subset, on="org_unit_id", how="left"
+        # )
 
         current_run.log_info("Tableau de couverture vaccinale créé avec succès.")
 
@@ -250,6 +274,7 @@ def add_target_data(
     cvrg_df: pd.DataFrame,
     target_df: pd.DataFrame,
     iaso_org_unit_tree_clean_df: pd.DataFrame,
+    iaso_org_unit_tree_raw_df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
     Add District- and CSI-level target data to the coverage dataset to allow computation of
@@ -281,12 +306,11 @@ def add_target_data(
         target_csi_df = target_df.merge(
             csi_filter_df, on=["year", "produit", "round"], how="inner"
         )
-        target_csi_df = target_csi_df.drop(columns=["LVL_3_NAME", "LVL_6_NAME"])
 
         cvrg_csi_df = cvrg_df.merge(
             csi_filter_df, on=["year", "produit", "round"], how="inner"
         )
-        cvrg_csi_df = cvrg_csi_df[cvrg_csi_df["LVL_6_NAME"].notna()]
+        # cvrg_csi_df = cvrg_csi_df[cvrg_csi_df["LVL_6_NAME"].notna()]
 
         # 2. Niveau CSI
         cvrg_csi_with_targets = process_target_level(
@@ -296,13 +320,17 @@ def add_target_data(
             cvrg_csi_level_final_keys,
             cvrg_csi_level_cumsum_keys,
             "CSI",
+            iaso_org_unit_tree_raw_df,
         )
         cvrg_csi_with_targets["choice_org_unit_level"] = "CSI"
+        cvrg_csi_with_targets["org_unit_id"] = cvrg_csi_with_targets[
+            "org_unit_id"
+        ].astype("Int64")
         cvrg_csi_with_targets["link_key"] = (
             cvrg_csi_with_targets["org_unit_id"].astype(str) + "_CSI"
         )
 
-        # 3. Niveau District (Logic Optimized for Consistency)
+        # 3. Niveau District
         rep_ids = (
             iaso_org_unit_tree_clean_df.sort_values(["LVL_3_NAME", "org_unit_id"])
             .groupby("LVL_3_NAME")["org_unit_id"]
@@ -312,18 +340,22 @@ def add_target_data(
         )
 
         # Identify unique District/Campaign keys that have CSI-level reporting
-        districts_with_csi_reporting = cvrg_csi_df[
+        districts_with_csi_reporting = cvrg_csi_with_targets[
             cvrg_csi_level_target_keys
         ].drop_duplicates()
 
         # cvrg_district_df_2 --> CSI level coverage aggregated at district level
-        cvrg_district_df_2 = cvrg_csi_df.groupby(
+        cvrg_district_df_2 = cvrg_csi_with_targets.groupby(
             cvrg_district_level_group_keys, as_index=False
         ).agg({"value": "sum"})
 
         # cvrg_district_df_1 --> Coverage for campaigns/districts that ONLY report at District level
-        # We filter the raw coverage for district-level rows (LVL_6 is NA)
-        cvrg_df_pure_district_raw = cvrg_df[cvrg_df["LVL_6_NAME"].isna()]
+        ds_filter_df = target_df[target_df["LVL_6_NAME"].isna()][
+            ["year", "produit", "round"]
+        ].drop_duplicates()
+        cvrg_df_pure_district_raw = cvrg_df.merge(
+            ds_filter_df, on=["year", "produit", "round"], how="inner"
+        )
 
         # We remove any row that belongs to a campaign/district already covered in the CSI aggregation
         cvrg_district_df_1 = cvrg_df_pure_district_raw.merge(
@@ -335,6 +367,14 @@ def add_target_data(
         cvrg_district_df_1 = cvrg_district_df_1[
             cvrg_district_df_1["_merge"] == "left_only"
         ].drop(columns=["_merge"])
+
+        # add LVL_3 name from org_unit_tree
+        lvl_3_name_ds = iaso_org_unit_tree_raw_df[
+            ["org_unit_id", "LVL_3_NAME"]
+        ].drop_duplicates()
+        cvrg_district_df_1 = cvrg_district_df_1.merge(
+            lvl_3_name_ds, on="org_unit_id", how="left"
+        )
 
         # Aggregating pure district data to ensure structure matches
         cvrg_district_df_1 = cvrg_district_df_1.groupby(
@@ -365,8 +405,12 @@ def add_target_data(
             cvrg_district_level_final_keys,
             cvrg_district_level_cumsum_keys,
             "District",
+            iaso_org_unit_tree_raw_df,
         )
         cvrg_district_with_targets["choice_org_unit_level"] = "District"
+        cvrg_district_with_targets["org_unit_id"] = cvrg_district_with_targets[
+            "org_unit_id"
+        ].astype("Int64")
         cvrg_district_with_targets["link_key"] = (
             cvrg_district_with_targets["org_unit_id"].astype(str) + "_District"
         )
@@ -424,30 +468,26 @@ def create_completeness_dataset(
     """
     current_run.log_info("Création du tableau de complétude vaccinale...")
     try:
-        actual = iaso_form_data_df[cmpl_cols_selection_1].copy()
+        actual = iaso_form_data_df[cmpl_cols_selection].copy()
         actual["presence_equipe"] = 1
 
-        expected = expected_structure_df[cmpl_cols_selection_2].copy()
+        expected = expected_structure_df[cmpl_cols_selection].copy()
         clean_org_unit_ids = iaso_org_unit_tree_clean_df["org_unit_id"].unique()
         expected = expected[expected["org_unit_id"].isin(clean_org_unit_ids)]
-
-        expected["choix_campagne"] = expected["produit"].map(
-            cmpl_product_campaign_mapping
-        )
-        expected = expected.drop(columns=["produit"]).drop_duplicates()
+        expected = expected.drop_duplicates()
 
         cmpl = pd.merge(
             expected,
             actual,
-            on=cmpl_cols_selection_1,
+            on=cmpl_cols_selection,
             how="left",
         )
 
-        cmpl = cmpl.sort_values(cmpl_cols_selection_1)
+        cmpl = cmpl.sort_values(cmpl_cols_selection)
         cmpl["_is_visited"] = cmpl["presence_equipe"] == 1
         cmpl["_first_visit_period"] = (
             cmpl[cmpl["_is_visited"]]
-            .groupby(cmpl_cols_selection_3)["period"]
+            .groupby(cmpl_cols_selection_2)["period"]
             .transform("min")
         )
         cmpl["presence_equipe_cum"] = (

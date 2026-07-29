@@ -12,14 +12,6 @@ campaign_name_cleaning_dict = {
     "men5_tcv": "men5 tcv",
 }
 
-campaign_name_mapping_dict = {
-    "POLIOMYELITE": "polio",
-    "rougeole": "rougeole",
-    "Fievre_Jaune": "fièvre jaune",
-    "men5": "méningite",
-    "tcv": "tcv",
-}
-
 # iaso df
 iaso_df_common_cols = [
     "uuid",
@@ -109,6 +101,58 @@ cvrg_polio_cols = (
     ]
 )
 
+cvrg_jnm_cols = [
+    "vitamine_a_12_24_mois_site_ordinaire",
+    "vitamine_a_12_24_mois_site_speciaux",
+    "vitamine_a_12_24_mois_site_speciaux_autre",
+    "vitamine_a_12_24_mois_site_speciaux_deplace_int",
+    "vitamine_a_12_24_mois_site_speciaux_gares",
+    "vitamine_a_12_24_mois_site_speciaux_marche",
+    "vitamine_a_12_24_mois_site_speciaux_nomad",
+    "vitamine_a_12_24_mois_site_speciaux_point_eau",
+    "vitamine_a_12_24_mois_site_speciaux_postefron",
+    "vitamine_a_12_24_mois_site_speciaux_refugie",
+    "vitamine_a_12_24_mois_site_trans_front_cote_front",
+    "vitamine_a_12_24_mois_site_trans_front_cote_niger",
+    "vitamine_a_6_11_mois_site_ordinaire",
+    "vitamine_a_6_11_mois_site_speciaux",
+    "vitamine_a_6_11_mois_site_speciaux_autre",
+    "vitamine_a_6_11_mois_site_speciaux_deplace_int",
+    "vitamine_a_6_11_mois_site_speciaux_gares",
+    "vitamine_a_6_11_mois_site_speciaux_marche",
+    "vitamine_a_6_11_mois_site_speciaux_nomad",
+    "vitamine_a_6_11_mois_site_speciaux_point_eau",
+    "vitamine_a_6_11_mois_site_speciaux_postefron",
+    "vitamine_a_6_11_mois_site_speciaux_refugie",
+    "vitamine_a_6_11_mois_site_trans_front_cote_front",
+    "vitamine_a_6_11_mois_site_trans_front_cote_niger",
+] + [
+    "depara_12_23_site_ordinaire",
+    "depara_24_59_site_ordinaire",
+    "depara_24_59_site_speciaux",
+    "depara_12_23_site_speciaux_gares",
+    "depara_24_59_site_speciaux_gares",
+    "depara_12_23_site_speciaux_marche",
+    "depara_24_59_site_speciaux_marche",
+    "depara_12_23_site_speciaux_point_eau",
+    "depara_24_59_site_speciaux_point_eau",
+    "depara_12_23_site_speciaux_nomad",
+    "depara_24_59_site_speciaux_nomad",
+    "depara_12_23_site_speciaux_deplace_int",
+    "depara_24_59_site_speciaux_deplace_int",
+    "depara_12_23_site_speciaux_refugie",
+    "depara_24_59_site_speciaux_refugie",
+    "depara_12_23_site_speciaux_autre",
+    "depara_24_59_site_speciaux_autre",
+    "depara_12_23_site_trans_front_cote_niger",
+    "depara_24_59_site_trans_front_cote_niger",
+    "depara_12_23_site_trans_front_cote_front",
+    "depara_24_59_site_trans_front_cote_front",
+    "depara_12_23_site_speciaux_postefron",
+    "depara_24_59_site_speciaux_postefron",
+]
+
+
 cvrg_fjaune_cols = (
     [
         "nbre_enfant_vaccine_9_11_mois__fievre_jaune",
@@ -172,6 +216,7 @@ cvrg_tcv_cols = [
 
 cvrg_campaign_map = {
     "polio": cvrg_polio_cols,
+    "jnm": cvrg_jnm_cols,
     "fièvre jaune": cvrg_fjaune_cols,
     "rougeole": cvrg_rougeole_cols,
     "méningite": cvrg_meningite_cols,
@@ -236,21 +281,8 @@ cvrg_csi_level_final_keys = cvrg_district_level_final_keys + ["LVL_6_NAME"]
 cvrg_csi_level_cumsum_keys = cvrg_district_level_cumsum_keys + ["LVL_6_NAME"]
 
 # completeness table
-cmpl_product_campaign_mapping = {
-    "vaccin polio": "polio",
-    "vitamine A": "polio",
-    "albendazole": "polio",
-    "rougeole": "rougeole",
-    "fièvre jaune": "fièvre jaune",
-    "méningite": "méningite",
-    "tcv": "tcv",
-}
-
-cmpl_cols_selection_1 = ["choix_campagne", "org_unit_id", "year", "round", "period"]
-cmpl_cols_selection_2 = [
-    col for col in cmpl_cols_selection_1 if col != "choix_campagne"
-] + ["produit"]
-cmpl_cols_selection_3 = [col for col in cmpl_cols_selection_1 if col != "period"]
+cmpl_cols_selection = ["choix_campagne", "org_unit_id", "year", "round", "period"]
+cmpl_cols_selection_2 = ["choix_campagne", "org_unit_id", "year", "round"]
 
 # stocks table
 stock_polio_cols = (

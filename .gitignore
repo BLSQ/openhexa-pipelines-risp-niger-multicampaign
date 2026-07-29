@@ -9,3 +9,6 @@
 *.csv
 *.xlsx
 *Zone.Identifier
+
+# environment variables
+.env
