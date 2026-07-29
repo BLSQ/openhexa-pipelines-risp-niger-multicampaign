@@ -60,12 +60,14 @@ def process_historical_target_data():
         target_polio_rougeole_2025_r1_r2
     )
 
-    target_albendazole_vitA_2026_r3 = import_target_data_for_albendazole_vitA_2026_r3()
-    target_albendazole_vitA_2026_r3 = match_district_to_org_unit_id(
-        target_albendazole_vitA_2026_r3, iaso_org_unit_tree_df_clean
+    target_albendazole_vitA_polio_2026_r3 = (
+        import_target_data_for_albendazole_vitA_polio_2026_r3()
     )
-    target_albendazole_vitA_2026_r3 = add_rounds_and_products(
-        target_albendazole_vitA_2026_r3
+    target_albendazole_vitA_polio_2026_r3 = match_district_to_org_unit_id(
+        target_albendazole_vitA_polio_2026_r3, iaso_org_unit_tree_df_clean
+    )
+    target_albendazole_vitA_polio_2026_r3 = add_rounds_and_products(
+        target_albendazole_vitA_polio_2026_r3
     )
 
     # csi-level historical target data
@@ -106,7 +108,7 @@ def process_historical_target_data():
             target_men5_tcv_2025_r1_r2,
             target_polio_2026_r1,
             target_polio_2026_r2,
-            target_albendazole_vitA_2026_r3,
+            target_albendazole_vitA_polio_2026_r3,
         ]
     )
 
@@ -530,7 +532,7 @@ def import_target_data_for_polio_2026_r2() -> pd.DataFrame:
         raise
 
 
-def import_target_data_for_albendazole_vitA_2026_r3() -> pd.DataFrame:
+def import_target_data_for_albendazole_vitA_polio_2026_r3() -> pd.DataFrame:
     """
     Import target data for albendazole and vitamin A campaign for year 2026 round 3.
 
@@ -549,44 +551,48 @@ def import_target_data_for_albendazole_vitA_2026_r3() -> pd.DataFrame:
             "Population Niger_2026.xlsx",
         )
 
-        target_albendazole_vitA_2026_r3 = pd.read_excel(
-            file_path, header=[1], skiprows=13, usecols=[1, 4, 7, 8, 9]
+        target_albendazole_vitA_polio_2026_r3 = pd.read_excel(
+            file_path, header=[1], skiprows=13, usecols=[1, 3, 4, 7, 8, 9]
         )
 
-        target_albendazole_vitA_2026_r3 = target_albendazole_vitA_2026_r3.rename(
-            columns=target_albendazole_vitA_2026_r3_dict
+        target_albendazole_vitA_polio_2026_r3 = (
+            target_albendazole_vitA_polio_2026_r3.rename(
+                columns=target_albendazole_vitA_2026_r3_dict
+            )
         )
 
-        target_albendazole_vitA_2026_r3 = target_albendazole_vitA_2026_r3.dropna(
-            subset=["6-11 mois"]
+        target_albendazole_vitA_polio_2026_r3 = (
+            target_albendazole_vitA_polio_2026_r3.dropna(subset=["6-11 mois"])
         )
-        target_albendazole_vitA_2026_r3 = target_albendazole_vitA_2026_r3[
-            ~target_albendazole_vitA_2026_r3["LVL_3_NAME"]
+        target_albendazole_vitA_polio_2026_r3 = target_albendazole_vitA_polio_2026_r3[
+            ~target_albendazole_vitA_polio_2026_r3["LVL_3_NAME"]
             .str.contains("Région|Total", case=False)
             .fillna(True)
         ]
 
-        target_albendazole_vitA_2026_r3["LVL_3_NAME"] = target_albendazole_vitA_2026_r3[
-            "LVL_3_NAME"
-        ].map(polio_2024_dict_districts_cibles_iaso)
-        target_albendazole_vitA_2026_r3 = pd.melt(
-            target_albendazole_vitA_2026_r3,
+        target_albendazole_vitA_polio_2026_r3["LVL_3_NAME"] = (
+            target_albendazole_vitA_polio_2026_r3["LVL_3_NAME"].map(
+                polio_2024_dict_districts_cibles_iaso
+            )
+        )
+        target_albendazole_vitA_polio_2026_r3 = pd.melt(
+            target_albendazole_vitA_polio_2026_r3,
             id_vars="LVL_3_NAME",
             var_name="age",
             value_name="cible",
         ).fillna(0)
 
-        target_albendazole_vitA_2026_r3["cible"] = target_albendazole_vitA_2026_r3[
-            "cible"
-        ].astype(int)
-        target_albendazole_vitA_2026_r3["year"] = 2026
-        target_albendazole_vitA_2026_r3["campaign"] = "albendazole_vitA_3"
+        target_albendazole_vitA_polio_2026_r3["cible"] = (
+            target_albendazole_vitA_polio_2026_r3["cible"].astype(int)
+        )
+        target_albendazole_vitA_polio_2026_r3["year"] = 2026
+        target_albendazole_vitA_polio_2026_r3["campaign"] = "albendazole_vitA_polio_3"
 
         current_run.log_info(
             "Importation des données de cibles pour la campagne d'albendazole et vitamine A 2026 round 3 terminée."
         )
 
-        return target_albendazole_vitA_2026_r3
+        return target_albendazole_vitA_polio_2026_r3
     except Exception as e:
         msg = f"Erreur lors de l'importation des données historiques de cibles pour les campagnes d'albendazole et vitamine A 2026 round 3: {str(e)}"
         current_run.log_error(msg)
@@ -745,9 +751,9 @@ def match_district_to_org_unit_id(
         iaso_org_unit_tree_for_matching = iaso_org_unit_tree_df_clean[
             ["org_unit_id", "LVL_3_NAME"]
         ].drop_duplicates()
-        iaso_org_unit_tree_for_matching = iaso_org_unit_tree_for_matching.groupby(
-            ["LVL_3_NAME"], as_index=False
-        ).first()
+        # iaso_org_unit_tree_for_matching = iaso_org_unit_tree_for_matching.groupby(
+        #     ["LVL_3_NAME"], as_index=False
+        # ).first()
 
         target_df_matched = district_level_target_df.merge(
             iaso_org_unit_tree_for_matching, on=["LVL_3_NAME"], how="left"
@@ -986,9 +992,9 @@ def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
             )
             target_df_expanded = target_df_expanded.drop("campaign", axis=1)
 
-        # albendazole, vitA 2026 rounds 3
+        # albendazole, vitA, polio 2026 rounds 3
         elif (
-            target_df["campaign"].iloc[0] == "albendazole_vitA_3"
+            target_df["campaign"].iloc[0] == "albendazole_vitA_polio_3"
             and target_df["year"].iloc[0] == 2026
         ):
             rounds = ["round 3"]
@@ -998,20 +1004,33 @@ def add_rounds_and_products(target_df: pd.DataFrame) -> pd.DataFrame:
             )
             target_df_expanded["round"] = rounds * (len(target_df))
 
+            target_df_expanded_polio = target_df_expanded.copy()
+            target_df_expanded_polio["produit"] = "vaccin polio"
+            target_df_expanded_polio = target_df_expanded_polio[
+                target_df_expanded_polio["age"].isin(["0-11 mois", "12-59 mois"])
+            ]
+
             target_df_expanded_albendazole = target_df_expanded.copy()
             target_df_expanded_albendazole["produit"] = "albendazole"
             target_df_expanded_albendazole = target_df_expanded_albendazole[
                 target_df_expanded_albendazole["age"].isin(["12-23 mois", "24-59 mois"])
             ]
+            target_df_expanded_albendazole["age"] = target_df_expanded_albendazole[
+                "age"
+            ].replace(age_adjustment_albendazole)
 
             target_df_expanded_vitA = target_df_expanded.copy()
             target_df_expanded_vitA["produit"] = "vitamine A"
             target_df_expanded_vitA = target_df_expanded_vitA[
                 target_df_expanded_vitA["age"].isin(["6-11 mois", "12-59 mois"])
             ]
+            target_df_expanded_vitA["age"] = target_df_expanded_vitA["age"].replace(
+                age_adjustment_vitA
+            )
 
             target_df_expanded = pd.concat(
                 [
+                    target_df_expanded_polio,
                     target_df_expanded_albendazole,
                     target_df_expanded_vitA,
                 ],

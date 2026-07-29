@@ -195,6 +195,7 @@ def process_target_level(
     final_keys: list,
     cumsum_keys: list,
     level_label: str,
+    org_unit_tree_df: pd.DataFrame = None,
 ) -> pd.DataFrame:
     """
     Helper to merge targets, log warnings, and calculate cumulative values.
@@ -221,8 +222,8 @@ def process_target_level(
             warn_msg = f"{len(no_target)} entrée(s) ({prop:.2%}) au niveau {level_label} n'ont pas de cible."
 
             if level_label == "CSI" and "LVL_6_NAME" in no_target.columns:
-                affected = no_target["LVL_6_NAME"].unique().tolist()
-                warn_msg += f" CSI affectés: {', '.join(affected)}"
+                affected = no_target["org_unit_id"].unique().tolist()
+                warn_msg += f" CSI affectés: {', '.join(map(str, affected))}"
 
             current_run.log_warning(warn_msg + " Valeur cible: NaN.")
 
@@ -234,6 +235,23 @@ def process_target_level(
         merged["cible"] = (
             pd.to_numeric(merged["cible"], errors="coerce").round(0).astype("Int64")
         )
+
+        # add LVL_3 and LVL_6 names
+        if level_label == "CSI" and "LVL_6_NAME" in merged.columns:
+            merged = merged.drop(columns=["LVL_3_NAME", "LVL_6_NAME"])
+            level_names = org_unit_tree_df[
+                ["org_unit_id", "LVL_3_NAME", "LVL_6_NAME"]
+            ].drop_duplicates()
+            merged = merged.merge(level_names, on="org_unit_id", how="left")
+            merged = merged.dropna(subset=["LVL_3_NAME", "LVL_6_NAME"])
+
+        elif level_label == "District" and "LVL_3_NAME" in merged.columns:
+            merged = merged.drop(columns=["LVL_3_NAME"])
+            level_names = org_unit_tree_df[
+                ["org_unit_id", "LVL_3_NAME"]
+            ].drop_duplicates()
+            merged = merged.merge(level_names, on="org_unit_id", how="left")
+            merged = merged.dropna(subset=["LVL_3_NAME"])
 
         return merged
 

@@ -185,11 +185,13 @@ def create_campaign_period_df() -> pd.DataFrame:
         for (
             year,
             round_num,
+            campaign_name,
             product_name,
         ), dates in historical_campaigns_config.items():
             date_range = pd.date_range(start=dates["début"], end=dates["fin"])
             temp_df = pd.DataFrame(
                 {
+                    "choix_campagne": campaign_name,
                     "produit": product_name,
                     "round": f"round {round_num}",
                     "year": np.int32(year),
