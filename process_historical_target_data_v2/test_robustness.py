@@ -184,13 +184,29 @@ def main():
 
     passed = failed = 0
     failures = []
+    now_rejected = []
     for fn, products, year, rounds, rounding in BASES:
         src = os.path.join(folder, fn)
         if not os.path.exists(src):
             print(f"(skip missing {fn})")
             continue
         raw = pd.read_excel(src, header=None)
-        base = totals(src, products, year, rounds, rounding)
+        try:
+            base = totals(src, products, year, rounds, rounding)
+        except TargetImportError as e:
+            # Some reference files relied on an approximation (a combined-antigen
+            # age notation, an absorbed adult bracket, a fixed-ratio total split)
+            # that the engine now refuses to guess at. Until the file's headers
+            # are corrected to state the exact bracket needed, it is expected to
+            # be rejected outright - report that plainly instead of crashing the
+            # whole suite on it.
+            print("=" * 88)
+            print(
+                f"{fn}\n  BASELINE NOW REJECTED (file needs a header correction): "
+                f"{str(e).splitlines()[0]}"
+            )
+            now_rejected.append((fn, str(e).splitlines()[0]))
+            continue
         print("=" * 88)
         print(f"{fn}\n  baseline: {base}")
 
@@ -216,6 +232,13 @@ def main():
     print(f"MUTATION RESULTS: {passed} passed, {failed} failed")
     for fn, label, got, base in failures:
         print(f"  FAIL {fn} :: {label}\n       got={got}\n       exp={base}")
+    if now_rejected:
+        print(
+            f"\n{len(now_rejected)} reference file(s) skipped (baseline itself now "
+            "rejected, see above) - not included in the counts above:"
+        )
+        for fn, msg in now_rejected:
+            print(f"  - {fn}: {msg}")
 
     # --- error-path checks: these SHOULD fail with a clear, actionable message ---
     print("\n" + "=" * 88)

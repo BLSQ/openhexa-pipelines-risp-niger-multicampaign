@@ -246,13 +246,41 @@ def run_combinations(year: int, products: list, rounds: list) -> set:
     return {(int(year), str(p), f"round {int(r)}") for p in products for r in rounds}
 
 
+def existing_combinations_in_combined() -> set:
+    """
+    The (year, produit, round) combinations already present in
+    combined_historical_target_data - the actual dataset consumers read, and
+    what the pre-run duplicate check is evaluated against.
+
+    Missing or unreadable is treated as "nothing exists yet" (e.g. the very
+    first run) rather than an error.
+    """
+    path = os.path.join(OUTPUTS_PATH, "combined_historical_target_data.parquet")
+    if not os.path.exists(path):
+        return set()
+    try:
+        existing = pd.read_parquet(path, columns=["year", "produit", "round"])
+    except Exception as e:
+        current_run.log_warning(
+            "Fichier combined_historical_target_data illisible, ignoré lors du "
+            f"contrôle de doublons ({e})."
+        )
+        return set()
+    return {
+        (int(y), str(p), str(r))
+        for y, p, r in existing.drop_duplicates().itertuples(index=False)
+    }
+
+
 def find_overlapping_slices(combos: set) -> dict:
     """
-    Look for already-processed data covering any of ``combos``.
+    Locate which individual processed files (in the 'historical targets
+    processed' folder) contain any of ``combos``, so their rows can be dropped.
 
-    Returns {processed file path -> sorted list of overlapping (year, produit,
-    round) slices}. The 'historical targets processed' folder is the source of
-    truth: it is what combined_historical_target_data is rebuilt from.
+    Used only by the overwrite-mode removal step below: combined_historical_
+    target_data is what decides WHETHER a combination already exists (see
+    existing_combinations_in_combined), but removing it means editing the
+    per-run files it's rebuilt from, which requires file-level granularity.
     """
     overlaps = {}
     for path in sorted(glob.glob(os.path.join(PROCESSED_TARGETS_PATH, "*.parquet"))):
@@ -307,23 +335,24 @@ def check_for_existing_slices(
     """
     Guard against silently duplicating or overwriting already-processed targets.
 
-    Without the overwrite toggle, any overlap aborts the run and the conflicting
-    configuration(s) are reported. With the toggle on, the overlapping slices are
-    removed from the previously processed files so this run replaces them.
+    Checked against combined_historical_target_data itself - the dataset
+    consumers actually read - rather than the individual per-run files it's
+    rebuilt from. Without the overwrite toggle, any overlap aborts the run and
+    the conflicting combination(s) are reported. With the toggle on, this only
+    warns; the corresponding rows are actually removed later (see
+    find_overlapping_slices / remove_slices_from_processed_files), once the new
+    data has been produced successfully.
     """
     combos = run_combinations(year, products, rounds)
-    overlaps = find_overlapping_slices(combos)
-    if not overlaps:
+    conflicts = sorted(combos & existing_combinations_in_combined())
+    if not conflicts:
         return
 
-    conflicts = sorted({s for slices in overlaps.values() for s in slices})
     if overwrite_existing:
-        # Only announce here. The actual removal happens once the new data has
-        # been produced successfully, so a later failure cannot destroy existing
-        # targets without replacing them.
         current_run.log_warning(
             f"ÉCRASEMENT ACTIVÉ: {len(conflicts)} combinaison(s) produit / année / "
-            "round déjà présente(s) seront remplacées par les données de ce fichier."
+            "round déjà présente(s) dans combined_historical_target_data seront "
+            "remplacées par les données de ce fichier."
         )
         for y, p, r in conflicts:
             current_run.log_warning(f"ÉCRASEMENT: {p} - {y} - {r}.")
@@ -337,10 +366,8 @@ def check_for_existing_slices(
         "CAUSE: les combinaisons suivantes sont déjà présentes dans "
         "combined_historical_target_data:",
     ]
-    for path, slices in overlaps.items():
-        lines.append(f"> Configuration déjà enregistrée: '{os.path.basename(path)}'")
-        for y, p, r in slices:
-            lines.append(f"  - {p} - {y} - {r}")
+    for y, p, r in conflicts:
+        lines.append(f"  - {p} - {y} - {r}")
     lines += [
         "À FAIRE: deux options possibles.",
         "OPTION 1: si ces données sont déjà correctes, ne relancez pas le "
@@ -471,6 +498,26 @@ def match_csi_to_org_unit_id(
                 org_unit_tree_check["cleansed_spatial"] == csi_concat_correct
             ]
             if org_unit_tree_row.empty:
+                # This correction was written because the automated match for
+                # csi_concat_original was known to be wrong; its intended target
+                # no longer exists in the current IASO tree (renamed/removed
+                # since). Fall back to unmatched rather than silently keeping
+                # that already-distrusted automated match in place.
+                current_run.log_warning(
+                    f"CORRECTION CSI OBSOLÈTE: la correction manuelle prévue pour "
+                    f"'{csi_concat_original}' pointe vers '{csi_concat_correct}', "
+                    "qui n'existe plus dans l'arbre IASO actuel."
+                )
+                current_run.log_warning(
+                    f"CORRECTION CSI OBSOLÈTE: '{csi_concat_original}' est donc "
+                    "traité comme non apparié plutôt que de conserver "
+                    "l'appariement automatique initial, déjà connu comme "
+                    "incorrect."
+                )
+                mask = target_df_matched["cleansed_target"] == csi_concat_original
+                target_df_matched.loc[mask, "org_unit_id"] = None
+                target_df_matched.loc[mask, "LVL_3_NAME"] = None
+                target_df_matched.loc[mask, "LVL_6_NAME"] = None
                 continue
 
             lvl_3_name_correct = org_unit_tree_row["LVL_3_NAME"].values[0]
@@ -491,22 +538,27 @@ def match_csi_to_org_unit_id(
         total_count = len(target_df_matched)
         if unmatched_count > 0:
             unmatched_rows = target_df_matched[target_df_matched["org_unit_id"].isna()]
-            unmatched_pairs = (
-                unmatched_rows[["LVL_3_NAME_original", "LVL_6_NAME_original"]]
-                .drop_duplicates()
-                .itertuples(index=False)
+            total_cible_lost = int(unmatched_rows["cible"].sum())
+            per_csi = (
+                unmatched_rows.groupby(
+                    ["LVL_3_NAME_original", "LVL_6_NAME_original"], dropna=False
+                )["cible"]
+                .sum()
+                .reset_index()
             )
             current_run.log_warning(
                 f"CSI NON APPARIÉS: {unmatched_count} sur {total_count} entrées "
                 "n'ont pu être associées à aucune unité d'organisation de l'arbre "
-                "IASO nettoyé."
+                f"IASO nettoyé, représentant une cible cumulée de "
+                f"{total_cible_lost} qui n'apparaîtra pas dans le tableau de bord."
             )
             # One log call per CSI: OpenHexa collapses newlines within a message.
-            for district, csi in unmatched_pairs:
+            for district, csi, cible_sum in per_csi.itertuples(index=False):
                 current_run.log_warning(
                     f"CSI NON APPARIÉ: '{csi}' (district '{district}') n'est pas "
                     "enregistré comme une unité d'organisation valide dans IASO; "
-                    "aucune cible ne sera remontée pour cette unité dans le "
+                    f"sa cible ({int(cible_sum)}, tous âges/rounds/produits "
+                    "confondus pour cette entrée) ne sera pas remontée dans le "
                     "tableau de bord."
                 )
             current_run.log_warning(

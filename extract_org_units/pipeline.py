@@ -94,8 +94,13 @@ def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFram
             )
         ]  # use pre-fix instead
 
+        # Scoped by (district, name), NOT name alone: many CSI names repeat across
+        # unrelated districts (e.g. "CSI Sabon Gari" names 5 distinct real
+        # facilities). Grouping by name alone merges their LVL_6_UID onto
+        # whichever one happens to be "first", silently erasing the others from
+        # the tree below.
         iaso_org_unit_tree_df_clean["LVL_6_UID"] = iaso_org_unit_tree_df_clean.groupby(
-            "LVL_6_NAME"
+            ["LVL_3_NAME", "LVL_6_NAME"]
         )["LVL_6_UID"].transform("first")
         iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean.groupby(
             "LVL_6_UID", as_index=False

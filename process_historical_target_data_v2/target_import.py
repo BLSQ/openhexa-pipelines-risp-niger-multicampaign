@@ -13,7 +13,10 @@ the run parameters. Knowing the ``products`` lets the engine decide which age
 columns to read and how to label them, using the global PRODUCT_DEFS. Product
 names found in section headers (e.g. "POPULATION CIBLE VPO") and "(corrigé)"
 markers are used to disambiguate when a single sheet mixes several products or
-raw/corrected columns; a lone 0-59 total is split with fixed demographic ratios.
+raw/corrected columns. A column that doesn't unambiguously state the exact age
+bracket a product needs - a combined lower-bound notation, a differently-scoped
+adult bracket, a bare total with no per-product breakdown - is rejected rather
+than approximated: the file must be corrected to state it explicitly.
 
 Output columns: LVL_3_NAME[, LVL_6_NAME], age, cible, year, round, produit.
 """
@@ -25,7 +28,6 @@ import numpy as np
 import pandas as pd
 
 from layouts import (
-    POLIO_INFANT_SPLIT,
     PRODUCT_DEFS,
     PRODUCT_SYNONYMS,
 )
@@ -437,23 +439,28 @@ def parse_age(label: str):
     """Return the canonical age bracket (e.g. '0-11 mois') from a header label.
 
     Age-unit spellings are fuzzily canonicalised first, so '12-59 moiss' or
-    '5-14 annees' are still understood.
+    '5-14 annees' are still understood. A combined lower-bound notation (e.g.
+    '6/9-11 mois', used when two antigens start at different ages) is rejected
+    rather than guessed at: whether it should be read as '0-11 mois' or
+    something else changes what population is actually counted, so the file
+    must state the bracket explicitly instead.
     """
     label = canonicalize_units(label)
     slash = AGE_SLASH_RE.search(label)
-    if slash:  # "6/9-11 mois" -> "0-11 mois"
+    if slash:
         unit = "mois" if slash.group(2) == "mois" else "ans"
-        canonical = f"0-{int(slash.group(1))} {unit}"
         observed = slash.group(0).strip()
-        note_assumption(
-            f"La tranche d'âge attendue '{canonical}' n'a pas été trouvée telle quelle.",
-            f"En revanche, une colonne '{observed}' a été détectée.",
-            f"Le traitement continue en considérant que '{observed}' correspond à "
-            f"'{canonical}'.",
-            "Motif: notation d'une fenêtre d'âge nourrisson combinée (deux âges de "
-            "début possibles selon l'antigène).",
+        fail(
+            "Tranche d'âge ambiguë détectée dans l'en-tête.\n"
+            f"CAUSE: une colonne intitulée '{label}' utilise une notation combinée "
+            f"de borne inférieure ('{observed}'), qui indique un âge de départ "
+            "différent selon l'antigène plutôt qu'une tranche d'âge unique et "
+            "explicite.\n"
+            "À FAIRE: renommez cette colonne dans le fichier pour qu'elle indique "
+            f"la tranche exacte qu'elle représente (par exemple '0-"
+            f"{int(slash.group(1))} {unit}' si elle couvre bien l'ensemble de la "
+            f"population depuis 0 {unit}), puis relancez le pipeline."
         )
-        return canonical
     found = AGE_FULL_RE.findall(label)
     if not found:
         return None
@@ -473,35 +480,15 @@ def is_corrected(label: str) -> bool:
     return any_token_matches(label, CORRECTED_MARKERS)
 
 
-def _age_parts(age: str):
-    m = AGE_FULL_RE.match(age)
-    return (int(m.group(1)), int(m.group(2)), m.group(3)) if m else None
-
-
 def age_match(found: str, needed: str) -> bool:
-    """Exact match, or same open adult bracket (same start, 'ans', start >= 15)
-    to absorb inconsistent upper bounds like '15-94' vs '15-60'."""
-    if found == needed:
-        return True
-    pf, pn = _age_parts(found), _age_parts(needed)
-    if (
-        pf
-        and pn
-        and pf[2] == "ans"
-        and pn[2] == "ans"
-        and pf[0] == pn[0]
-        and pf[0] >= 15
-    ):
-        note_assumption(
-            f"La tranche d'âge attendue '{needed}' n'a pas été trouvée telle quelle.",
-            f"En revanche, une colonne '{found}' a été détectée.",
-            f"Le traitement continue en considérant que '{found}' correspond à "
-            f"'{needed}'.",
-            "Motif: même âge de début, borne supérieure adulte notée différemment "
-            "d'une feuille à l'autre.",
-        )
-        return True
-    return False
+    """Exact match only.
+
+    A found bracket must state precisely the range a product's age group is
+    defined against: treating a nearby-but-different bracket as equivalent
+    (e.g. a wider adult upper bound like '15-94 ans' for a needed '15-60 ans')
+    would misstate who was actually targeted, so nothing is absorbed here.
+    """
+    return found == needed
 
 
 # --------------------------------------------------------------------------- #
@@ -536,52 +523,6 @@ def build_candidates(raw, header_end, labels, data, total_cols):
     return candidates
 
 
-def add_split_if_needed(candidates):
-    """If a sheet only offers a 0-59 total (no component brackets), synthesise
-    virtual 0-11 / 12-59 columns via fixed demographic ratios."""
-    component = {
-        "0-11 mois",
-        "6-11 mois",
-        "9-11 mois",
-        "12-59 mois",
-        "12-23 mois",
-        "24-59 mois",
-        "12-24 mois",
-    }
-    if any(c["age"] in component for c in candidates):
-        return candidates
-    totals = [
-        c for c in candidates if c["age"] == "0-59 mois" and "km" not in c["label"]
-    ]
-    if not totals:
-        return candidates
-    total = max(totals, key=lambda c: c["series"].sum())
-    ratios_txt = ", ".join(
-        f"{age} = {ratio:.4%}" for age, ratio in POLIO_INFANT_SPLIT.items()
-    )
-    note_assumption(
-        "Aucune colonne détaillée par tranche d'âge n'a été trouvée dans le fichier.",
-        f"En revanche, une colonne de total '{total['age']}' a été détectée.",
-        f"Le traitement continue en répartissant ce total entre "
-        f"{' et '.join(POLIO_INFANT_SPLIT)}.",
-        f"Ratios démographiques fixes appliqués: {ratios_txt}.",
-        "ATTENTION: les valeurs de ces deux tranches sont donc estimées, et non "
-        "lues directement dans le fichier.",
-    )
-    for age, ratio in POLIO_INFANT_SPLIT.items():
-        candidates.append(
-            {
-                "age": age,
-                "produit": None,
-                "corrige": False,
-                "is_total": False,
-                "label": "split",
-                "series": total["series"] * ratio,
-            }
-        )
-    return candidates
-
-
 def drop_redundant_total(cols):
     """
     If one column equals the row-wise sum of the others, it is a precomputed
@@ -606,9 +547,9 @@ def drop_redundant_total(cols):
     return cols
 
 
-def select_columns(candidates, product, sources, out_age=None):
+def select_columns(candidates, product, sources):
     """Pick the series feeding one target age of one product."""
-    for rank, src in enumerate(sources):
+    for src in sources:
         hits = [
             c
             for c in candidates
@@ -617,15 +558,6 @@ def select_columns(candidates, product, sources, out_age=None):
         ]
         if not hits:
             continue
-        if rank > 0:
-            # a fallback source bracket was used instead of the preferred one
-            note_assumption(
-                f"Pour le produit '{product}', la tranche d'âge attendue "
-                f"'{sources[0]}' n'a pas été trouvée dans le fichier.",
-                f"En revanche, une colonne '{src}' a été détectée.",
-                f"Le traitement continue en utilisant '{src}' comme source pour la "
-                f"cible '{out_age or sources[0]}'.",
-            )
         tagged = [c for c in hits if c["produit"] == product]
         use = tagged if tagged else hits
         corrected = [c for c in use if c["corrige"]]
@@ -761,8 +693,6 @@ def import_target_file(
             (f"Colonnes de détail ignorées: {', '.join(dropped)}." if dropped else ""),
         )
 
-    candidates = add_split_if_needed(candidates)
-
     available_ages = sorted({c["age"] for c in candidates})
     _info(
         f"Niveau géographique: {geo_level}; en-tête ligne {header_end}; "
@@ -782,7 +712,7 @@ def import_target_file(
             continue
         product_pieces, missing_ages = [], {}
         for out_age, sources in defn.items():
-            cols = select_columns(candidates, product, sources, out_age=out_age)
+            cols = select_columns(candidates, product, sources)
             if not cols:
                 missing_ages[out_age] = sources
                 continue

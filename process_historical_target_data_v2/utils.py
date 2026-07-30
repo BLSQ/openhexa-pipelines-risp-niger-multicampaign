@@ -23,8 +23,11 @@ def normalize_string(text: str) -> str:
         if not isinstance(text, str):
             return ""
 
+        # \b on both ends: without the trailing boundary this would also strip
+        # these as PREFIXES of unrelated words (e.g. "ds" inside a longer token).
         noisy_words = (
-            r"\b(csi|cs|ds|chr|hd|creni|crenam|cloture|departement|region|ville)"
+            r"\b(csi|cs|ds|chr|hd|creni|crenam|cloture|departement|region|ville|"
+            r"commune)\b"
         )
 
         text = text.lower()
@@ -98,12 +101,17 @@ def org_unit_matching(
                     )
                 continue
 
+            # limit=20 (not 5): process.extract ranks by the RAW score, before the
+            # length penalty below is applied. A correct candidate can score high
+            # on content but rank outside a too-small top-N once a stray extra
+            # word elsewhere in the query lengthens it - a wider net makes it
+            # more likely that candidate is still there to be re-scored.
             matches = process.extract(
                 query,
                 spatial_list,
                 scorer=lambda s1, s2: (fuzz.token_set_ratio(s1, s2) * 0.7)
                 + (fuzz.ratio(s1, s2) * 0.3),
-                limit=5,
+                limit=20,
             )
 
             for match in matches:
@@ -114,14 +122,18 @@ def org_unit_matching(
                 else:
                     list_idx = spatial_list.index(matched_str)
 
-                if score >= threshold:
-                    idx_s = spatial_indices[list_idx]
-                    len_penalty = 1 - (
-                        abs(len(query) - len(matched_str))
-                        / max(len(query), len(matched_str))
-                    )
-                    adjusted_score = score * len_penalty
+                len_penalty = 1 - (
+                    abs(len(query) - len(matched_str))
+                    / max(len(query), len(matched_str))
+                )
+                adjusted_score = score * len_penalty
 
+                # Gate on the length-adjusted score, not the raw one: otherwise a
+                # candidate that only clears the bar before its length penalty is
+                # applied gets accepted anyway, once it happens to be the best
+                # (or only) candidate left standing for its target row.
+                if adjusted_score >= threshold:
+                    idx_s = spatial_indices[list_idx]
                     all_potential_candidates.append(
                         {
                             "target_idx": idx_t,

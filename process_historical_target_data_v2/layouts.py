@@ -12,8 +12,12 @@ headers - live here as domain constants.
 """
 
 # --------------------------------------------------------------------------- #
-# For each product: target age bracket -> ordered source age candidates.       #
-# The engine looks for a column matching the first available source age.        #
+# For each product: target age bracket -> the exact source age it must be read #
+# from. The engine requires a column matching that bracket exactly; it never    #
+# substitutes a different-but-nearby bracket, since that would silently change  #
+# which population is counted. (Kept as a one-item list so a future product     #
+# genuinely reported under several EQUIVALENT header spellings for the same     #
+# bracket could list them all here without changing the engine.)                #
 # --------------------------------------------------------------------------- #
 PRODUCT_DEFS = {
     "vaccin polio": {
@@ -21,16 +25,16 @@ PRODUCT_DEFS = {
         "12-59 mois": ["12-59 mois"],
     },
     "rougeole": {
-        "6-11 mois": ["6-11 mois", "0-11 mois"],
+        "6-11 mois": ["6-11 mois"],
         "12-59 mois": ["12-59 mois"],
     },
     "vitamine A": {
-        "6-11 mois": ["6-11 mois", "0-11 mois"],
-        "12-24 mois": ["12-24 mois", "12-59 mois"],
+        "6-11 mois": ["6-11 mois"],
+        "12-24 mois": ["12-24 mois"],
     },
     "albendazole": {
-        "12-23 mois": ["12-23 mois", "0-11 mois"],
-        "24-59 mois": ["24-59 mois", "12-59 mois"],
+        "12-23 mois": ["12-23 mois"],
+        "24-59 mois": ["24-59 mois"],
     },
     "méningite": {
         "1-4 ans": ["1-4 ans"],
@@ -74,7 +78,3 @@ PRODUCT_SYNONYMS = {
     "typhoide": "tcv",
     "jaune": "fièvre jaune",
 }
-
-# When a sheet only provides a single 0-59 months total, split it into the polio
-# infant/child brackets with these fixed demographic ratios.
-POLIO_INFANT_SPLIT = {"0-11 mois": 0.119140832, "12-59 mois": 0.880859168}
