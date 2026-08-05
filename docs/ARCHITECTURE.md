@@ -137,21 +137,24 @@ flowchart TD
         direction TB
         EXTRACT["Extract<br/>(IASO organisation unit tree,<br/>IASO form data)"]
         TRANSFORM["Transform<br/>(processing of extracted data,<br/>visualisation tables)"]
-        LOAD["Load<br/>(push to the OpenHEXA database)"]
+        LOAD["Load<br/>(push the data tables downstream)"]
         EXTRACT -->|"tree + form data"| TRANSFORM
         TRANSFORM -->|"formatted tables"| LOAD
     end
 
     CONFIGURE -->|"combined targets"| TRANSFORM
-    LOAD --> DASHBOARD[("PowerBI dashboard")]
+    LOAD -->|"formatted tables"| DB[("OpenHEXA database")]
+    DB -->|"SQL connection"| DASHBOARD["PowerBI interface<br/>(dashboards)"]
 
     style EXCEL fill:#334155,stroke:#94a3b8,color:#f1f5f9
-    style CONFIGURE fill:#4a2d5c,stroke:#c084fc,color:#f3e8ff
+    style CONFIGURE fill:#1e3a5f,stroke:#60a5fa,color:#dbeafe
     style EXTRACT fill:#1e3a5f,stroke:#60a5fa,color:#dbeafe
     style TRANSFORM fill:#1e3a5f,stroke:#60a5fa,color:#dbeafe
     style LOAD fill:#1e3a5f,stroke:#60a5fa,color:#dbeafe
+    style DB fill:#0e3b34,stroke:#34d399,color:#d1fae5
     style DASHBOARD fill:#3f2d5c,stroke:#a78bfa,color:#ede9fe
 ```
+
 ## 4. Key simplification: fold the expected data structure into target processing
 
 **Current:** `create_expected_data_structure_for_historical_campaigns` and
