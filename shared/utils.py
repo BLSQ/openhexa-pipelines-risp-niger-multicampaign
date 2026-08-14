@@ -1,9 +1,3 @@
-"""
-GENERATED FILE - do not edit directly.
-Source of truth: shared/utils.py (repo root). Regenerate every copy with:
-    python scripts/sync_shared_utils.py
-"""
-
 import os
 from openhexa.sdk import current_run, workspace
 import pandas as pd

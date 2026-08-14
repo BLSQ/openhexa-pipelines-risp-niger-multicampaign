@@ -158,6 +158,86 @@ def get_communication_category_type(col_name: str, master_groups: dict) -> str:
     return "N/A"
 
 
+def melt_campaign_columns(
+    source_df: pd.DataFrame,
+    campaign_map: dict,
+    id_vars: list,
+    tag_col: str,
+    var_name: str = "category",
+    value_name: str = "value",
+    warn_on_missing: bool = False,
+) -> pd.DataFrame:
+    """
+    Melt each campaign's wide IASO columns into one long-format dataframe, tagging
+    each melted row with its campaign name.
+
+    Shared by every "one section of wide columns per campaign" table (coverage,
+    stocks, supervision, communications) - they differ only in id_vars/campaign_map/
+    column names, not in this mechanic, so it was duplicated four times before.
+
+    Args:
+        source_df: the wide dataframe to melt from (e.g. combined_iaso_data).
+        campaign_map: {campaign_name: [candidate column names]}.
+        id_vars: columns to keep as-is (not melted).
+        tag_col: name of the column to stamp with the campaign name.
+        var_name: name of the melted "which column" column.
+        value_name: name of the melted "value" column.
+        warn_on_missing: log a warning (and skip) when a campaign has none of its
+            columns in source_df, instead of silently skipping it.
+
+    Returns:
+        One concatenated long-format dataframe across all campaigns in campaign_map.
+    """
+    frames = []
+    for campaign_name, cols in campaign_map.items():
+        valid_cols = list({c for c in cols if c in source_df.columns})
+        if not valid_cols:
+            if warn_on_missing:
+                current_run.log_warning(
+                    f"Aucune colonne valide trouvée pour la campagne '{campaign_name}'. "
+                    "Cette campagne sera ignorée."
+                )
+            continue
+        melted = pd.melt(
+            source_df[id_vars + valid_cols].fillna(0),
+            id_vars=id_vars,
+            value_vars=valid_cols,
+            var_name=var_name,
+            value_name=value_name,
+        )
+        melted[tag_col] = campaign_name
+        frames.append(melted)
+    return pd.concat(frames, ignore_index=True)
+
+
+def drop_zero_values(
+    df: pd.DataFrame, value_col: str, description: str
+) -> pd.DataFrame:
+    """
+    Drop rows where value_col == 0, warning with the count and proportion dropped.
+
+    Shared by coverage/stocks/supervision/communications, which each had their own
+    copy of this - all four had the same bug (fixed here): the warning printed
+    len(the boolean mask), i.e. always the FULL row count, not the actual number of
+    zero-value rows being dropped (the percentage was already computed correctly,
+    only the absolute count in the message text was wrong).
+
+    Args:
+        df: dataframe to filter.
+        value_col: column to check for zero.
+        description: human-readable label for the warning message, e.g.
+            "informations du nombre de cas vaccinés".
+    """
+    is_zero = df[value_col] == 0
+    count_zero = int(is_zero.sum())
+    if count_zero > 0:
+        current_run.log_warning(
+            f"{count_zero} entrées ({count_zero / len(df):.2%}) liées aux "
+            f"{description} ont été supprimées car aucune valeur n'a été attribuée."
+        )
+    return df[~is_zero].copy()
+
+
 def new_cols(
     df: pd.DataFrame, pattern: str, value_col: str, function_list=None
 ) -> pd.DataFrame:
@@ -188,6 +268,77 @@ def new_cols(
     return df
 
 
+def _warn_missing_targets(
+    merged: pd.DataFrame, cvrg_subset: pd.DataFrame, level_label: str
+) -> None:
+    no_target = merged[merged["cible"].isna()]
+    if no_target.empty:
+        return
+    prop = len(no_target) / len(cvrg_subset)
+    warn_msg = f"{len(no_target)} entrée(s) ({prop:.2%}) au niveau {level_label} n'ont pas de cible."
+    if level_label == "CSI" and "LVL_6_NAME" in no_target.columns:
+        affected = no_target["org_unit_id"].unique().tolist()
+        warn_msg += f" CSI affectés: {', '.join(map(str, affected))}"
+    current_run.log_warning(warn_msg + " Valeur cible: NaN.")
+
+
+def _compute_cumulative_value(merged: pd.DataFrame, cumsum_keys: list) -> pd.DataFrame:
+    """Fill missing daily values with 0, cumulate them per cumsum_keys, and
+    standardize the target column as a nullable integer."""
+    merged["value"] = merged["value"].fillna(0)
+    merged["value_cum"] = merged.groupby(cumsum_keys)["value"].transform("cumsum")
+    merged["cible"] = (
+        pd.to_numeric(merged["cible"], errors="coerce").round(0).astype("Int64")
+    )
+    return merged
+
+
+def _attach_level_names(
+    df: pd.DataFrame, name_cols: list, org_unit_tree_df: pd.DataFrame
+) -> pd.DataFrame:
+    """Attach canonical name columns from the org-unit tree onto `df`, keyed on
+    org_unit_id - the reliable, always-present key - rather than trusting
+    whatever a later merge happens to carry over. Rows whose org_unit_id doesn't
+    resolve in the tree are dropped."""
+    df = df.drop(columns=[c for c in name_cols if c in df.columns])
+    level_names = org_unit_tree_df[["org_unit_id"] + name_cols].drop_duplicates()
+    df = df.merge(level_names, on="org_unit_id", how="left")
+    return df.dropna(subset=name_cols)
+
+
+def _drop_name_cols(df: pd.DataFrame, name_cols: list) -> pd.DataFrame:
+    return df.drop(columns=[c for c in name_cols if c in df.columns])
+
+
+def _attach_csi_names_pre_merge(
+    cvrg_subset: pd.DataFrame,
+    target_subset: pd.DataFrame,
+    org_unit_tree_df: pd.DataFrame,
+) -> tuple:
+    """CSI join key is org_unit_id (not LVL_3_NAME/LVL_6_NAME), so it's safe - and
+    cheaper - to attach the canonical names to the coverage side up front, before
+    the merge: every row then has a name whether or not a target matches. Left as
+    a post-merge patch-up, a CSI with coverage but no target would get NaN names
+    from the merge (target_subset is the only side that carries them), requiring
+    a second full-result pass to fill them back in."""
+    cvrg_subset = _attach_level_names(
+        cvrg_subset, ["LVL_3_NAME", "LVL_6_NAME"], org_unit_tree_df
+    )
+    target_subset = _drop_name_cols(target_subset, ["LVL_3_NAME", "LVL_6_NAME"])
+    return cvrg_subset, target_subset
+
+
+def _revalidate_district_names_post_merge(
+    merged: pd.DataFrame, org_unit_tree_df: pd.DataFrame
+) -> pd.DataFrame:
+    """Unlike CSI, LVL_3_NAME IS one of the District join keys - re-deriving it
+    from the org-unit tree before the merge would risk changing which rows match
+    (if the tree's spelling differs from whatever upstream district-anchoring
+    already attached to cvrg_subset). So for District, names are (re-)validated
+    against the tree AFTER the merge instead."""
+    return _attach_level_names(merged, ["LVL_3_NAME"], org_unit_tree_df)
+
+
 def process_target_level(
     cvrg_subset: pd.DataFrame,
     target_subset: pd.DataFrame,
@@ -212,46 +363,17 @@ def process_target_level(
         pd.DataFrame: Merged DataFrame with cumulative values.
     """
     try:
-        # Merge target data with coverage data
+        if level_label == "CSI":
+            cvrg_subset, target_subset = _attach_csi_names_pre_merge(
+                cvrg_subset, target_subset, org_unit_tree_df
+            )
+
         merged = cvrg_subset.merge(target_subset, on=join_keys, how="left")[final_keys]
+        _warn_missing_targets(merged, cvrg_subset, level_label)
+        merged = _compute_cumulative_value(merged, cumsum_keys)
 
-        # Check for missing targets
-        no_target = merged[merged["cible"].isna()]
-        if not no_target.empty:
-            prop = len(no_target) / len(cvrg_subset)
-            warn_msg = f"{len(no_target)} entrée(s) ({prop:.2%}) au niveau {level_label} n'ont pas de cible."
-
-            if level_label == "CSI" and "LVL_6_NAME" in no_target.columns:
-                affected = no_target["org_unit_id"].unique().tolist()
-                warn_msg += f" CSI affectés: {', '.join(map(str, affected))}"
-
-            current_run.log_warning(warn_msg + " Valeur cible: NaN.")
-
-        # Data Cleaning and Cumulative Sum
-        merged["value"] = merged["value"].fillna(0)
-        merged["value_cum"] = merged.groupby(cumsum_keys)["value"].transform("cumsum")
-
-        # Standardize Target as Nullable Integer
-        merged["cible"] = (
-            pd.to_numeric(merged["cible"], errors="coerce").round(0).astype("Int64")
-        )
-
-        # add LVL_3 and LVL_6 names
-        if level_label == "CSI" and "LVL_6_NAME" in merged.columns:
-            merged = merged.drop(columns=["LVL_3_NAME", "LVL_6_NAME"])
-            level_names = org_unit_tree_df[
-                ["org_unit_id", "LVL_3_NAME", "LVL_6_NAME"]
-            ].drop_duplicates()
-            merged = merged.merge(level_names, on="org_unit_id", how="left")
-            merged = merged.dropna(subset=["LVL_3_NAME", "LVL_6_NAME"])
-
-        elif level_label == "District" and "LVL_3_NAME" in merged.columns:
-            merged = merged.drop(columns=["LVL_3_NAME"])
-            level_names = org_unit_tree_df[
-                ["org_unit_id", "LVL_3_NAME"]
-            ].drop_duplicates()
-            merged = merged.merge(level_names, on="org_unit_id", how="left")
-            merged = merged.dropna(subset=["LVL_3_NAME"])
+        if level_label == "District":
+            merged = _revalidate_district_names_post_merge(merged, org_unit_tree_df)
 
         return merged
 

@@ -34,14 +34,17 @@ Design consequences, in priority order:
 
 ## 2. Current state
 
-Twelve pipelines in `openhexa-pipelines-risp-niger-multicampaigns`:
+Twelve pipelines in `openhexa-pipelines-risp-niger-multicampaigns` at the time this table was
+written (`process_historical_target_data_v2` has since been renamed `process_target_data`, and
+every pipeline marked "Eliminated"/"replaced by" below has since been deleted from the repo — see
+CLAUDE.md for the current, post-migration pipeline list):
 
-| Pipeline | Fate in v2 |
+| Pipeline (name at the time) | Fate in v2 |
 |---|---|
-| `process_historical_target_data` | To be replaced by `process_historical_target_data_v2` |
-| `process_historical_target_data_v2` | Becomes the core target-processing step; absorbs the expected-data-structure logic; replaces the `process_historical_target_data` pipeline |
-| `process_target_data` | To be replaced by `process_historical_target_data_v2` |
-| `generate_targets_templates` | To be replaced by `process_historical_target_data_v2` |
+| `process_historical_target_data` (v1) | **Eliminated** — replaced by `process_historical_target_data_v2` |
+| `process_historical_target_data_v2` | Becomes the core target-processing step (later renamed `process_target_data`); absorbs the expected-data-structure logic; replaces the `process_historical_target_data` (v1) pipeline |
+| `process_target_data` (v1) | **Eliminated** — replaced by `process_historical_target_data_v2` |
+| `generate_targets_templates` | **Eliminated** — replaced by `process_historical_target_data_v2` |
 | `extract_org_units` | Extract stage |
 | `extract_iaso_form_data` | Extract stage |
 | `configure_new_campaign` | **Eliminated** — merged into target processing |
@@ -49,17 +52,17 @@ Twelve pipelines in `openhexa-pipelines-risp-niger-multicampaigns`:
 | `combine_expected_data_structures` | **Eliminated** — merged into target processing |
 | `process_iaso_form_data` | Transform stage |
 | `build_visualisation_tables` | Split across Transform (table generation) and Load (DB push) |
-| `orchestrate_pipelines_flow` | To be updated with the new flow: 1) extract stage (IASO form data and IASO org unit tree), 2) transform stage, 3) load stage |
+| `orchestrate_pipelines_flow` | Updated with the new flow: 1) extract stage (IASO form data and IASO org unit tree), 2) transform stage, 3) load stage |
 
 Consequences of the fate mapping above, stated explicitly so they are not re-litigated:
 
 - **All target data enters through Excel files** via the input parameter on
-  `process_historical_target_data_v2`. There is no separate ingestion path for target data held
+  `process_target_data`. There is no separate ingestion path for target data held
   elsewhere.
 - **Historical and new campaigns follow one unified path.** The historical/new split that
   `configure_new_campaign` and `create_expected_data_structure_for_historical_campaigns` embodied is
-  removed; `process_historical_target_data_v2` handles both.
-- **Target template generation is absorbed** into `process_historical_target_data_v2` rather than
+  removed; `process_target_data` handles both.
+- **Target template generation is absorbed** into `process_target_data` rather than
   living in its own pipeline.
 
 ## 3. Target architecture
@@ -68,7 +71,7 @@ A clean ETL shape, in five pipelines (see `D1`):
 
 ### Configure
 - Target data contained in Excel files and inputted manually through the input parameter in
-  `process_historical_target_data_v2`
+  `process_target_data`
 
 ### Extract
 - IASO org unit tree
@@ -105,7 +108,7 @@ The stages above could be:
 ### Workflow visual
 
 Configure is the one manual step (the MoH user uploads an Excel file and runs
-`process_historical_target_data_v2`); Extract, Transform and Load then run automatically in
+`process_target_data`); Extract, Transform and Load then run automatically in
 sequence, driven by `orchestrate_pipelines_flow`.
 
 ```mermaid
@@ -129,20 +132,20 @@ sequence, driven by `orchestrate_pipelines_flow`.
 flowchart TD
     subgraph MANUAL["Manual step — MoH user"]
         EXCEL["Target Excel file"]
-        CONFIGURE["Configure<br/>(process_historical_target_data_v2)"]
+        CONFIGURE["Configure<br/>(process_target_data)"]
         EXCEL --> CONFIGURE
     end
 
     subgraph AUTO["Automated steps — orchestrate_pipelines_flow"]
         direction TB
         EXTRACT["Extract<br/>(IASO organisation unit tree,<br/>IASO form data)"]
-        TRANSFORM["Transform<br/>(processing of extracted data,<br/>visualisation tables)"]
+        TRANSFORM["Transform<br/>(processing of extracted data,<br/>creation of tables)"]
         LOAD["Load<br/>(push the data tables downstream)"]
-        EXTRACT -->|"tree + form data"| TRANSFORM
+        EXTRACT -->|"org unit tree + form data"| TRANSFORM
         TRANSFORM -->|"formatted tables"| LOAD
     end
 
-    CONFIGURE -->|"combined targets"| TRANSFORM
+    CONFIGURE -->|"combined targets + expected structure"| TRANSFORM
     LOAD -->|"formatted tables"| DB[("OpenHEXA database")]
     DB -->|"SQL connection"| DASHBOARD["PowerBI interface<br/>(dashboards)"]
 
@@ -154,6 +157,8 @@ flowchart TD
     style DB fill:#0e3b34,stroke:#34d399,color:#d1fae5
     style DASHBOARD fill:#3f2d5c,stroke:#a78bfa,color:#ede9fe
 ```
+
+
 
 ## 4. Key simplification: fold the expected data structure into target processing
 
@@ -272,7 +277,7 @@ remain in English.
 
 ## 7. Code quality
 
-Break the longer functions into smaller ones, for readability and debuggability.
+Improve the overall code efficiency by removing memory-intensive manipulations where it can be avoided and breaking the longer functions into smaller ones. At the same time, make sure to keep the code easily readable and effective to debug. Also remove any dead code.
 
 **Sequencing constraint:** do this **after** the architecture is in place and the regression check in
 §8 is passing — and as a separate, clearly-scoped session. Bundled into the rewrite, refactoring
@@ -342,8 +347,9 @@ All fourteen must be reproduced by v2:
 | D7 | Branch vs separate repo | (a) Branch `v2-architecture` in the existing repo |
 
 Superseded questions, resolved by the fate mapping in §2 and recorded there: the fate of
-`configure_new_campaign`, `generate_targets_templates` and `process_target_data`; whether non-Excel
-target data needs a separate path; and whether historical and new campaigns remain distinct paths.
+`configure_new_campaign`, `generate_targets_templates` and `process_target_data` (v1); whether
+non-Excel target data needs a separate path; and whether historical and new campaigns remain
+distinct paths.
 
 ---
 

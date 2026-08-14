@@ -12,3 +12,6 @@
 
 # environment variables
 .env
+
+# separate, unrelated line of work - kept locally, not pushed to GitHub
+population_analysis/

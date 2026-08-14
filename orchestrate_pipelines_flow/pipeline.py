@@ -41,6 +41,14 @@ def define_actions() -> dict:
     """
     Define the actions to be executed in the pipeline, including the pipelines to be run and their parameters.
 
+    Sequence per the v2 architecture (docs/ARCHITECTURE.md §2/§3/§5): Extract -> Transform -> Load.
+    Configure (process_target_data) is deliberately NOT here - it's the one manual,
+    human-triggered step (§5), and since it now compiles expected_data_structure itself (Session 4a),
+    nothing in this automated chain should touch that dataset. The pre-v2 first step here used to be
+    "multi-campagne-etablissement-de-la-structure-des-donnees-attendues" (combine_expected_data_structures);
+    it has been REMOVED, not just left in place, because running it here would silently overwrite
+    Configure's expected_data_structure.parquet with a stale, superseded rebuild on every automated run.
+
     Args:
         None
 
@@ -48,9 +56,9 @@ def define_actions() -> dict:
         action_dict (dict): A dictionary containing the actions to be executed in the pipeline.
     """
     action_dict = {
-        "multi-campagne-etablissement-de-la-structure-des-donnees-attendues": {
+        "multi-campagne-extraction-des-unites-organisationnelles-iaso": {
             "type": "pipeline",
-            "url": "https://api.openhexa.org/pipelines/ZjIzYzgyMzctODk2Ni00OWQ2LWFlYmQtZmQxNWJiNjQ1OTM1OjF3MTNXdDpYZFlncVI5cUVRMTRUNHJMNmJJaWNuR2ZadkU0eUFobXUtMG9NUU1Cd0Rn/run",
+            "url": "https://api.openhexa.org/pipelines/ZWMyNzkxYWQtNGFjNy00ZTc4LTk0NzctOWEyNDljY2Q0ODAyOjF3dVBqQTpGQ25hWktEY3dZeEpZVE85aXJMcEE5ZzNCdVlrRTJOc3ZjbVZNNTNSYi1Z/run",
             "params": {},
         },
         "multi-campagne-extraction-des-donnees-du-formulaire-iaso": {
@@ -66,6 +74,11 @@ def define_actions() -> dict:
         "multi-campagne-construction-des-tableaux-pour-la-visualisation": {
             "type": "pipeline",
             "url": "https://api.openhexa.org/pipelines/NGE0NGY1MTctMTQxNS00MjA2LWExYTItN2VjYTJmY2M4ZDRmOjF3MTNYZzpDd0ppVDJFWmVvZVJXOGNjalhtLUFZRGVMdURpOTN3OUwwRWlLTmczT3JV/run",
+            "params": {},
+        },
+        "multi-campagne-envoi-des-tables-de-visualisation-vers-la-base-de-donnees": {
+            "type": "pipeline",
+            "url": "https://api.openhexa.org/pipelines/MjQyYzU2MDEtYWIyNS00ZTgxLWI1NDEtYTU5ZGRlNWU0YWFjOjF3dEtjUzpvcUxNN0tmcHllM0RyalRTUFBUZVVobFNYUmxrMXhjSTR1UzVkUjQ2MTdr/run",
             "params": {},
         },
     }
