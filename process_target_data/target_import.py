@@ -151,15 +151,7 @@ AGE_UNITS = {
 }
 AGE_TOKEN_RE = re.compile(r"\d+\s*[-/]\s*\d+\s*(mois|ans|an)\b")
 AGE_FULL_RE = re.compile(r"(\d+)\s*[-/]\s*(\d+)\s*(mois|ans|an)\b")
-# A combined lower-bound bracket such as "6/9-11 mois" (6-or-9 to 11 months) is
-# the infant window; canonicalise it to start at 0 -> "0-11 mois".
 AGE_SLASH_RE = re.compile(r"\d+\s*/\s*\d+\s*-\s*(\d+)\s*(mois|ans|an)\b")
-
-# Aggregate/subtotal row markers.
-#  - STRONG: recognised anywhere in the cell ("Total Abala", "Région Agadez").
-#  - WHOLE : only when they make up the entire cell, because they also occur
-#            inside legitimate facility names (e.g. the CSI "Garde Nationale"
-#            must NOT be treated as a national total).
 AGGREGATE_STRONG = {
     "total",
     "totaux",

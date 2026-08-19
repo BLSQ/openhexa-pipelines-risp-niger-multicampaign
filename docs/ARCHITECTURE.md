@@ -466,3 +466,147 @@ automate, stop and ask the user to do it, then wait for their result before cont
 
 Give a precise, copy-pasteable instruction (what to click, what to paste back), do not guess the
 answer, and do not proceed on an assumption while waiting.
+
+## 14. File organization and naming conventions (structural cleanup)
+
+**Status:** planned, not yet implemented. This is the organizational half of the work §7 defers to
+"a separate, clearly-scoped session" — reorganizing *where* code lives and *what things are called*.
+It is deliberately **not** the other half of §7/§8's acceptance criterion 5 (breaking up functions
+over ~50 lines): that's a distinct, still-open item, unaffected by this section, and not scheduled
+here. This section makes **zero behavior changes** — every step is a file/name reorganization,
+verified by re-running whatever already checks that pipeline (see §14.5) before and after.
+
+**Scope:** the six pipelines wired into the v2 flow — `extract_org_units`, `extract_iaso_form_data`,
+`process_target_data`, `process_iaso_form_data`, `build_visualisation_tables`,
+`load_visualisation_tables`, plus `orchestrate_pipelines_flow`. **Out of scope:** `population_analysis/`
+— a separate, not-yet-wired-in line of work (see root `README.md`); reorganizing it now would be
+premature.
+
+Triggered by three concrete asks, addressed in §14.1-§14.3; §14.4 is the resulting per-pipeline plan.
+
+### 14.1 `utils.py`: organize by theme, not as a catch-all
+
+Every pipeline's `utils.py` (where one exists) is currently a flat, arrival-order bag of functions
+spanning unrelated concerns — e.g. `build_visualisation_tables/utils.py` mixes HTTP-unrelated
+categorizers for four different output tables, generic melt/dedup helpers, and target-merging logic
+in one file with no internal grouping. Going forward, each pipeline's logic (beyond the thin
+`@pipeline`-decorated orchestrator) is split into **one file per theme**, named for what it contains,
+not called `utils.py` — mirroring the pattern `process_target_data` already established
+(`target_import.py`, `layouts.py`, `geo_match.py`, `text_match.py`, `expected_structure.py`). A
+pipeline that has no natural theme split yet (a single-purpose `utils.py`) can keep one generic file,
+but it should still be named for what it does (e.g. `iaso_client.py`), not left as `utils.py`.
+
+**This is not limited to moving what's already in `utils.py` — `pipeline.py` itself is in scope too**,
+including for pipelines that already have a `utils.py` (`build_visualisation_tables`,
+`process_target_data`, `extract_org_units`, `extract_iaso_form_data`). Every `pipeline.py` in the
+repo currently mixes two different kinds of function at the same level: thin **sequencing/wiring**
+(a short function whose only job is to call other functions, from themed files or elsewhere, in the
+right order — e.g. `build_visualisation_tables/pipeline.py`'s `_load_inputs`, or
+`process_target_data/pipeline.py`'s `persist_and_compile`) and substantial **single-theme business
+logic** that happens to live in `pipeline.py` only because nothing has reorganized it yet (e.g. that
+same file's `create_coverage_dataset` and its whole "targets on coverage" helper tree — real,
+sizeable coverage-specific logic, not sequencing). The test for which is which: **would a from-scratch
+design of this pipeline put this function's body in a themed file, or is its only job to call other
+functions in order?** Wiring stays in `pipeline.py` — that's what makes it a legible orchestrator. Real
+theme logic moves out, *even if it's currently only called once and even if the pipeline already has a
+`utils.py`* — a `coverage.py` that holds the coverage categorizers and column lists but not
+`create_coverage_dataset` itself would be an incomplete, confusing split. §14.4 lists, per pipeline,
+which specific functions fall on which side of that line — this affects every pipeline in scope, not
+only the three that currently lack a `utils.py`.
+
+### 14.2 `config.py`: paths and OpenHEXA connection details only
+
+`config.py` should hold exactly: workspace/output paths (`WORKSPACE_PATH`, `PROJECT_FOLDER`,
+`OUTPUTS_PATH`, and any pipeline-specific path built from them) and OpenHEXA connection details
+(`workspace.get_connection(...)` results, IASO credentials, which IASO form/base URL to target).
+Everything else — column-rename dicts, campaign/product mapping tables, hard-coded business
+thresholds, per-table column-selection lists — is domain data belonging with the code that
+interprets it, not a generic dumping ground imported by everything.
+
+**Where a domain constant moves to** is decided by who consumes it, not by where it happens to sit
+today: it moves into the themed file (§14.1) containing the function(s) that actually use it, even if
+today only `pipeline.py` uses it directly (in which case it still gets a themed home — the organizing
+axis is *theme*, not *which file currently imports it*). If truly nothing but a one-off wiring detail
+consumes it (single call site, no reuse potential — e.g. this session's own
+`EXPECTED_STRUCTURE_COLS`/`EXPECTED_STRUCTURE_CATEGORY_COLS` in `build_visualisation_tables/config.py`),
+it moves to be a local constant in `pipeline.py` itself, right above its one consumer, rather than
+earning a themed file of its own.
+
+**Known tension to resolve:** `process_target_data`'s `SEX_TYPE`/`PRODUCT_STATUS`/`SITE_TYPE`/
+`HISTORICAL_CAMPAIGNS_CONFIG` are *currently and deliberately* documented (this file's §4/D2, and
+`CLAUDE.md`) as living in `config.py` under a "one named constant block" convention. Applying §14.2
+here means moving them into `expected_structure.py` (their actual, sole consumer) and **updating both
+`CLAUDE.md` and this document's §4/D2 language** to point at the new location once that move lands —
+tracked as the first sub-step of the `process_target_data` entry in §14.4, so the docs don't drift
+out of sync with the code they describe.
+
+### 14.3 Leading-underscore convention
+
+**The rule, confirmed by auditing every pipeline before writing it down (not invented from
+scratch):** a name gets a leading underscore when it is a private step that only makes sense as part
+of *one specific* larger piece — either (a) it decomposes a single function's body purely for
+length/readability (an "extracted paragraph" of that one caller's algorithm, e.g.
+`target_import.py`'s `_detect_layout`/`_extract_data_rows`/`_finalize_tidy_frame`, all internal steps
+of `import_target_file`), or (b) it's a module-internal helper with no independent meaning outside
+the file that defines it. A name stays plain when it represents a **self-contained, nameable
+operation or predicate** — something you could describe in one sentence out of context — regardless
+of how many places call it, *including* a module's genuinely public interface (something imported by
+another file, e.g. `org_unit_matching`, imported into `process_target_data/pipeline.py` from
+`utils.py`). This is standard Python "module-private" style, applied a little more precisely than
+"only called internally": call-count and cross-file import are evidence for the rule, not the rule
+itself — a function called only once can still be public-looking if it names a real capability
+(`build_visualisation_tables/pipeline.py`'s `create_coverage_dataset`, `match_csi_to_org_unit_id` in
+`process_target_data/pipeline.py`), and a function's underscore doesn't depend on where it lives.
+
+**Audit result:** the convention already holds with near-total consistency across every pipeline
+checked (`build_visualisation_tables`, `process_target_data`'s five modules, `extract_org_units`,
+`extract_iaso_form_data`, `process_iaso_form_data`, `load_visualisation_tables`,
+`orchestrate_pipelines_flow`) — it was applied by feel, not written down, until now. One concrete,
+already-identified fix: `process_target_data/expected_structure.py`'s `_fail` (a log-then-raise shim
+identical in purpose to `target_import.py`'s own un-underscored `fail`) should lose its underscore
+for consistency with that sibling. Beyond that one case, §14.4's per-pipeline pass includes a fresh
+underscore check as it touches each file — this is a judgment call, not a mechanical script, so
+finding one or two more small inconsistencies while moving code is expected and in scope to fix
+in passing, not a sign the rule above is wrong.
+
+### 14.4 Per-pipeline plan
+
+| Pipeline | New/renamed files | What moves there |
+|---|---|---|
+| `process_target_data` | new `run_persistence.py` | **Pipeline.py functions that move (real theme logic, not wiring):** `match_csi_to_org_unit_id`, `_fuzzy_match_csi`, `_apply_manual_csi_corrections`, `_report_unmatched_csi`, `add_region_names`, `clean_org_unit_id` → `utils.py` (this pipeline's CSI-matching/org-unit-cleanup module, alongside `org_unit_matching`/`normalize_string`). `match_district_to_org_unit_id`, `_report_district_mapping_assumptions`, `_report_unmatched_districts` → `geo_match.py` (its district-matching counterpart). `check_for_date_overlap`, `_needs_new_period`, `_load_existing_expected_structure`, `_find_period_conflicts`, `_warn_date_conflicts`, `_fail_on_date_conflicts` → `expected_structure.py` (period-overlap checking is a period/expected-structure concern). `check_for_existing_slices`, `run_combinations`, `existing_combinations_in_combined`, `find_overlapping_slices`, `remove_slices_from_processed_files`, `compile_processed_files`, `_run_slug` → new `run_persistence.py` (the "duplicate/overwrite detection + compile-from-scratch" theme, distinct from everything else here). **Stays in `pipeline.py` as wiring** (each is a short function that only sequences calls to the above): `process_target_data` (orchestrator), `import_or_fail`, `match_and_clean_org_units`, `build_expected_structure_for_run`, `persist_and_compile`, `resolve_input_file`, `fail_run`, `check_year`. **Config moves:** `config.py` → `expected_structure.py`: `SEX_TYPE`, `PRODUCT_STATUS`, `SITE_TYPE`, `HISTORICAL_CAMPAIGNS_CONFIG` (+ update `CLAUDE.md`/§4·D2, see §14.2). `config.py` → `utils.py`: `csi_matching_failed`. Rename `expected_structure.py`'s `_fail` → `fail` (§14.3). `config.py` left holding only the six path constants. |
+| `build_visualisation_tables` | new `coverage.py`, `completeness.py`, `stocks.py`, `supervision.py`, `communications.py`, `filter_tables.py`, `spatial_units.py`, `data_cleaning.py` | **Correction from the first draft:** checked actual usage (grep) rather than assuming from shape — `ages_mapping`/`sites_mapping`/`status_mapping` turned out to be consumed by exactly one coverage-only categorizer each (not "shared"), and `EXPECTED_STRUCTURE_CATEGORY_COLS` turned out to be needed by `coverage.py` and `completeness.py` too, not only `pipeline.py`'s own `_load_expected_structure` — putting it in `pipeline.py` as first planned would make those theme files import from the orchestrator, which itself imports from them (circular). **Pipeline.py functions that move (real theme logic):** `create_coverage_dataset` + `_build_coverage_long`/`_aggregate_coverage`/`_merge_coverage_with_expected_structure`, and `add_target_data` + its whole "targets on coverage" helper tree (`_split_by_target_reporting_level`, `_build_csi_level_targets`, `_aggregate_csi_to_district`, `_pure_district_coverage`, `_build_district_level_targets`, `_anchor_to_representative_org_unit`, `_sum_targets_to_district`, `_normalize_target_values`) → `coverage.py`, joining `age_categorizer`/`site_categorizer`/`produit_categorizer`/`vaccination_status_categorizer`/`process_target_level` (+ its 6 private helpers, from `utils.py`) and their column lists/mapping dicts (`cvrg_*`, `ages_mapping`, `sites_mapping`, `status_mapping`, from `config.py`). `create_completeness_dataset` + `_add_cumulative_presence` → new `completeness.py` (with `cmpl_cols_selection`/`cmpl_cols_selection_2`). `create_stocks_dataset` + `_build_stock_totals`/`_compute_stock_metrics`/`_add_children_vaccinated` → `stocks.py`, joining `produit_categorizer_stocks`/`product_status_categorizer` and `stock_*`/`products_mapping_stocks`/`stock_status_mapping`. `create_supervision_dataset` + `_build_supervision_totals` → `supervision.py`, joining `supervision_categorizer` and `supervision_*`/`surveillance_category_mapping`. `create_communication_dataset` + `_build_communication_long` → `communications.py`, joining `communication_categorizer`/`get_communication_category_type` and `communication_*`/`communication_category_mapping`. `create_filter_tables` + `_build_combination_filter_table`/`_distinct_values`, and `create_campaign_round_summary_table` → new `filter_tables.py` (both build PBI filter/summary lookups, cross-theme by nature, no config constants of their own). `create_dynamic_org_unit_table` + `_district_level_org_unit_view`/`_csi_level_org_unit_view` → new `spatial_units.py` (no config constants of its own). `add_month_column` (applied across every output table, not theme-specific) → `data_cleaning.py`, alongside the already-generic `melt_campaign_columns`/`drop_zero_values`/`new_cols`/`drop_duplicates_low_memory`/`align_categories_for_merge` (from `utils.py`) and the genuinely cross-theme constants: `months_mapping_dict`, and `EXPECTED_STRUCTURE_COLS`/`EXPECTED_STRUCTURE_CATEGORY_COLS` (per the correction above). `campaign_name_cleaning_dict` and `iaso_df_common_cols` also move to `data_cleaning.py` for lack of a better home, but grep found **neither is actually referenced anywhere in this pipeline** (dead code, pre-existing, not introduced by this move) — flagged to the user rather than silently dropped. **Stays in `pipeline.py` as wiring:** `build_visualisation_tables` (orchestrator), `_load_inputs`, `_load_expected_structure`, `_add_month_columns`, `_save_and_export_outputs` — each only sequences calls into the theme files above. `config.py` left holding only the three path constants; `utils.py` is fully emptied and deleted (same pattern as `extract_org_units`/`extract_iaso_form_data`). |
+| `extract_org_units` | new `iaso_client.py`, `org_unit_cleaning.py` | `iaso_client.py`: `Conector_from_Dict`, `IASOConnectionHandler`, `request_with_explanation`/`request_explanatory_decorator` (from `utils.py`). **Pipeline.py function that moves:** `clean_iaso_org_unit_tree` (real filtering/dedup/casting logic) → new `org_unit_cleaning.py`, alongside `pyramid_selector` (from `utils.py` — same "pick the canonical org-unit record" theme). **Stays in `pipeline.py` as wiring:** `extract_org_units` (orchestrator), `get_iaso_org_unit_tree` (instantiates the client, calls one method, logs — no theme logic of its own). `config.py` unchanged (`iaso_form_id` reads as connection-target config, in scope per §14.2 as written). |
+| `extract_iaso_form_data` | new `iaso_client.py`, `date_utils.py`, `combine_extracts.py` | Same `iaso_client.py` split as above. `date_utils.py`: `period_form_convert_date`, `period_processing` (generic period-normalization, no IASO-client dependency). **Pipeline.py function that moves:** `process_historical_and_current_data` → new `combine_extracts.py` — it has real logic (concatenating every saved feather file, deduplicating by `uuid`, filling in columns missing from the form structure), not just sequencing. **Stays in `pipeline.py` as wiring:** `extract_iaso_form_data` (orchestrator), `extract_iaso_data_for_current_month`, `extract_iaso_data_for_other_months` — both just instantiate `IASOConnectionHandler`, call one method, and save the result; no theme logic of their own. `config.py` unchanged. |
+| `process_iaso_form_data` | new `campaign_cleaning.py`, `org_unit_matching.py` | **Correction from the first draft of this plan:** checked against actual usage (grep), not assumed from the data's shape — `cvrg_*`/`stock_*`/`surveillance_*`/`communication_*` and `stocks_campaign_map`/`product_campaign_mapping`/`iaso_df_common_cols` are *only* ever referenced as pieces of `cols_campaign_map`, which `clean_combined_df` genuinely consumes; nothing in this pipeline touches any individual list directly (unlike `build_visualisation_tables`, there's no `melt_campaign_columns`-style per-theme function here to split them across — this pipeline never builds a coverage/stock/surveillance/communication table itself, it only nulls out columns that don't belong to a submission's campaign). So there is no theme-file split to make below the single "clean the combined campaign dataframe" theme: **all** of `config.py`'s campaign/column-family data, `cols_campaign_map` included, moves as one block into `campaign_cleaning.py`, alongside `clean_combined_df` itself (the one function that uses any of it) and `campaign_name_cleaning_dict`/`campaign_name_mapping_dict`/`months_mapping_dict`. `align_to_clean_org_tree` → `org_unit_matching.py`. **Stays in `pipeline.py` as wiring:** `process_iaso_form_data` (orchestrator) — it only calls the two functions above in order. `config.py` left holding only the three path constants. |
+| `load_visualisation_tables` | new `db_utils.py` | **Pipeline.py functions that move:** `write_to_db`, `_load_data_light` → `db_utils.py`, alongside `VISUALISATION_TABLE_NAMES`, `DB_WRITE_CHUNKSIZE` (from `config.py` — both are tuning/target data specific to these two functions, not paths). **Stays in `pipeline.py` as wiring:** `load_visualisation_tables` (orchestrator) — a short loop calling `load_data`/`_load_data_light`/`write_to_db` per table name, no logic of its own. `config.py` left holding only the three path constants. |
+| `orchestrate_pipelines_flow` | new `openhexa_client.py`, `pipeline_runner.py`, `config.py` (doesn't exist yet) | `openhexa_client.py`: the `OpenHEXAClient` class + `get_hexa_connection` (+ the hard-coded `"https://app.openhexa.org"` base URL becomes a proper `OPENHEXA_BASE_URL` constant here — it's connection config in the sense of §14.2, just not previously factored out). `pipeline_runner.py`: `execute_pipeline`, `get_pipeline_run_data`, `display_new_messages`, `run_pipeline`, `launch_action` (generic "run a remote action and poll it" logic, independent of which actions). New `config.py`: `PIPELINE_ACTIONS` (`define_actions()`'s current hard-coded dict — pure domain data, the *sequence* of pipelines to run; `define_actions()` itself can then be dropped, with `pipeline.py` importing `PIPELINE_ACTIONS` directly). **Stays in `pipeline.py` as wiring:** `orchestrate_pipelines_flow` (orchestrator), `launch_action` (a short by-type dispatcher, no logic of its own beyond the if/elif). |
+
+### 14.5 Sequencing and verification
+
+One pipeline per step, smallest/lowest-risk first, each a separate commit so a regression is easy to
+bisect to:
+
+1. `orchestrate_pipelines_flow` (no tests exist to break; verify by reading the diff and confirming
+   `define_actions()`'s dict is byte-identical to the new `PIPELINE_ACTIONS`).
+2. `load_visualisation_tables`, `extract_org_units`, `extract_iaso_form_data` (small, no existing
+   automated check beyond `python -m py_compile` + a manual read of the diff).
+3. `process_iaso_form_data` (same verification level as above; larger diff).
+4. `process_target_data` (re-run `test_robustness.py` against real historical `.xlsx` files — must
+   still show the same pass/fail counts as before the move).
+5. `build_visualisation_tables` (re-run `tests/compare_to_golden.py` for every captured table — must
+   still match the same baseline as before the move; this is the pipeline with the memory-sensitive
+   code from this session's earlier work, so re-confirm the full local run still completes without
+   the regressions found and fixed there).
+
+Every step also runs `python scripts/sync_shared_utils.py --check` (moving files around a pipeline
+folder must not touch `shared_utils.py`) and a plain `python -m py_compile` on every changed file.
+Nothing in this section changes an import path OpenHEXA itself depends on (pipeline discovery keys
+off `pipeline.py`'s `@pipeline` decorator, untouched here) — only files imported *by* `pipeline.py`
+move.
+
+### 14.6 Out of scope (tracked elsewhere or deliberately deferred)
+
+- Breaking up functions longer than ~50 lines (§7/§8 acceptance criterion 5) — a distinct, still-open
+  item; this section's moves do not shorten any function, they relocate it as-is.
+- `population_analysis/` — excluded per §14's scope note above.
+- Any change to `pipeline.py`'s own orchestration functions' *bodies* — only their imports change.

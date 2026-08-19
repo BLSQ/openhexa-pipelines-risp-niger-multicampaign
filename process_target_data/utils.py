@@ -1,8 +1,53 @@
+import os
+
+import numpy as np
 import pandas as pd
 import re
 from fuzzywuzzy import fuzz, process
 import unicodedata
 from openhexa.sdk import current_run
+
+from config import TEMP_PATH
+
+# CSI fuzzy-match corrections (used by the CSI matcher below). Entries found via a
+# systematic sweep of every distinct target CSI name across the real historical
+# files against the clean tree: each is a case where the correct candidate scored
+# higher on raw string similarity than the eventual (wrong) match, but lost once
+# the length-penalty was applied because its official tree name is longer than
+# the target file's shorthand for it.
+csi_matching_failed = {
+    "abalak fachi": "abalak fachi tabalack",
+    "abalak urbain2": "abalak urbain 2 abalak",
+    "agadez sabon gari agadez": "agadez sabongari",
+    "aguie guidanmalambakabe": "aguie guidan malam bakabe",
+    "aguie maiguizaouakagnou": "aguie maiguizaoua kagnou",
+    "boboye birni i": "boboye birni ngaoure",
+    "boboye birni ii": "boboye birni 2",
+    "diffa chateau": "diffa chateau centre",
+    "dosso bella1": "dosso bella i",
+    "dosso bellaii": "dosso bella ii",
+    "gotheye tchawa": "gotheye tchawa ferme insecurite",
+    "guidan roumdji g roumdji": "guidan roumdji guidan roumdji 1",
+    "illela zourare": "illela zourare chafa",
+    "kollo lakabia": "kollo latakabia sonrai",
+    "madaoua galma": "madaoua galma sedentaire",
+    "madarounfa harounawa": "madarounfa harounaoua",
+    "madarounfa madarounfa": "madarounfa madarounfa 1",
+    "madarounfa madeini": "madarounfa madeini tadeta",
+    "magaria adamawa": "magaria adamaoua",
+    "magaria baoure": "magaria baoure sarkin gako",
+    "malbaza laweygoge": "malbaza lawey goge",
+    "maradi sabongari": "maradi sabongari maradi",
+    "maradi zariai": "maradi zaria i",
+    "maradi zariaii": "maradi zaria ii",
+    "maradi zariaiii": "maradi zaria iii",
+    "matameye danbarto": "matameye dan barto",
+    "matameye matameye 1": "matameye matameye",
+    "say ganki": "say ganki bassarou",
+    "tchintabaraden darha": "tchintabaraden zigat darha",
+    "zinder sabongarizinder": "zinder sabon gari",
+    "zinder sabongari zinder": "zinder sabon gari",
+}
 
 
 def normalize_string(text: str) -> str:
@@ -25,14 +70,34 @@ def normalize_string(text: str) -> str:
 
         # \b on both ends: without the trailing boundary this would also strip
         # these as PREFIXES of unrelated words (e.g. "ds" inside a longer token).
+        # clotur(e|ee)s? covers all 4 accent-stripped agreement forms of
+        # "clôturé(e)(s)" (cloture/cloturee/clotures/cloturees) - plain "cloture"
+        # alone never matched the real, always-feminine "clôturée" facility
+        # marker, so it survived normalization as a literal token and inflated
+        # similarity between two otherwise-unrelated closed facilities that
+        # happened to share it. "commune" stays in this list - it's decorative
+        # noise for every district except one (see below).
         noisy_words = (
-            r"\b(csi|cs|ds|chr|hd|creni|crenam|cloture|departement|region|ville|"
-            r"commune)\b"
+            r"\b(csi|cs|ds|chr|hd|creni|crenam|clotur(e|ee)s?|departement|region|"
+            r"ville|commune)\b"
         )
 
         text = text.lower()
         text = unicodedata.normalize("NFD", text)
         text = "".join([c for c in text if unicodedata.category(c) != "Mn"])
+
+        # "DS Tahoua Commune" is a real district, distinct from "DS Tahoua" (each
+        # with its own org units, confusingly including its own "CSI Sabon
+        # Gari") - stripping "commune" as generic noise collapses the two into
+        # the same normalized district, so a target row for the Commune could
+        # win a match in the wrong one. Fusing it into one word BEFORE the
+        # general strip below preserves just this one real distinction, without
+        # leaving "commune" as a bare shared token that would instead falsely
+        # attract UNRELATED "X Commune" districts to each other (confirmed: it
+        # did, for several "DS Diffa Commune" rows, when tried as a plain kept
+        # word rather than fused).
+        text = re.sub(r"\btahoua\s+commune\b", "tahouacommune", text)
+
         text = re.sub(noisy_words, "", text, flags=re.IGNORECASE)
         text = re.sub(r"[^a-z0-9\s]", " ", text)
 
@@ -256,3 +321,228 @@ def org_unit_matching(
         raise
 
     return final_df, spatial
+
+
+# =========================================================================== #
+# CSI-level matching stage + post-matching org-unit cleanup (moved from        #
+# pipeline.py - both are org-unit-matching concerns, this module's theme).     #
+# District-level matching is geo_match.py's counterpart.                      #
+# =========================================================================== #
+def match_csi_to_org_unit_id(
+    csi_level_target_df: pd.DataFrame, iaso_org_unit_tree_df_clean: pd.DataFrame
+) -> pd.DataFrame:
+    """Match CSI names to org-unit IDs via fuzzy matching + known corrections."""
+    current_run.log_info(
+        "Appariement des noms CSI aux identifiants des unités organisationnelles..."
+    )
+    try:
+        target_df_matched, org_unit_tree_check = _fuzzy_match_csi(
+            csi_level_target_df, iaso_org_unit_tree_df_clean
+        )
+        target_df_matched = _apply_manual_csi_corrections(
+            target_df_matched, org_unit_tree_check
+        )
+        _report_unmatched_csi(target_df_matched)
+
+        target_df_matched = target_df_matched.drop(
+            columns=[
+                "LVL_3_NAME_original",
+                "LVL_6_NAME_original",
+                "match_score",
+                "cleansed_target",
+                "cleansed_spatial_match",
+            ]
+        ).dropna(subset=["org_unit_id"])
+
+        current_run.log_info("Appariement des noms CSI terminé.")
+        return target_df_matched
+    except Exception as e:
+        current_run.log_error(f"Erreur lors de l'appariement des noms CSI: {str(e)}")
+        raise
+
+
+def _fuzzy_match_csi(
+    csi_level_target_df: pd.DataFrame, iaso_org_unit_tree_df_clean: pd.DataFrame
+) -> tuple:
+    """Run the fuzzy matcher and dump its working tables to TEMP_PATH for debugging."""
+    iaso_org_unit_tree_for_matching = iaso_org_unit_tree_df_clean[
+        ["org_unit_id", "LVL_3_NAME", "LVL_6_NAME"]
+    ].drop_duplicates()
+
+    target_df_matched, org_unit_tree_check = org_unit_matching(
+        csi_level_target_df, iaso_org_unit_tree_for_matching, threshold=50
+    )
+
+    target_df_matched_check = target_df_matched[
+        [
+            "org_unit_id",
+            "LVL_3_NAME_original",
+            "LVL_6_NAME_original",
+            "LVL_3_NAME",
+            "LVL_6_NAME",
+            "cleansed_target",
+            "cleansed_spatial_match",
+            "match_score",
+        ]
+    ].drop_duplicates()
+
+    if not os.path.exists(TEMP_PATH):
+        os.makedirs(TEMP_PATH)
+    target_df_matched_check.to_csv(
+        os.path.join(TEMP_PATH, "target_df_matched_check.csv"), index=False
+    )
+    org_unit_tree_check = org_unit_tree_check.drop_duplicates()
+    org_unit_tree_check.to_csv(
+        os.path.join(TEMP_PATH, "org_unit_tree_check.csv"), index=False
+    )
+    return target_df_matched, org_unit_tree_check
+
+
+def _apply_manual_csi_corrections(
+    target_df_matched: pd.DataFrame, org_unit_tree_check: pd.DataFrame
+) -> pd.DataFrame:
+    """Apply csi_matching_failed's hand-curated overrides on top of the fuzzy
+    match, then fall back LVL_6_NAME to its original (unmatched) spelling wherever no
+    org_unit_id was ultimately resolved."""
+    cols = ["org_unit_id", "LVL_3_NAME", "LVL_6_NAME"]
+    for csi_concat_original, csi_concat_correct in csi_matching_failed.items():
+        mask = target_df_matched["cleansed_target"] == csi_concat_original
+
+        if csi_concat_correct is None:
+            target_df_matched.loc[mask, cols] = None
+            continue
+
+        org_unit_tree_row = org_unit_tree_check.loc[
+            org_unit_tree_check["cleansed_spatial"] == csi_concat_correct
+        ]
+        if org_unit_tree_row.empty:
+            # This correction was written because the automated match for
+            # csi_concat_original was known to be wrong; its intended target
+            # no longer exists in the current IASO tree (renamed/removed
+            # since). Fall back to unmatched rather than silently keeping
+            # that already-distrusted automated match in place.
+            current_run.log_warning(
+                f"CORRECTION CSI OBSOLÈTE: la correction manuelle prévue pour "
+                f"'{csi_concat_original}' pointe vers '{csi_concat_correct}', "
+                "qui n'existe plus dans l'arbre IASO actuel."
+            )
+            current_run.log_warning(
+                f"CORRECTION CSI OBSOLÈTE: '{csi_concat_original}' est donc "
+                "traité comme non apparié plutôt que de conserver "
+                "l'appariement automatique initial, déjà connu comme "
+                "incorrect."
+            )
+            target_df_matched.loc[mask, cols] = None
+            continue
+
+        target_df_matched.loc[mask, cols] = org_unit_tree_row[cols].values[0]
+
+    target_df_matched["LVL_6_NAME"] = np.where(
+        target_df_matched["org_unit_id"].isna(),
+        target_df_matched["LVL_6_NAME_original"],
+        target_df_matched["LVL_6_NAME"],
+    )
+    return target_df_matched
+
+
+def _report_unmatched_csi(target_df_matched: pd.DataFrame) -> None:
+    """Warn about every CSI that still has no org_unit_id, with the target value
+    (cible) that won't appear in the dashboard as a result."""
+    unmatched_count = int(target_df_matched["org_unit_id"].isna().sum())
+    total_count = len(target_df_matched)
+    if unmatched_count == 0:
+        return
+
+    unmatched_rows = target_df_matched[target_df_matched["org_unit_id"].isna()]
+    total_cible_lost = int(unmatched_rows["cible"].sum())
+    per_csi = (
+        unmatched_rows.groupby(
+            ["LVL_3_NAME_original", "LVL_6_NAME_original"], dropna=False
+        )["cible"]
+        .sum()
+        .reset_index()
+    )
+    current_run.log_warning(
+        f"CSI NON APPARIÉS: {unmatched_count} sur {total_count} entrées "
+        "n'ont pu être associées à aucune unité d'organisation de l'arbre "
+        f"IASO nettoyé, représentant une cible cumulée de "
+        f"{total_cible_lost} qui n'apparaîtra pas dans le tableau de bord."
+    )
+    # One log call per CSI: OpenHexa collapses newlines within a message.
+    for district, csi, cible_sum in per_csi.itertuples(index=False):
+        current_run.log_warning(
+            f"CSI NON APPARIÉ: '{csi}' (district '{district}') n'est pas "
+            "enregistré comme une unité d'organisation valide dans IASO; "
+            f"sa cible ({int(cible_sum)}, tous âges/rounds/produits "
+            "confondus pour cette entrée) ne sera pas remontée dans le "
+            "tableau de bord."
+        )
+    current_run.log_warning(
+        "À FAIRE: corrigez l'orthographe de ces CSI dans le fichier source, "
+        "ou faites-les créer dans IASO s'il s'agit de formations sanitaires "
+        "réellement manquantes."
+    )
+
+
+def add_region_names(
+    target_df: pd.DataFrame, iaso_org_unit_tree_clean_df: pd.DataFrame
+) -> pd.DataFrame:
+    """Add LVL_2_NAME (region) by merging on org_unit_id."""
+    current_run.log_info("Ajout des noms de région aux données de cibles...")
+    try:
+        regions_df = iaso_org_unit_tree_clean_df[
+            ["org_unit_id", "LVL_2_NAME"]
+        ].drop_duplicates()
+        target_with_regions_df = target_df.merge(
+            regions_df, on="org_unit_id", how="left"
+        )
+        current_run.log_info("Ajout des noms de région terminé.")
+        return target_with_regions_df
+    except Exception as e:
+        current_run.log_error(f"Erreur lors de l'ajout des noms de région: {e}")
+        raise
+
+
+def clean_org_unit_id(
+    target_data_combined: pd.DataFrame,
+    iaso_org_unit_tree_raw_df: pd.DataFrame,
+    iaso_org_unit_tree_clean_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Remap org_unit_id to the final LVL_6_UID-based id (one-to-many cleanup)."""
+    current_run.log_info(
+        "Récupération des identifiants des unités d'organisation (correspondance un-à-plusieurs)..."
+    )
+    try:
+        uid_to_org_id_df_clean = iaso_org_unit_tree_clean_df[
+            ["LVL_6_UID", "org_unit_id"]
+        ].drop_duplicates()
+        uid_to_org_id_df_raw = iaso_org_unit_tree_raw_df.copy()
+        uid_to_org_id_df_raw["LVL_6_UID"] = uid_to_org_id_df_raw.groupby("LVL_6_NAME")[
+            "LVL_6_UID"
+        ].transform("first")
+        uid_to_org_id_df_raw = (
+            uid_to_org_id_df_raw[["LVL_6_UID", "org_unit_id"]]
+            .drop_duplicates()
+            .rename(columns={"org_unit_id": "final_org_unit_id"})
+        )
+        mapping_df = uid_to_org_id_df_clean.merge(
+            uid_to_org_id_df_raw, on="LVL_6_UID", how="inner"
+        )[["org_unit_id", "final_org_unit_id"]].drop_duplicates()
+
+        target_data_combined = pd.merge(
+            target_data_combined, mapping_df, on="org_unit_id", how="left"
+        )
+        target_data_combined["org_unit_id"] = target_data_combined[
+            "final_org_unit_id"
+        ].fillna(target_data_combined["org_unit_id"])
+        target_data_combined.drop(columns=["final_org_unit_id"], inplace=True)
+
+        current_run.log_info(
+            "Récupération des identifiants des unités d'organisation terminée."
+        )
+        return target_data_combined
+    except Exception as e:
+        current_run.log_error(
+            f"Erreur lors du processus de récupération des identifiants: {e}"
+        )
+        raise

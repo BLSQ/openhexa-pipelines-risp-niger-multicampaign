@@ -2,7 +2,6 @@ from openhexa.sdk import current_run
 import pandas as pd
 import requests, json
 import io
-import datetime
 from typing import Dict, Any, List
 
 
@@ -290,27 +289,3 @@ class IASOConnectionHandler:
         ]
         org_df = pd.concat(org_df_total, ignore_index=True)
         return org_df
-
-
-def pyramid_selector(df: pd.DataFrame) -> pd.Series:
-    """
-    Selects the most recent row, excluding entries from 2023-07-14.
-
-    Parameters:
-        df (pd.DataFrame): The input dataframe containing an 'updated_date' column.
-
-    Returns:
-        pd.Series: The row with the most recent updated_date, excluding the forbidden date.
-    """
-    dates = pd.to_datetime(df["updated_date"])
-    mask = dates.dt.date != datetime.date(
-        2023, 7, 14
-    )  # Filter out the "forbidden" date (2023-07-14)
-    valid_df_dates = dates[mask]
-
-    if valid_df_dates.empty:
-        return pd.Series(dtype="object")
-
-    max_idx = valid_df_dates.idxmax()
-    most_recent_row = df.loc[max_idx]
-    return most_recent_row

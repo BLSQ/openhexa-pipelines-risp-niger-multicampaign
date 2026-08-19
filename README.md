@@ -90,7 +90,7 @@ A standard pipeline folder looks like this:
 ```
 
 Deploy workflows live at the repo root, one file per pipeline
-(`.github/workflows/push-<pipeline-name>.yml`, not every pipeline has one yet) — GitHub Actions
+(`.github/workflows/push-<pipeline-name>.yml`) — GitHub Actions
 only discovers workflows under the repo-root `.github/workflows/`, never inside a subfolder.
 
 For what each pipeline reads/writes and why the architecture is shaped this way, see

@@ -149,9 +149,19 @@ auto-detecting engine**:
 - `text_match.py` — token-matching helpers (`match_token`, `find_token`, `matches`,
   `any_token_matches`) used by the engine to recognize labels despite wording variance.
 - `geo_match.py` — fuzzy district-name reconciliation (`build_district_mapping`) against the
-  IASO org-unit tree, independent from `utils.org_unit_matching` (used for CSI-level matching).
-- `utils.py` — CSI-level org-unit matching (`org_unit_matching`), carried over unchanged from
-  the pre-rename pipeline.
+  IASO org-unit tree, plus the district-level matching stage that consumes it
+  (`match_district_to_org_unit_id` and its reporting helpers) — independent from `utils.py`
+  (used for CSI-level matching).
+- `utils.py` — CSI-level org-unit matching: `org_unit_matching` (carried over unchanged from the
+  pre-rename pipeline), the CSI-level matching stage that consumes it
+  (`match_csi_to_org_unit_id` and its helpers, including the hand-curated `csi_matching_failed`
+  corrections dict), and the post-matching org-unit cleanup shared by both levels
+  (`add_region_names`, `clean_org_unit_id`).
+- `run_persistence.py` — processed-file bookkeeping: detecting whether a run's (year, produit,
+  round) combination already exists (`check_for_existing_slices`), locating/removing superseded
+  slices in overwrite mode, and compiling every per-run file in a folder into one combined
+  dataset (`compile_processed_files`) — used for both `combined_target_data` and
+  `expected_data_structure`.
 - `validate.py` — validation helpers.
 - `test_robustness.py` — a standalone robustness suite (not pytest-based): takes real workbooks,
   applies synthetic mutations (extra header rows, renamed/reordered/blank columns, typos, moved
@@ -169,8 +179,11 @@ age/period combinatorial rows for the SAME run's org-unit-matched target data (`
 full combined dataset; that scoping is what makes a separate regional-restriction special case
 unnecessary (a district that only has a target for one product can't get a spurious expected row
 for a different product, since the cross-join never sees org units outside `matched`). Config
-(`SITE_TYPE`/`PRODUCT_STATUS`/`SEX_TYPE`/`HISTORICAL_CAMPAIGNS_CONFIG`) lives in `config.py` as
-one named block, per the "one named constant block" convention.
+(`SITE_TYPE`/`PRODUCT_STATUS`/`SEX_TYPE`/`HISTORICAL_CAMPAIGNS_CONFIG`) lives in this file as one
+named block, right alongside the functions that consume it — not in `config.py`, which (per
+`docs/ARCHITECTURE.md` §14.2) is reserved for workspace paths and OpenHEXA connection details
+only. This module also owns the date-overlap check for new campaign periods
+(`check_for_date_overlap`), since it's a period/expected-structure concern.
 
 Pipeline-level behavior worth knowing before modifying `pipeline.py`:
 - `products` is **not** a user-facing parameter — it's derived from `campaign_name` (see

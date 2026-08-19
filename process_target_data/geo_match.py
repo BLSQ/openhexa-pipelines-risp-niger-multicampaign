@@ -34,6 +34,28 @@ silently attached to the wrong district.
 import re
 import unicodedata
 
+import pandas as pd
+
+try:  # pragma: no cover - same logging shim pattern as target_import.py /
+    # expected_structure.py, so this module keeps working without openhexa.sdk
+    # available (e.g. under test_robustness.py).
+    from openhexa.sdk import current_run
+
+    def _info(m):
+        current_run.log_info(m)
+
+    def _warn(m):
+        current_run.log_warning(m)
+
+    def _error(m):
+        current_run.log_error(m)
+except Exception:  # pragma: no cover
+    import logging
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    _log = logging.getLogger("geo_match")
+    _info, _warn, _error = _log.info, _log.warning, _log.error
+
 try:
     from fuzzywuzzy import fuzz
 
@@ -127,3 +149,101 @@ def build_district_mapping(
         if str(raw).strip() != str(best).strip():
             inexact.append((raw, best, round(min(best_score, 100.0), 1)))
     return mapping, unmatched, inexact
+
+
+# =========================================================================== #
+# District-level matching stage (moved from pipeline.py - this module's theme,#
+# CSI-level's counterpart lives in utils.py).                                 #
+# =========================================================================== #
+def match_district_to_org_unit_id(
+    district_level_target_df: pd.DataFrame, iaso_org_unit_tree_df_clean: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Match district names (LVL_3_NAME) to org-unit IDs.
+
+    District labels are reconciled with the official IASO names by fuzzy matching
+    (build_district_mapping above), which handles accents, spelling and
+    administrative-suffix variants without a per-name dictionary. Every correction
+    is logged, and names that stay below the similarity threshold are reported and
+    excluded rather than attached to the wrong district.
+    """
+    _info(
+        "Appariement des noms de districts aux identifiants des unités organisationnelles..."
+    )
+    try:
+        iaso_org_unit_tree_for_matching = iaso_org_unit_tree_df_clean[
+            ["org_unit_id", "LVL_3_NAME"]
+        ].drop_duplicates()
+        iaso_names = sorted(
+            iaso_org_unit_tree_for_matching["LVL_3_NAME"].dropna().unique()
+        )
+        raw_names = sorted(district_level_target_df["LVL_3_NAME"].dropna().unique())
+
+        mapping, unmatched, inexact = build_district_mapping(raw_names, iaso_names)
+        _report_district_mapping_assumptions(inexact, unmatched)
+
+        target_df_matched = district_level_target_df.copy()
+        target_df_matched["LVL_3_NAME"] = (
+            target_df_matched["LVL_3_NAME"]
+            .map(mapping)
+            .fillna(target_df_matched["LVL_3_NAME"])
+        )
+        target_df_matched = target_df_matched.merge(
+            iaso_org_unit_tree_for_matching, on=["LVL_3_NAME"], how="left"
+        )
+        _report_unmatched_districts(target_df_matched)
+
+        _info(
+            f"Appariement des districts terminé: {len(mapping)} sur "
+            f"{len(raw_names)} noms appariés."
+        )
+        return target_df_matched
+    except Exception as e:
+        _error(f"Erreur lors de l'appariement des noms de districts: {str(e)}")
+        raise
+
+
+def _report_district_mapping_assumptions(inexact: list, unmatched: list) -> None:
+    """Log every inexact-but-accepted match, and every district that stayed below
+    the similarity threshold and will be excluded rather than guessed at."""
+    for raw, iaso_name, sc in inexact:
+        _warn(
+            f"HYPOTHÈSE: le district '{raw}' du fichier ne correspond pas "
+            f"exactement à un nom de l'arbre IASO."
+        )
+        _warn(
+            f"HYPOTHÈSE (suite): le traitement continue en l'associant à "
+            f"'{iaso_name}' (similarité {sc}/100)."
+        )
+
+    for raw, best, sc in unmatched:
+        _warn(
+            f"DISTRICT NON APPARIÉ: '{raw}' ne correspond à aucun district de "
+            f"l'arbre des unités d'organisation IASO (meilleure proposition: "
+            f"'{best}', similarité {sc}/100, insuffisante)."
+        )
+        _warn(
+            f"CONSÉQUENCE: '{raw}' n'est pas reconnu comme une unité "
+            "d'organisation valide dans IASO; aucune cible ne sera remontée "
+            "pour cette unité dans le tableau de bord."
+        )
+    if unmatched:
+        _warn(
+            f"À FAIRE: corrigez l'orthographe de ces {len(unmatched)} district(s) "
+            "dans le fichier source, ou vérifiez qu'ils existent bien dans IASO."
+        )
+
+
+def _report_unmatched_districts(target_df_matched: pd.DataFrame) -> None:
+    unmatched_count = int(target_df_matched["org_unit_id"].isna().sum())
+    total_count = len(target_df_matched)
+    if unmatched_count == 0:
+        return
+    unmatched_districts = target_df_matched[
+        target_df_matched["org_unit_id"].isna()
+    ]["LVL_3_NAME"].unique()
+    _warn(
+        f"{unmatched_count} sur {total_count} entrées n'ont pas pu être "
+        "appariées à un org_unit_id et seront supprimées des données cibles."
+    )
+    _warn(f"Districts concernés: {', '.join(map(str, unmatched_districts))}.")

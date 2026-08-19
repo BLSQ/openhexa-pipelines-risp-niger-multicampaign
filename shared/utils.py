@@ -1,18 +1,46 @@
 import os
 from openhexa.sdk import current_run, workspace
 import pandas as pd
+import pyarrow.parquet as pq
 
 WORKSPACE_PATH = workspace.files_path
 PROJECT_FOLDER = "multi-campagne"
 OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "outputs")
 
 
-def load_data(file_name: str) -> pd.DataFrame:
+def load_data(
+    file_name: str, columns: list[str] = None, categories: list[str] = None
+) -> pd.DataFrame:
     """
     Load data from a parquet file in the OUTPUTS_PATH.
 
     Args:
         file_name (str): The name of the file to read from.
+        columns (list[str], optional): Only read these columns off disk, instead of
+            every column in the file. Parquet is columnar, so this skips loading the
+            unread columns' data at all - worth doing for a very wide and/or
+            many-million-row file (e.g. process_target_data's
+            expected_data_structure) where a caller only ever touches a handful of
+            its columns: pandas expands every parquet string column back into a
+            plain Python object array on read, so a column nobody uses still costs
+            its full in-memory size if it's loaded anyway. Defaults to every column.
+        categories (list[str], optional): Decode these columns straight into pandas
+            Categorical during the parquet-to-pandas conversion, instead of first
+            materializing a full one-Python-str-per-row object array and only then
+            letting the caller `.astype("category")` it. At a many-million-row
+            scale, that intermediate object array is itself large enough to OOM
+            before any post-load downcast gets the chance to run - going through
+            pyarrow's own `categories=` conversion (rather than pandas'
+            `read_parquet`, which doesn't expose it) avoids ever allocating it for
+            these columns. Also passed as `read_dictionary=` to the underlying
+            pyarrow read itself: parquet already stores a low-cardinality string
+            column dictionary-encoded on disk, but pyarrow's reader expands that
+            back into a plain (non-dictionary) arrow array by default - which
+            would recreate the exact same transient blow-up one column earlier in
+            the pipeline, before to_pandas ever gets to build the Categorical.
+            Keeping the on-disk dictionary encoding intact end-to-end is what
+            actually avoids the spike, not the to_pandas conversion alone. Only
+            worth listing genuinely low-cardinality columns. Defaults to none.
 
     Returns:
         df (pd.DataFrame): The dataframe containing the file data.
@@ -26,7 +54,10 @@ def load_data(file_name: str) -> pd.DataFrame:
         raise FileNotFoundError(msg)
 
     try:
-        df = pd.read_parquet(file_to_import)
+        table = pq.read_table(
+            file_to_import, columns=columns, read_dictionary=categories
+        )
+        df = table.to_pandas(categories=categories)
         current_run.log_info(
             f"Données du fichier {file_name} chargées avec succès depuis le fichier {file_to_import}"
         )
