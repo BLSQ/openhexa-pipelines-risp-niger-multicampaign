@@ -1,10 +1,7 @@
 """
-Workspace paths only. Structure detection and campaign semantics are handled by
-target_import.py / layouts.py. District name reconciliation is handled by
-geo_match.py (fuzzy). CSI name reconciliation (org_unit_matching, the manual
-csi_matching_failed corrections) lives in utils.py. Expected-data-structure config
-(SEX_TYPE/PRODUCT_STATUS/SITE_TYPE/HISTORICAL_CAMPAIGNS_CONFIG) lives in
-expected_structure.py, alongside the functions that consume it.
+Workspace paths only. This pipeline only reads the per-run files extract_target_data has
+already produced and compiles them - it has no structure-detection, org-unit-matching, or
+expected-structure logic of its own, so it needs none of the config those carry.
 """
 
 import os
@@ -18,7 +15,3 @@ PROCESSED_TARGETS_PATH = os.path.join(OUTPUTS_PATH, "historical targets processe
 EXPECTED_STRUCTURE_PROCESSED_PATH = os.path.join(
     OUTPUTS_PATH, "expected data structure processed"
 )
-TARGETS_HISTORICAL_PATH = os.path.join(
-    WORKSPACE_PATH, PROJECT_FOLDER, "inputs", "cibles", "historique"
-)
-TEMP_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "temp")

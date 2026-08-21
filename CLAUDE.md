@@ -42,19 +42,31 @@ Pipelines, in rough data-flow order (see README.md diagram for the full picture)
   by almost every other pipeline for org-unit matching.
 - `extract_iaso_form_data` → `process_iaso_form_data` — pulls raw IASO form submissions,
   matches them to org units, cleans/reshapes them into `combined_iaso_data.parquet`.
-- `process_target_data` — current, actively-developed pipeline (renamed from
-  `process_historical_target_data_v2` once it became the only target-processing pipeline left);
-  absorbs the "Configure" stage of the v2 architecture (`docs/ARCHITECTURE.md`). Imports ONE
-  uploaded target spreadsheet (historical or new campaign alike, arbitrary/inconsistent layouts)
-  via an auto-detecting engine, AND generates the matching expected-data-structure rows in the
-  same run. Absorbed and replaced five now-deleted v1 pipelines: `generate_targets_templates`
-  (blank target-entry Excel templates — no longer needed, since new campaigns now go through this
-  same auto-detecting engine as historical ones), the original `process_target_data` (turned
+- `extract_target_data` — the sole **manual** step of the whole flow (renamed from
+  `process_historical_target_data_v2`, then from `process_target_data` once compilation was
+  split out — see below); absorbs the "Configure" stage of the v2 architecture
+  (`docs/ARCHITECTURE.md`). Imports ONE uploaded target spreadsheet (historical or new campaign
+  alike, arbitrary/inconsistent layouts) via an auto-detecting engine, generates the matching
+  expected-data-structure rows for that same run, and saves both as per-run files — it does
+  **not** compile the combined datasets itself anymore (see `process_target_data` below).
+  Absorbed and replaced five now-deleted v1 pipelines: `generate_targets_templates` (blank
+  target-entry Excel templates — no longer needed, since new campaigns now go through this same
+  auto-detecting engine as historical ones), the original `process_target_data` (turned
   filled-in templates into `combined_target_data.parquet`), `configure_new_campaign` (wrote new
   campaign config to `inputs/config` — replaced by the `campaign_start_date`/`campaign_end_date`
   parameters), and `combine_expected_data_structures` plus
   `create_expected_data_structure_for_historical_campaigns` (built the expected-data-structure
-  rows separately). See "`process_target_data` internals" below.
+  rows separately). See "`extract_target_data` internals" below.
+- `process_target_data` — a separate, lightweight, **automated** pipeline (not the same one as
+  above despite the reused name — see the note in `extract_target_data`'s history): compiles
+  `combined_target_data.parquet` / `expected_data_structure.parquet` from every per-run file
+  `extract_target_data` has produced so far, under "historical targets processed" / "expected
+  data structure processed". No parameters. Split out because recompiling both multi-million-row
+  combined datasets from scratch was the expensive part of what used to be one pipeline, and a
+  single file extraction shouldn't have to pay that cost synchronously every time. Runs
+  automatically as the **first** step of `orchestrate_pipelines_flow`'s chain (before
+  `extract_org_units`), since `process_iaso_form_data`/`build_visualisation_tables` downstream
+  both expect these combined datasets to already reflect every extraction done so far.
 - `build_visualisation_tables` — the Transform stage: builds the 17 coverage/completeness/stocks/
   surveillance/communications/filter tables that back the PowerBI dashboards, and saves/exports
   each as this pipeline's output (same parquet+dataset convention as every other pipeline). Does
@@ -67,7 +79,9 @@ Pipelines, in rough data-flow order (see README.md diagram for the full picture)
   table is ever added, renamed or removed.
 - `orchestrate_pipelines_flow` — meta-pipeline that runs the other pipelines in sequence via
   the OpenHEXA API (`openhexa.toolbox` `OpenHEXAClient`), using `papermill` for notebook-based
-  steps.
+  steps. Chain: `process_target_data` → `extract_org_units` → `extract_iaso_form_data` →
+  `process_iaso_form_data` → `build_visualisation_tables` → `load_visualisation_tables`.
+  `extract_target_data` is deliberately not part of this chain — it's the one manual step.
 - `population_analysis/` — newer, separate line of work (WorldPop/INS raster-based population
   estimation), not yet wired into the main data flow above.
 
@@ -118,7 +132,7 @@ Pipelines, in rough data-flow order (see README.md diagram for the full picture)
   in French (this is a Niger MoH-facing project) — keep new log/parameter text in French to
   match the existing ones.
 
-## `process_target_data` internals (current focus of active work)
+## `extract_target_data` internals (current focus of active work)
 
 This is the pipeline most likely to be under active development, and — per the v2 architecture
 migration (`docs/ARCHITECTURE.md`, plan at the time of writing in
@@ -128,7 +142,14 @@ new campaigns alike, through one unified path. It was renamed from
 `process_historical_target_data_v2` once the five v1 pipelines it superseded
 (`generate_targets_templates`, the original `process_target_data`, `configure_new_campaign`,
 `create_expected_data_structure_for_historical_campaigns`, `combine_expected_data_structures`)
-were deleted from the repo, leaving it the only target-processing pipeline.
+were deleted from the repo, leaving it the only target-processing pipeline — then renamed again,
+from `process_target_data` to `extract_target_data`, when compiling the combined datasets was
+split out into a new, separate, automated pipeline that reused the `process_target_data` name
+(see below). `extract_target_data` remains the sole **manual** step; the OpenHEXA-deployed
+pipeline's `name=` (and therefore its deployed identity/run history) was deliberately left
+unchanged across that second rename — only the module/pipeline-id changed — to avoid orphaning
+it the way an earlier, unrelated rename did (see `docs/WEBAPP.md` §3's "stale orphaned pipeline"
+finding for that precedent).
 
 Target-import engine — historical target spreadsheets arrive in inconsistent, ad hoc layouts
 (different header rows, column orders, age-bracket labelings, district vs. CSI level,
@@ -157,11 +178,14 @@ auto-detecting engine**:
   (`match_csi_to_org_unit_id` and its helpers, including the hand-curated `csi_matching_failed`
   corrections dict), and the post-matching org-unit cleanup shared by both levels
   (`add_region_names`, `clean_org_unit_id`).
-- `run_persistence.py` — processed-file bookkeeping: detecting whether a run's (year, produit,
-  round) combination already exists (`check_for_existing_slices`), locating/removing superseded
-  slices in overwrite mode, and compiling every per-run file in a folder into one combined
-  dataset (`compile_processed_files`) — used for both `combined_target_data` and
-  `expected_data_structure`.
+- `run_persistence.py` — processed-file bookkeeping for this pipeline's own per-run save:
+  detecting whether a run's (year, produit, round) combination already exists
+  (`check_for_existing_slices`, checked against the last *compiled* combined dataset — see the
+  staleness caveat in `pipeline.py`'s module docstring), and locating/removing superseded slices
+  in overwrite mode. Compiling every per-run file in a folder into one combined dataset
+  (`compile_processed_files`) used to live here too, but moved to `process_target_data`'s own
+  copy of this module (same name, different, smaller content) once that became a separate
+  pipeline — `extract_target_data` never calls it anymore.
 - `validate.py` — validation helpers.
 - `test_robustness.py` — a standalone robustness suite (not pytest-based): takes real workbooks,
   applies synthetic mutations (extra header rows, renamed/reordered/blank columns, typos, moved
@@ -192,9 +216,9 @@ Pipeline-level behavior worth knowing before modifying `pipeline.py`:
   expected products are always explicit — no product is ever silently optional.
 - Each run's processed output is saved as its **own** parquet file (named by a deterministic
   slug of year/rounds/products) under both `outputs/historical targets processed/` (targets) and
-  `outputs/expected data structure processed/` (expected structure); the combined datasets
-  (`combined_target_data.parquet`, `expected_data_structure.parquet`) are always **compiled from
-  scratch** by concatenating every file in their respective folders, not incrementally appended.
+  `outputs/expected data structure processed/` (expected structure). Compiling the combined
+  datasets (`combined_target_data.parquet`, `expected_data_structure.parquet`) from every file
+  in those folders is `process_target_data`'s job now, not this pipeline's — see below.
 - Re-running the same (year, products, rounds) combination is guarded: by default the run
   aborts if that combination already exists (to avoid silent duplication); the
   `overwrite_existing` parameter allows replacing it, and the old data is only deleted *after*
@@ -202,4 +226,20 @@ Pipeline-level behavior worth knowing before modifying `pipeline.py`:
   A separate check (`check_for_date_overlap`) guards against a *new* campaign's supplied dates
   overlapping an already-recorded round for the same product/year — only relevant when
   `campaign_start_date`/`campaign_end_date` are actually used (i.e. the combination isn't already
-  in `HISTORICAL_CAMPAIGNS_CONFIG`).
+  in `HISTORICAL_CAMPAIGNS_CONFIG`). Both this check and `check_for_existing_slices` above read
+  the last *compiled* combined dataset, which can be stale if `extract_target_data` has run more
+  than once since `process_target_data` last compiled — an accepted, documented consequence of
+  the split (see `pipeline.py`'s module docstring), not an oversight.
+
+## `process_target_data` internals
+
+The lightweight, **automated** compile-only pipeline split out of `extract_target_data` (see
+above) — not the same pipeline as the one that used to have this name. No parameters; every run
+recompiles `combined_target_data.parquet` / `expected_data_structure.parquet` from scratch from
+every per-run file currently in `outputs/historical targets processed/` /
+`outputs/expected data structure processed/`, exactly as the compile step always did before the
+split. Its `run_persistence.py` holds only `compile_processed_files` — a smaller module of the
+same name as `extract_target_data`'s own, not a shared file between them (each pipeline needs
+its own physical copy, per this repo's usual convention of no cross-pipeline imports at
+runtime). Runs as the first step of `orchestrate_pipelines_flow`'s chain (see
+`orchestrate_pipelines_flow/config.py`).

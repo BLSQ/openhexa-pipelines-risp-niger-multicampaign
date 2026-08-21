@@ -28,10 +28,17 @@ CANONICAL = REPO_ROOT / "shared" / "utils.py"
 # create_expected_data_structure_for_historical_campaigns,
 # combine_expected_data_structures) were removed once process_target_data (this
 # repo's renamed process_historical_target_data_v2) absorbed everything they did.
+#
+# extract_target_data and process_target_data are two separate pipelines, each needing its own
+# shared_utils.py copy: extract_target_data is the sole manual step (imports one uploaded
+# target file); process_target_data is a separate, lightweight, automated pipeline that
+# compiles the per-run files extract_target_data produces, as the first step of
+# orchestrate_pipelines_flow.
 ACTIVE_PIPELINES = [
     "extract_org_units",
     "extract_iaso_form_data",
     "process_iaso_form_data",
+    "extract_target_data",
     "process_target_data",
     "build_visualisation_tables",
     "load_visualisation_tables",

@@ -8,6 +8,11 @@ its own - it only calls other pipelines via the OpenHEXA API.
 
 # Sequence
 PIPELINE_ACTIONS = {
+    "multi-campagne-compilation-des-cibles-et-de-la-structure-attendue": {
+        "type": "pipeline",
+        "url": "https://api.openhexa.org/pipelines/ZGIwOWUyNzItNzc3OC00MzhlLWFmNGEtZjgyMGE4MTdkNTY5OjF3eDUyMTpOeFBiWHJRRUE5LWFLd2dWZ2ZfTUY4Y0NhcmR3OUxkbmg3R3hLYnNwSTFj/run",
+        "params": {},
+    },
     "multi-campagne-extraction-des-unites-organisationnelles-iaso": {
         "type": "pipeline",
         "url": "https://api.openhexa.org/pipelines/ZWMyNzkxYWQtNGFjNy00ZTc4LTk0NzctOWEyNDljY2Q0ODAyOjF3dVBqQTpGQ25hWktEY3dZeEpZVE85aXJMcEE5ZzNCdVlrRTJOc3ZjbVZNNTNSYi1Z/run",

@@ -39,7 +39,10 @@ def launch_action(hexa: OpenHEXAClient, action: dict, name: str, params: dict) -
 
 def execute_pipeline(hexa: OpenHEXAClient, action: dict, params: dict) -> None:
     """
-    Execute a pipeline run and monitor its status.
+    Execute a pipeline run and monitor its status. If the pipeline run does not end with
+    status "success" (including when it never reached a terminal status after 3 launch
+    attempts) - this makes the orchestrator's own run fail too, instead of silently
+    continuing to the next pipeline in the chain.
 
     Args:
         hexa (OpenHEXAClient): An instance of the OpenHEXAClient class.
@@ -50,7 +53,7 @@ def execute_pipeline(hexa: OpenHEXAClient, action: dict, params: dict) -> None:
         None
 
     Raises:
-        Exception: If the pipeline run fails to launch.
+        RuntimeError:
 
     """
     attempt = 1
@@ -73,6 +76,11 @@ def execute_pipeline(hexa: OpenHEXAClient, action: dict, params: dict) -> None:
             r = run_pipeline(action, params)
         time.sleep(10)
     current_run.log_info(f"Statut d'exécution du pipeline: {run_status}")
+    if run_status != "success":
+        raise RuntimeError(
+            f"Le pipeline pour {action.get('url', '?')} s'est terminé avec le statut "
+            f"'{run_status}' au lieu de 'success' - arrêt de l'orchestration."
+        )
 
 
 def get_pipeline_run_data(hexa: OpenHEXAClient, r: requests.models.Response) -> dict:

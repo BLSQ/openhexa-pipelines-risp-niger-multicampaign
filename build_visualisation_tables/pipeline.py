@@ -12,13 +12,13 @@ from data_cleaning import (
     EXPECTED_STRUCTURE_CATEGORY_COLS,
     add_month_column,
 )
-from coverage import create_coverage_dataset, add_target_data
-from completeness import create_completeness_dataset
-from stocks import create_stocks_dataset
-from supervision import create_supervision_dataset
-from communications import create_communication_dataset
+from coverage_tables import create_coverage_dataset, add_target_data
+from completeness_table import create_completeness_dataset
+from stocks_table import create_stocks_dataset
+from supervision_table import create_supervision_dataset
+from communications_tables import create_communication_dataset
 from filter_tables import create_filter_tables, create_campaign_round_summary_table
-from spatial_units import create_dynamic_org_unit_table
+from spatial_units_table import create_dynamic_org_unit_table
 
 
 @pipeline(

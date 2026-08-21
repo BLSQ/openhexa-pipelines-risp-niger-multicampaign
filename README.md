@@ -29,20 +29,21 @@ flowchart LR
     IASO(["IASO API"])
     TARGETS(["Target spreadsheet"])
 
-    CONFIGURE["<b>Configure</b><br/>process_target_data<br/>👤 manual"]
+    CONFIGURE["<b>Configure</b><br/>extract_target_data<br/>👤 manual"]
 
     subgraph AUTO[" orchestrate_pipelines_flow — runs automatically "]
         direction LR
+        COMPILE["<b>Configure (compile)</b><br/>process_target_data"]
         EXTRACT["<b>Extract</b><br/>extract_org_units<br/>extract_iaso_form_data"]
         TRANSFORM["<b>Transform</b><br/>process_iaso_form_data<br/>build_visualisation_tables"]
         LOAD["<b>Load</b><br/>load_visualisation_tables"]
-        EXTRACT --> TRANSFORM --> LOAD
+        COMPILE --> EXTRACT --> TRANSFORM --> LOAD
     end
 
     DB[("Database")]
     DASH(["PowerBI dashboards"])
 
-    TARGETS --> CONFIGURE --> TRANSFORM
+    TARGETS --> CONFIGURE --> COMPILE
     IASO --> EXTRACT
     LOAD --> DB --> DASH
 
@@ -52,15 +53,23 @@ flowchart LR
     classDef out fill:#134e2a,stroke:#4ade80,color:#fff,stroke-width:2px
 
     class CONFIGURE manual
-    class EXTRACT,TRANSFORM,LOAD auto
+    class COMPILE,EXTRACT,TRANSFORM,LOAD auto
     class IASO,TARGETS io
     class DB,DASH out
     style AUTO fill:#0f172a,stroke:#475569,color:#94a3b8
 ```
 
 🟠 **Configure** is the one manual, human-triggered step: someone uploads a target spreadsheet and
-runs `process_target_data`. 🔵 **Extract → Transform → Load** run automatically, chained by
-`orchestrate_pipelines_flow`. 🟢 The result lands in the database that feeds the dashboards.
+runs `extract_target_data`, which saves that run's own target/expected-structure rows as per-run
+files (it does not compile the combined datasets itself — see below). 🔵 **Configure (compile) →
+Extract → Transform → Load** run automatically, chained by `orchestrate_pipelines_flow`:
+`process_target_data` compiles `combined_target_data.parquet` / `expected_data_structure.parquet`
+from every per-run file produced so far, first in the chain, since Transform depends on both
+being up to date. 🟢 The result lands in the database that feeds the dashboards.
+
+`process_target_data` reuses the name of an earlier, different pipeline (the one that became
+`extract_target_data` once compiling was split out of it) — same name, unrelated code, deployed
+as a distinct pipeline in OpenHEXA. See `CLAUDE.md`'s pipeline list for the full history.
 
 ## Repository structure
 
@@ -69,13 +78,14 @@ Each top-level folder is a self-contained OpenHEXA pipeline, deployed and versio
 
 | Pipeline | Stage | What it does |
 |---|---|---|
-| [`process_target_data`](process_target_data) | Configure (manual) | Imports one uploaded target spreadsheet — historical or new campaign, arbitrary layout — via an auto-detecting engine, and generates the matching expected-data-structure rows in the same run. |
+| [`extract_target_data`](extract_target_data) | Configure (manual) | Imports one uploaded target spreadsheet — historical or new campaign, arbitrary layout — via an auto-detecting engine, generates the matching expected-data-structure rows for the same run, and saves both as per-run files. Does not compile the combined datasets itself. |
+| [`process_target_data`](process_target_data) | Configure (compile, automated) | Compiles `combined_target_data.parquet` / `expected_data_structure.parquet` from every per-run file `extract_target_data` has produced so far. No parameters; runs first in `orchestrate_pipelines_flow`'s chain. |
 | [`extract_org_units`](extract_org_units) | Extract | Pulls the IASO org-unit (health facility) tree; produces raw + cleaned versions used by almost every other pipeline for name matching. |
 | [`extract_iaso_form_data`](extract_iaso_form_data) | Extract | Pulls raw IASO form submissions. |
 | [`process_iaso_form_data`](process_iaso_form_data) | Transform | Matches submissions to org units, cleans and reshapes them. |
 | [`build_visualisation_tables`](build_visualisation_tables) | Transform | Builds the 17 coverage/completeness/stocks/surveillance/communications/filter tables behind the dashboard. |
 | [`load_visualisation_tables`](load_visualisation_tables) | Load | Pushes those 17 tables to the OpenHEXA database. |
-| [`orchestrate_pipelines_flow`](orchestrate_pipelines_flow) | Orchestrate | Runs Extract → Transform → Load in sequence via the OpenHEXA API. |
+| [`orchestrate_pipelines_flow`](orchestrate_pipelines_flow) | Orchestrate | Runs Configure (compile) → Extract → Transform → Load in sequence via the OpenHEXA API. |
 
 A standard pipeline folder looks like this:
 
@@ -101,7 +111,7 @@ For what each pipeline reads/writes and why the architecture is shaped this way,
 
 1. **Python environment.** Pipelines target the `openhexa.sdk` runtime. A conda/venv environment
    with `openhexa.sdk` plus each pipeline's own `requirements.txt` (e.g. `fuzzywuzzy` for
-   `process_target_data`) covers local development:
+   `extract_target_data`) covers local development:
    ```bash
    pip install openhexa.sdk
    pip install -r <pipeline>/requirements.txt   # if present
@@ -135,14 +145,14 @@ Most pipeline modules also have `if __name__ == "__main__":` blocks for a quick 
 
 There's no single test runner for the whole repo — each pipeline is tested on its own terms:
 
-- **`process_target_data`** has the most involved suite, since it has to handle arbitrary,
+- **`extract_target_data`** has the most involved suite, since it has to handle arbitrary,
   inconsistently-laid-out spreadsheets:
   - `test_robustness.py` — takes real historical target workbooks, applies synthetic mutations
     (extra header rows, reordered/renamed columns, typos, accent/casing changes) and asserts the
     import engine still produces identical totals. Run manually after touching
     `target_import.py`/`layouts.py`/`text_match.py`:
     ```bash
-    python process_target_data/test_robustness.py <folder_with_xlsx>
+    python extract_target_data/test_robustness.py <folder_with_xlsx>
     ```
   - `validate.py` — checks real files' import totals against known-good numbers.
 - **`tests/compare_to_golden.py`** — compares a freshly-generated visualisation table against a
@@ -180,7 +190,8 @@ so a stale copy fails CI rather than silently deploying.
 ## Where to go next
 
 - [`CLAUDE.md`](CLAUDE.md) — repo-wide coding conventions (OpenHEXA SDK constraints, logging,
-  workspace paths, org-unit matching) and `process_target_data`'s internals in depth.
+  workspace paths, org-unit matching) and `extract_target_data`'s / `process_target_data`'s
+  internals in depth.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — the design brief for this v2 architecture: why
   it's five pipelines, what each absorbed from the pipelines it replaced, and the decisions
   behind them.
