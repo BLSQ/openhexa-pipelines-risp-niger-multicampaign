@@ -31,11 +31,12 @@ flowchart LR
     TARGETS(["Target spreadsheet"])
 
     CONFIGURE["<b>Configure</b><br/>extract_target_data<br/>👤 manual"]
+    ORGUNITS["<b>Org units</b><br/>extract_org_units<br/>👤 manual, run rarely"]
 
     subgraph AUTO[" orchestrate_pipelines_flow — runs automatically "]
         direction LR
         COMPILE["<b>Configure (compile)</b><br/>process_target_data"]
-        EXTRACT["<b>Extract</b><br/>extract_org_units<br/>extract_iaso_form_data"]
+        EXTRACT["<b>Extract</b><br/>extract_iaso_form_data"]
         TRANSFORM["<b>Transform</b><br/>process_iaso_form_data<br/>build_visualisation_tables"]
         LOAD["<b>Load</b><br/>load_visualisation_tables"]
         COMPILE --> EXTRACT --> TRANSFORM --> LOAD
@@ -46,6 +47,8 @@ flowchart LR
 
     TARGETS --> CONFIGURE --> COMPILE
     IASO --> EXTRACT
+    IASO --> ORGUNITS
+    ORGUNITS -.-> TRANSFORM
     LOAD --> DB --> DASH
 
     classDef manual fill:#7c2d12,stroke:#fb923c,color:#fff,stroke-width:2px
@@ -53,20 +56,26 @@ flowchart LR
     classDef io fill:#1e293b,stroke:#64748b,color:#e2e8f0,stroke-width:1px
     classDef out fill:#134e2a,stroke:#4ade80,color:#fff,stroke-width:2px
 
-    class CONFIGURE manual
+    class CONFIGURE,ORGUNITS manual
     class COMPILE,EXTRACT,TRANSFORM,LOAD auto
     class IASO,TARGETS io
     class DB,DASH out
     style AUTO fill:#0f172a,stroke:#475569,color:#94a3b8
 ```
 
-🟠 **Configure** is the one manual, human-triggered step: someone uploads a target spreadsheet and
-runs `extract_target_data`, which saves that run's own target/expected-structure rows as per-run
-files (it does not compile the combined datasets itself — see below). 🔵 **Configure (compile) →
-Extract → Transform → Load** run automatically, chained by `orchestrate_pipelines_flow`:
-`process_target_data` compiles `combined_target_data.parquet` / `expected_data_structure.parquet`
-from every per-run file produced so far, first in the chain, since Transform depends on both
-being up to date. 🟢 The result lands in the database that feeds the dashboards.
+🟠 **Configure** is one of two manual, human-triggered steps: someone uploads a target
+spreadsheet and runs `extract_target_data`, which saves that run's own target/expected-structure
+rows as per-run files (it does not compile the combined datasets itself — see below). 🟠
+**Org units** (`extract_org_units`) is the other manual step, run rarely and on its own — the
+IASO org-unit tree changes only occasionally (health-facility openings/closures/renames), while
+the pipeline itself is comparatively memory- and time-consuming, so it's deliberately excluded
+from the automated chain rather than re-run on every orchestration; every downstream step still
+reads whichever org-unit tree was last extracted, however long ago that was. 🔵 **Configure
+(compile) → Extract → Transform → Load** run automatically, chained by
+`orchestrate_pipelines_flow`: `process_target_data` compiles `combined_target_data.parquet` /
+`expected_data_structure.parquet` from every per-run file produced so far, first in the chain,
+since Transform depends on both being up to date. 🟢 The result lands in the database that feeds
+the dashboards.
 
 `process_target_data` reuses the name of an earlier, different pipeline (the one that became
 `extract_target_data` once compiling was split out of it) — same name, unrelated code, deployed
@@ -123,12 +132,12 @@ Each top-level folder is a self-contained OpenHEXA pipeline, deployed and versio
 |---|---|---|
 | [`extract_target_data`](extract_target_data) | Configure (manual) | Imports one uploaded target spreadsheet — historical or new campaign, arbitrary layout — via an auto-detecting engine, generates the matching expected-data-structure rows for the same run, and saves both as per-run files. Does not compile the combined datasets itself. |
 | [`process_target_data`](process_target_data) | Configure (compile, automated) | Compiles `combined_target_data.parquet` / `expected_data_structure.parquet` from every per-run file `extract_target_data` has produced so far. No parameters; runs first in `orchestrate_pipelines_flow`'s chain. |
-| [`extract_org_units`](extract_org_units) | Extract | Pulls the IASO org-unit (health facility) tree; produces raw + cleaned versions used by almost every other pipeline for name matching. |
+| [`extract_org_units`](extract_org_units) | Extract (manual, run rarely) | Pulls the IASO org-unit (health facility) tree; produces raw + cleaned versions used by almost every other pipeline for name matching. Deliberately excluded from `orchestrate_pipelines_flow` — the tree changes only occasionally and the pipeline is comparatively memory-/time-consuming, so it's run by hand instead of on every orchestration. |
 | [`extract_iaso_form_data`](extract_iaso_form_data) | Extract | Pulls raw IASO form submissions. |
 | [`process_iaso_form_data`](process_iaso_form_data) | Transform | Matches submissions to org units, cleans and reshapes them. |
 | [`build_visualisation_tables`](build_visualisation_tables) | Transform | Builds the 17 coverage/completeness/stocks/surveillance/communications/filter tables behind the dashboard. |
 | [`load_visualisation_tables`](load_visualisation_tables) | Load | Pushes those 17 tables to the OpenHEXA database. |
-| [`orchestrate_pipelines_flow`](orchestrate_pipelines_flow) | Orchestrate | Runs Configure (compile) → Extract → Transform → Load in sequence via the OpenHEXA API. |
+| [`orchestrate_pipelines_flow`](orchestrate_pipelines_flow) | Orchestrate | Runs Configure (compile) → Extract → Transform → Load in sequence via the OpenHEXA API — `extract_org_units` is not part of this chain (see its own row above). |
 
 A standard pipeline folder looks like this:
 

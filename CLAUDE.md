@@ -39,7 +39,12 @@ should re-check every pipeline that syncs from it).
 Pipelines, in rough data-flow order (see README.md diagram for the full picture):
 
 - `extract_org_units` — pulls the IASO org-unit tree, produces raw + cleaned versions used
-  by almost every other pipeline for org-unit matching.
+  by almost every other pipeline for org-unit matching. **Manual**, run rarely and on its own —
+  deliberately excluded from `orchestrate_pipelines_flow`'s chain: the tree changes only
+  occasionally (health-facility openings/closures/renames), while the pipeline itself is
+  comparatively memory- and time-consuming, so it isn't worth re-running on every orchestration.
+  Every downstream pipeline just keeps reading whichever org-unit tree was last extracted,
+  however long ago that was.
 - `extract_iaso_form_data` → `process_iaso_form_data` — pulls raw IASO form submissions,
   matches them to org units, cleans/reshapes them into `combined_iaso_data.parquet`.
 - `extract_target_data` — the sole **manual** step of the whole flow (renamed from
@@ -65,7 +70,7 @@ Pipelines, in rough data-flow order (see README.md diagram for the full picture)
   combined datasets from scratch was the expensive part of what used to be one pipeline, and a
   single file extraction shouldn't have to pay that cost synchronously every time. Runs
   automatically as the **first** step of `orchestrate_pipelines_flow`'s chain (before
-  `extract_org_units`), since `process_iaso_form_data`/`build_visualisation_tables` downstream
+  `extract_iaso_form_data`), since `process_iaso_form_data`/`build_visualisation_tables` downstream
   both expect these combined datasets to already reflect every extraction done so far.
 - `build_visualisation_tables` — the Transform stage: builds the 17 coverage/completeness/stocks/
   surveillance/communications/filter tables that back the PowerBI dashboards, and saves/exports
@@ -79,9 +84,11 @@ Pipelines, in rough data-flow order (see README.md diagram for the full picture)
   table is ever added, renamed or removed.
 - `orchestrate_pipelines_flow` — meta-pipeline that runs the other pipelines in sequence via
   the OpenHEXA API (`openhexa.toolbox` `OpenHEXAClient`), using `papermill` for notebook-based
-  steps. Chain: `process_target_data` → `extract_org_units` → `extract_iaso_form_data` →
-  `process_iaso_form_data` → `build_visualisation_tables` → `load_visualisation_tables`.
-  `extract_target_data` is deliberately not part of this chain — it's the one manual step.
+  steps. Chain: `process_target_data` → `extract_iaso_form_data` → `process_iaso_form_data` →
+  `build_visualisation_tables` → `load_visualisation_tables`. Two pipelines are deliberately not
+  part of this chain, both manual: `extract_target_data` (the one per-campaign step) and
+  `extract_org_units` (run rarely, whenever the org-unit tree actually needs refreshing — see
+  its own entry above for why).
 - `population_analysis/` — newer, separate line of work (WorldPop/INS raster-based population
   estimation), not yet wired into the main data flow above.
 
