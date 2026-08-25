@@ -5,6 +5,8 @@ Source of truth: shared/utils.py (repo root). Regenerate every copy with:
 """
 
 import os
+import time
+from typing import Callable
 from openhexa.sdk import current_run, workspace
 import pandas as pd
 import pyarrow.parquet as pq
@@ -12,6 +14,32 @@ import pyarrow.parquet as pq
 WORKSPACE_PATH = workspace.files_path
 PROJECT_FOLDER = "multi-campagne"
 OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "outputs")
+
+_WRITE_RETRY_ATTEMPTS = 3
+_WRITE_RETRY_DELAY_SECONDS = 10
+
+
+def _write_with_retry(write_fn: Callable[[], None], description: str) -> None:
+    """
+    Retries a file-write callable on OSError - in practice seen as "[Errno 116] Stale file
+    handle" when writing a very large file (expected_data_structure can run to ~50M rows) to
+    the mounted workspace bucket: the underlying network/FUSE mount can invalidate a
+    long-lived write's file handle mid-write. This is a transient infrastructure hiccup, not a
+    bug in the write itself - a short retry is the standard remedy for this class of error.
+    """
+    last_error = None
+    for attempt in range(1, _WRITE_RETRY_ATTEMPTS + 1):
+        try:
+            write_fn()
+            return
+        except OSError as e:
+            last_error = e
+            if attempt < _WRITE_RETRY_ATTEMPTS:
+                current_run.log_warning(
+                    f"{description} : tentative {attempt} échouée ({e}), nouvelle tentative..."
+                )
+                time.sleep(_WRITE_RETRY_DELAY_SECONDS)
+    raise last_error
 
 
 def load_data(
@@ -96,9 +124,9 @@ def save_file(df: pd.DataFrame, file_name: str, folder: str = None) -> None:
         os.makedirs(folder)
     file_path = os.path.join(folder, f"{file_name}.parquet")
     try:
-        df.to_parquet(
-            file_path,
-            index=False,
+        _write_with_retry(
+            lambda: df.to_parquet(file_path, index=False),
+            f"Enregistrement de {file_path}",
         )
         current_run.log_info(f"Fichier enregistré avec succès: {file_path}")
     except Exception as e:
@@ -141,8 +169,14 @@ def _write_export_files(df: pd.DataFrame, df_file_path: str, dataset_name: str) 
         "parquet": f"{base_path}.parquet",
         "csv": f"{base_path}.csv",
     }
-    df.to_parquet(files_to_upload["parquet"], index=False)
-    df.to_csv(files_to_upload["csv"], index=False)
+    _write_with_retry(
+        lambda: df.to_parquet(files_to_upload["parquet"], index=False),
+        f"Export parquet {base_path}",
+    )
+    _write_with_retry(
+        lambda: df.to_csv(files_to_upload["csv"], index=False),
+        f"Export csv {base_path}",
+    )
     return files_to_upload
 
 

@@ -235,11 +235,27 @@ Pipeline-level behavior worth knowing before modifying `pipeline.py`:
 
 The lightweight, **automated** compile-only pipeline split out of `extract_target_data` (see
 above) — not the same pipeline as the one that used to have this name. No parameters; every run
-recompiles `combined_target_data.parquet` / `expected_data_structure.parquet` from scratch from
-every per-run file currently in `outputs/historical targets processed/` /
-`outputs/expected data structure processed/`, exactly as the compile step always did before the
-split. Its `run_persistence.py` holds only `compile_processed_files` — a smaller module of the
-same name as `extract_target_data`'s own, not a shared file between them (each pipeline needs
-its own physical copy, per this repo's usual convention of no cross-pipeline imports at
-runtime). Runs as the first step of `orchestrate_pipelines_flow`'s chain (see
-`orchestrate_pipelines_flow/config.py`).
+updates `combined_target_data.parquet` / `expected_data_structure.parquet` from whatever per-run
+files currently exist in `outputs/historical targets processed/` /
+`outputs/expected data structure processed/` — **incrementally**, not by recompiling from
+scratch: `run_persistence.compile_processed_files` keeps a small JSON manifest (per-run filename
+→ mtime) recording which files backed the last compiled output, so a run reads and merges in
+only the per-run files that are new or have a different mtime since then, and a run where
+nothing changed skips the read/write entirely. A changed file's `(year, produit, round)`
+combinations are dropped from the existing compiled output before its current rows are added
+back — covers `extract_target_data`'s overwrite mode replacing stale data for a combination with
+fresh data, not only the case of a genuinely new one. A previously-tracked file that's vanished
+outright (not just replaced — `extract_target_data`'s overwrite mode always replaces, it never
+removes a combination without writing its replacement elsewhere) is treated as unexpected enough
+to fall back to a full recompile rather than risk keeping stale rows forever. This replaced an
+earlier from-scratch-every-run implementation, which got slower and more memory-hungry with every
+new campaign and made the pipeline's one large write (expected_data_structure alone can run to
+~50M rows) more exposed to transient infrastructure failures — a real
+`OSError: [Errno 116] Stale file handle` failure during that large a write is what prompted this,
+alongside `shared/utils.py`'s `save_file`/`export_to_dataset` now retrying a write a few times on
+`OSError` before giving up, for the same underlying class of transient mount error. Its
+`run_persistence.py` holds only `compile_processed_files` (plus the manifest/incremental-merge
+helpers) — a smaller module of the same name as `extract_target_data`'s own, not a shared file
+between them (each pipeline needs its own physical copy, per this repo's usual convention of no
+cross-pipeline imports at runtime). Runs as the first step of `orchestrate_pipelines_flow`'s
+chain (see `orchestrate_pipelines_flow/config.py`).

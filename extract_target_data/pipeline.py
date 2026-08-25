@@ -54,7 +54,7 @@ import pandas as pd
 from openhexa.sdk import File, current_run, parameter, pipeline
 
 from config import (
-    TARGETS_HISTORICAL_PATH,
+    TARGETS_INPUT_PATH,
     EXPECTED_STRUCTURE_PROCESSED_PATH,
     PROCESSED_TARGETS_PATH,
 )
@@ -88,9 +88,6 @@ from utils import (
 
 @pipeline(
     "extract_target_data",
-    # name= is kept as-is deliberately: OpenHEXA derives this pipeline's deployed `code` by
-    # slugifying `name`, so changing it would create a new, disconnected pipeline in the
-    # workspace instead of a new version of this one.
     name="multi-campagne - 01 Import et traitement d'un fichier de cibles",
 )
 @parameter(
@@ -103,10 +100,7 @@ from utils import (
 @parameter(
     "campaign_name",
     name="Type de campagne",
-    help=(
-        "Sélectionnez le type de campagne. Ce choix détermine à la fois la période "
-        "de référence (IASO) et les produits attendus dans le fichier."
-    ),
+    help=("Sélectionnez le type de campagne."),
     type=str,
     choices=[
         "Polio (couplée avec Albendazole et Vitamine A)",
@@ -122,7 +116,7 @@ from utils import (
 @parameter(
     "year",
     name="Année de la campagne",
-    help="Année de réalisation de la campagne.",
+    help="Sélectionnez l'année de réalisation de la campagne.",
     type=int,
     choices=[
         2024,
@@ -158,7 +152,7 @@ from utils import (
 @parameter(
     "rounds",
     name="Numéro(s) de round",
-    help="Un ou plusieurs rounds de la campagne.",
+    help="Sélectionnez le(s) round(s) auquel/auxquels la campagne se déroule.",
     type=int,
     choices=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     multiple=True,
@@ -168,8 +162,7 @@ from utils import (
     "campaign_start_date",
     name="Date de début de la campagne",
     help=(
-        "Requis uniquement si cette combinaison année/round/produit n'existe pas "
-        "déjà dans la configuration historique. Format AAAA-MM-JJ."
+        "Veuillez entrer la date de début prévue de la campagne au format AAAA-MM-JJ."
     ),
     type=str,
     required=False,
@@ -177,10 +170,7 @@ from utils import (
 @parameter(
     "campaign_end_date",
     name="Date de fin de la campagne",
-    help=(
-        "Requis uniquement si cette combinaison année/round/produit n'existe pas "
-        "déjà dans la configuration historique. Format AAAA-MM-JJ."
-    ),
+    help=("Veuillez entrer la date de fin prévue de la campagne au format AAAA-MM-JJ."),
     type=str,
     required=False,
 )
@@ -188,7 +178,7 @@ from utils import (
     "overwrite_existing",
     name="Écraser les données existantes en cas de doublon",
     help=(
-        "Désactivé par défaut. Si des cibles existent déjà pour la même "
+        "Si des cibles existent déjà pour la même "
         "combinaison produit / année / round, le traitement s'arrête. Activez "
         "cette option pour remplacer ces données par celles du fichier importé."
     ),
@@ -236,9 +226,7 @@ def extract_target_data(
         tidy, iaso_org_unit_tree_df, iaso_org_unit_tree_df_clean
     )
 
-    # 4. Expected-data-structure for this same run, built from `matched` only (not
-    #    the full combined dataset - see expected_structure.py's module docstring
-    #    for why that's what makes the old Dosso/Tahoua special case unnecessary).
+    # 4. Expected-data-structure for this same run
     expected_slice = build_expected_structure_for_run(
         matched,
         products,
@@ -249,12 +237,7 @@ def extract_target_data(
         campaign_end_date,
     )
 
-    # 5. Save this run's output in the per-run-file folders. In overwrite mode
-    #    the superseded slices are removed only now, i.e. after the replacement
-    #    data has been produced successfully. Compiling combined_target_data /
-    #    expected_data_structure from all per-run files is process_target_data's
-    #    job now, not this pipeline's - run it afterward (or wait for
-    #    orchestrate_pipelines_flow to, since it's the first automated step).
+    # 5. Save this run's output in the per-run-file folders
     persist(
         matched,
         expected_slice,
@@ -392,7 +375,7 @@ def resolve_input_file(input_file) -> object:
     if isinstance(candidate, str):
         if os.path.exists(candidate):
             return candidate
-        alt = os.path.join(TARGETS_HISTORICAL_PATH, os.path.basename(candidate))
+        alt = os.path.join(TARGETS_INPUT_PATH, os.path.basename(candidate))
         if os.path.exists(alt):
             return alt
         msg = f"Fichier introuvable: {candidate}"

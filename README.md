@@ -10,6 +10,7 @@ rounds).
 ## Table of contents
 
 - [How the pieces fit together](#how-the-pieces-fit-together)
+- [Configuring a campaign](#configuring-a-campaign)
 - [Repository structure](#repository-structure)
 - [Getting started](#getting-started)
 - [Running a pipeline locally](#running-a-pipeline-locally)
@@ -70,6 +71,48 @@ being up to date. 🟢 The result lands in the database that feeds the dashboard
 `process_target_data` reuses the name of an earlier, different pipeline (the one that became
 `extract_target_data` once compiling was split out of it) — same name, unrelated code, deployed
 as a distinct pipeline in OpenHEXA. See `CLAUDE.md`'s pipeline list for the full history.
+
+## Configuring a campaign
+
+Configuring a campaign (historical or new) is always the same two steps:
+
+1. **Run `extract_target_data`** (manual). Upload the target spreadsheet as **Fichier de cibles
+   (.xlsx)**, pick the **Type de campagne**, **Année de la campagne** and one or more **Numéro(s)
+   de round**. If that exact `(année, produit, round)` combination isn't in the historical
+   date-lookup table, **Date de début/de fin de la campagne** become required too. The pipeline
+   matches the spreadsheet's rows to org units, builds the matching expected-data-structure rows,
+   and saves both as **per-run files** — it never touches the combined datasets itself.
+2. **Run `process_target_data`** (automated — the first step of `orchestrate_pipelines_flow`, so
+   in practice this just means running the orchestration). It looks at every per-run file
+   `extract_target_data` has ever produced and updates `combined_target_data.parquet` /
+   `expected_data_structure.parquet` accordingly — see below for exactly what "accordingly" means
+   in each case. This step is incremental, not a full rebuild every time: see
+   [`process_target_data`'s own internals in `CLAUDE.md`](CLAUDE.md#process_target_data-internals)
+   for the mechanics (a per-run file only gets read in full when it's actually new or changed).
+
+What happens next depends on which of these three situations the run falls into:
+
+- **1. A totally new campaign** — this exact `(année, produit, round)` combination has never been
+  imported before. `extract_target_data` runs with no special handling needed (**Écraser les
+  données existantes en cas de doublon** stays off). On the next `process_target_data` run, this
+  per-run file's combination isn't in the compiled datasets yet, so it's read and its rows are
+  simply **added** alongside everything already there.
+- **2. An existing campaign config, re-imported with different data** — the same `(année, produit,
+  round)` as before, but a different spreadsheet, different dates, or both (e.g. correcting a
+  mistake in the original import). `extract_target_data` refuses to run unless **Écraser les
+  données existantes en cas de doublon** is turned on — otherwise it fails with an explicit error
+  naming the conflicting combination(s). With it on, it writes the fresh data to a per-run file and
+  removes the now-superseded rows from whichever earlier file(s) held that combination (deleting a
+  file outright if nothing else remains in it). Because that fresh (or rewritten) file is always
+  more recently modified than the last `process_target_data` compile, the next run of
+  `process_target_data` picks it up — even though the combination's key already existed in the
+  compiled datasets — and **replaces** the stale rows for that combination with the new ones. Old
+  and new data for the same combination never coexist.
+- **3. An identical campaign config, nothing actually changed** — re-running `process_target_data`
+  (e.g. because the orchestration ran again) when no per-run file is new and none has been
+  modified since the last compile. `process_target_data` detects this and **skips the
+  read/merge/write step entirely**, returning the already-compiled row count as-is - not another
+  full rebuild.
 
 ## Repository structure
 

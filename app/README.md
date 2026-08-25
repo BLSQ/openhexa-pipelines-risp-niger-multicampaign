@@ -80,9 +80,9 @@ bords" — so the two aren't confused in the workspace's webapp list.
 ## Known assumptions to verify on first real use
 
 - **Upload folder**: files are written to `multi-campagne/inputs/cibles/<original filename>`
-  (`UPLOAD_FOLDER` in `app.js`). This matches the folder seen in real historical-campaign runs;
-  it hasn't been confirmed as the right convention for newly-configured (non-historical)
-  campaigns specifically. Adjust the constant if that turns out to matter.
+  (`UPLOAD_FOLDER` in `app.js`) — one flat folder for every campaign's target file, historical or
+  newly-configured alike. Confirmed: the folder used to have a `historique/` leaf, since dropped
+  to simplify the convention to this single shared folder.
 - **Schedule settings deep link**: the "Automate" section links to
   `.../workspaces/<slug>/pipelines/<code>/` (the pipeline's own detail page) rather than a
   specific "Scheduling and Notifications" sub-path, since that exact URL wasn't confirmed. Check

@@ -18,7 +18,5 @@ PROCESSED_TARGETS_PATH = os.path.join(OUTPUTS_PATH, "historical targets processe
 EXPECTED_STRUCTURE_PROCESSED_PATH = os.path.join(
     OUTPUTS_PATH, "expected data structure processed"
 )
-TARGETS_HISTORICAL_PATH = os.path.join(
-    WORKSPACE_PATH, PROJECT_FOLDER, "inputs", "cibles", "historique"
-)
+TARGETS_INPUT_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "inputs", "cibles")
 TEMP_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "temp")

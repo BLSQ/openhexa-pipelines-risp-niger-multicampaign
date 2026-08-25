@@ -61,12 +61,10 @@ const ORCHESTRATED_PIPELINES = [
   },
 ];
 
-// Where uploaded target files are written in the workspace bucket. Matches the folder seen in
-// real process_target_data runs (multi-campagne/inputs/cibles/historique/); the "historique"
-// leaf is dropped here since the pipeline treats historical and newly-configured campaigns
-// identically - flagged as an assumption in WEBAPP.md §3, revisit if a different convention is
-// actually preferred for new campaigns.
-const UPLOAD_FOLDER = "multi-campagne/inputs/cibles/historique/";
+// Where uploaded target files are written in the workspace bucket - one flat folder for every
+// campaign's target file, historical or newly-configured alike (extract_target_data treats them
+// identically, so there's no need for separate subfolders per campaign type).
+const UPLOAD_FOLDER = "multi-campagne/inputs/cibles/";
 
 // Excluded from the auto-generated parameter form: the brief asks for a dedicated upload box
 // for this one, handled separately (WEBAPP.md §1).
@@ -796,9 +794,48 @@ function updateStep2Visibility() {
   el("step2Content").classList.toggle("hidden", !unlocked || !state.orchestrator);
 }
 
+// Best-effort plain-French description of a 5-field cron expression, for schedules set up via
+// OpenHEXA's "Edit scheduling" UI (see the step-by-step instructions above). Only covers the
+// common shapes a person is actually likely to set by hand; anything else falls back to the raw
+// cron syntax in renderScheduleInfo below rather than risk describing an unusual schedule wrong.
+function describeCron(cron) {
+  if (!cron) return null;
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return null;
+  const [min, hour, dom, month, dow] = parts;
+  const isNum = (s) => /^\d+$/.test(s);
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const DAYS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+
+  if (month !== "*") return null; // a specific month is rare enough to not bother describing
+
+  const everyNMinutes = min.match(/^\*\/(\d+)$/);
+  if (everyNMinutes && hour === "*" && dom === "*" && dow === "*") {
+    return `toutes les ${everyNMinutes[1]} minutes`;
+  }
+  if (min === "0" && hour === "*" && dom === "*" && dow === "*") {
+    return "toutes les heures pleines";
+  }
+  if (isNum(min) && hour === "*" && dom === "*" && dow === "*") {
+    return `toutes les heures, à la ${min}e minute`;
+  }
+  if (isNum(min) && isNum(hour) && dom === "*" && /^[0-6]$/.test(dow)) {
+    return `tous les ${DAYS[Number(dow)]} à ${pad2(hour)}h${pad2(min)}`;
+  }
+  if (isNum(min) && isNum(hour) && isNum(dom) && dow === "*") {
+    const dayLabel = dom === "1" ? "1er" : dom;
+    return `le ${dayLabel} de chaque mois à ${pad2(hour)}h${pad2(min)}`;
+  }
+  if (isNum(min) && isNum(hour) && dom === "*" && dow === "*") {
+    return `tous les jours à ${pad2(hour)}h${pad2(min)}`;
+  }
+  return null;
+}
+
 function renderScheduleInfo(schedule) {
+  const description = describeCron(schedule);
   el("scheduleStatus").textContent = schedule
-    ? `automatisation active (${schedule})`
+    ? `automatisation active (${description || schedule})`
     : "aucune automatisation active";
   el("scheduleLink").href = openHexaPipelineUrl(state.orchestrator.code);
 }
