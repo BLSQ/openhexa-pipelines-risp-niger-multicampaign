@@ -25,19 +25,16 @@ const WORKSPACE_SLUG =
 const TARGET_PIPELINE_CODE = "multi-campagne-01-import-et-traitement-d-un-fichier-de-cibles";
 const ORCHESTRATOR_CODE = "multi-campagne-02-orchestrate-etl-pipelines";
 
-// The 6 pipelines orchestrate_pipelines_flow runs in sequence (WEBAPP.md §5) - used only to
+// The 5 pipelines orchestrate_pipelines_flow runs in sequence (WEBAPP.md §5) - used only to
 // paint the Étape 2 flowchart; orchestrate_pipelines_flow itself launches them via its own
-// REST client, not through this webapp.
+// REST client, not through this webapp. extract_org_units is deliberately not part of this
+// chain (run manually, rarely - the org-unit tree changes only occasionally and the pipeline
+// is comparatively memory-/time-consuming), so it has no node here either.
 const ORCHESTRATED_PIPELINES = [
   {
     code: "multi-campagne-compilation-des-cibles-et-de-la-structure-attendue",
     label: "Compilation des cibles",
     description: "Compile les cibles et la structure de données attendue à partir de tous les fichiers déjà importés.",
-  },
-  {
-    code: "multi-campagne-extraction-des-unites-organisationnelles-iaso",
-    label: "Extraction des unités organisationnelles",
-    description: "Récupère l'arborescence des unités organisationnelles à jour depuis IASO.",
   },
   {
     code: "multi-campagne-extraction-des-donnees-du-formulaire-iaso",

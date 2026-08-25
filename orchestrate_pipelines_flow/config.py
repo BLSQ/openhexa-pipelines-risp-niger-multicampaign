@@ -4,6 +4,12 @@ Domain config for orchestrate_pipelines_flow: which pipelines to run, and in wha
 Paths/OpenHEXA connection details for this pipeline live in openhexa_client.py
 (OPENHEXA_BASE_URL) instead of here, since this pipeline has no workspace-file I/O of
 its own - it only calls other pipelines via the OpenHEXA API.
+
+extract_org_units is deliberately NOT part of this chain: the IASO org-unit tree only
+changes rarely (health-facility openings/closures/renames), while the pipeline itself is
+comparatively memory- and time-consuming to run - not worth paying on every single
+orchestration run. Run it manually (from OpenHEXA) whenever the tree actually needs
+refreshing; every other step here still reads whatever org-unit tree was last extracted.
 """
 
 # Sequence
@@ -11,11 +17,6 @@ PIPELINE_ACTIONS = {
     "multi-campagne-compilation-des-cibles-et-de-la-structure-attendue": {
         "type": "pipeline",
         "url": "https://api.openhexa.org/pipelines/ZGIwOWUyNzItNzc3OC00MzhlLWFmNGEtZjgyMGE4MTdkNTY5OjF3eDUyMTpOeFBiWHJRRUE5LWFLd2dWZ2ZfTUY4Y0NhcmR3OUxkbmg3R3hLYnNwSTFj/run",
-        "params": {},
-    },
-    "multi-campagne-extraction-des-unites-organisationnelles-iaso": {
-        "type": "pipeline",
-        "url": "https://api.openhexa.org/pipelines/ZWMyNzkxYWQtNGFjNy00ZTc4LTk0NzctOWEyNDljY2Q0ODAyOjF3dVBqQTpGQ25hWktEY3dZeEpZVE85aXJMcEE5ZzNCdVlrRTJOc3ZjbVZNNTNSYi1Z/run",
         "params": {},
     },
     "multi-campagne-extraction-des-donnees-du-formulaire-iaso": {
