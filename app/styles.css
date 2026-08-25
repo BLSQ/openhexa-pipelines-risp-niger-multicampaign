@@ -332,6 +332,14 @@ body {
   margin-top: 0;
 }
 
+.schedule-active {
+  color: var(--status-success);
+}
+
+.schedule-inactive {
+  color: var(--color-muted);
+}
+
 .warning-note {
   font-weight: 600;
   color: #92400e;

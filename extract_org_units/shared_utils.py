@@ -148,35 +148,42 @@ def _get_or_create_dataset(dataset_name: str, dataset_slug: str):
 
 def _next_version_name(dataset) -> str:
     latest_version = dataset.latest_version
-    version_number = (
-        int(latest_version.name.lstrip("v")) + 1 if latest_version else 1
-    )
+    version_number = int(latest_version.name.lstrip("v")) + 1 if latest_version else 1
     return f"v{version_number}"
 
 
-def _write_export_files(df: pd.DataFrame, df_file_path: str, dataset_name: str) -> dict:
-    """Write df locally as parquet + csv, returning {format: file_path}.
+def _write_export_files(
+    df: pd.DataFrame, df_file_path: str, dataset_name: str, include_csv: bool = True
+) -> dict:
+    """Write df locally as parquet (+ csv unless include_csv is False), returning
+    {format: file_path}.
 
     No xlsx: Excel's 1,048,576-row sheet limit crashes this on any table past
     that size (hit in practice on process_target_data's
     expected_data_structure) - parquet + csv cover the same need without the
     silent row-count ceiling.
+
+    include_csv=False skips the CSV write (and its upload) entirely - worth it for a
+    many-million-row table, where CSV's row-by-row text serialization is far slower than
+    parquet's columnar binary write, and the resulting file is far larger to upload
+    (process_target_data's expected_data_structure export was measured taking >20 minutes,
+    almost entirely the CSV side of this).
     """
     if not os.path.exists(df_file_path):
         os.makedirs(df_file_path)
     base_path = os.path.join(df_file_path, dataset_name)
-    files_to_upload = {
-        "parquet": f"{base_path}.parquet",
-        "csv": f"{base_path}.csv",
-    }
+    files_to_upload = {"parquet": f"{base_path}.parquet"}
+    if include_csv:
+        files_to_upload["csv"] = f"{base_path}.csv"
     _write_with_retry(
         lambda: df.to_parquet(files_to_upload["parquet"], index=False),
         f"Export parquet {base_path}",
     )
-    _write_with_retry(
-        lambda: df.to_csv(files_to_upload["csv"], index=False),
-        f"Export csv {base_path}",
-    )
+    if include_csv:
+        _write_with_retry(
+            lambda: df.to_csv(files_to_upload["csv"], index=False),
+            f"Export csv {base_path}",
+        )
     return files_to_upload
 
 
@@ -189,14 +196,19 @@ def _upload_export_files(dataset, version_name: str, files_to_upload: dict) -> N
         )
 
 
-def export_to_dataset(df: pd.DataFrame, df_file_path: str, dataset_name: str) -> None:
+def export_to_dataset(
+    df: pd.DataFrame, df_file_path: str, dataset_name: str, include_csv: bool = True
+) -> None:
     """
-    Exports a DataFrame to an OpenHexa dataset in multiple formats (parquet, csv).
+    Exports a DataFrame to an OpenHexa dataset in parquet (+ csv unless include_csv is False).
 
     Args:
         df (pd.DataFrame): The configuration dataframe to export.
         df_file_path (str): The file path where the dataframe is saved.
         dataset_name (str): The name of the OpenHexa dataset.
+        include_csv (bool): Defaults to True (unchanged behavior for every existing caller).
+            Pass False for a many-million-row table where the CSV write/upload dominates this
+            function's runtime - see _write_export_files.
     """
     current_run.log_info(
         f"Préparation de l'exportation vers le dataset : {dataset_name}..."
@@ -207,7 +219,9 @@ def export_to_dataset(df: pd.DataFrame, df_file_path: str, dataset_name: str) ->
 
     try:
         new_version_name = _next_version_name(dataset)
-        files_to_upload = _write_export_files(df, df_file_path, dataset_name)
+        files_to_upload = _write_export_files(
+            df, df_file_path, dataset_name, include_csv
+        )
         _upload_export_files(dataset, new_version_name, files_to_upload)
         current_run.log_info(
             f"Exportation terminée avec succès pour {dataset_name} ({new_version_name})"

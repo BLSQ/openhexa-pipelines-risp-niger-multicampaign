@@ -834,9 +834,10 @@ function describeCron(cron) {
 
 function renderScheduleInfo(schedule) {
   const description = describeCron(schedule);
-  el("scheduleStatus").textContent = schedule
-    ? `automatisation active (${description || schedule})`
-    : "aucune automatisation active";
+  const statusEl = el("scheduleStatus");
+  statusEl.textContent = schedule ? `active (${description || schedule})` : "inactive";
+  statusEl.classList.toggle("schedule-active", !!schedule);
+  statusEl.classList.toggle("schedule-inactive", !schedule);
   el("scheduleLink").href = openHexaPipelineUrl(state.orchestrator.code);
 }
 

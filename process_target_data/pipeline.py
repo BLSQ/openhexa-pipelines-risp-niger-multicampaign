@@ -23,6 +23,16 @@ from openhexa.sdk import current_run, pipeline
 from config import EXPECTED_STRUCTURE_PROCESSED_PATH, PROCESSED_TARGETS_PATH
 from run_persistence import compile_processed_files
 
+EXPECTED_STRUCTURE_CATEGORY_COLS = [
+    "round",
+    "age",
+    "sexe",
+    "produit",
+    "vaccination_status",
+    "site",
+    "choix_campagne",
+]
+
 
 @pipeline(
     "process_target_data",
@@ -38,6 +48,7 @@ def process_target_data():
         EXPECTED_STRUCTURE_PROCESSED_PATH,
         "expected_data_structure",
         "de structure attendue traité(s)",
+        category_columns=EXPECTED_STRUCTURE_CATEGORY_COLS,
     )
     current_run.log_info(f"combined_target_data compilé: {target_row_count} ligne(s).")
     current_run.log_info(
