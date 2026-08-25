@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RISP Niger — Cibles de campagne</title>
+    <link rel="stylesheet" href="styles.css" />
+    <!-- Inert outside file:// and localhost pages (see docs.openhexa.com/static-webapps) -
+         lets this be developed locally against real workspace data before deploying. -->
+    <script
+      src="https://app.openhexa.org/webapps/dev.js"
+      data-workspace-slug="pev-niger-7cc1fb"
+      data-webapp-slug="gestion-des-cibles-de-campagne"
+    ></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <h1 class="topbar-title">Gestion des cibles de campagne</h1>
+      <span class="topbar-ws" id="workspaceLabel"></span>
+    </header>
+
+    <main class="layout">
+      <!-- Étape 1 : upload + paramètres + lancement de process_target_data (WEBAPP.md §1, stages 1-2) -->
+      <section id="step1" class="card">
+        <h2>Étape 1 — Importer les cibles de la campagne</h2>
+        <p class="lead">
+          Sélectionnez le fichier Excel des cibles de la campagne, complétez les paramètres,
+          puis lancez le traitement.
+        </p>
+
+        <!-- Le téléversement direct depuis cette page est temporairement indisponible (blocage
+             CORS côté infrastructure OpenHEXA - voir WEBAPP.md §9). En attendant, on sélectionne
+             un fichier déjà présent dans l'espace de travail plutôt que d'en envoyer un nouveau. -->
+        <div id="uploadBox" class="upload-box">
+          <label for="fileBrowseSelect" class="file-browser-label"
+            >Fichier de cibles (déjà présent dans l'espace de travail)</label
+          >
+          <div class="file-browser-row">
+            <select id="fileBrowseSelect" disabled>
+              <option value="">Chargement des fichiers…</option>
+            </select>
+            <button id="refreshFilesBtn" type="button" class="btn btn-secondary">
+              Actualiser
+            </button>
+          </div>
+          <div id="uploadStatus" class="upload-status" role="status"></div>
+          <p class="muted">
+            Fichier pas encore présent ? Téléversez-le d'abord dans
+            <a id="filesLink" href="#" target="_blank" rel="noopener"
+              >Fichiers de l'espace de travail (OpenHEXA)</a
+            >, sous <code id="uploadFolderHint"></code>, puis cliquez « Actualiser » ci-dessus.
+          </p>
+        </div>
+
+        <form id="paramForm" class="param-form" aria-label="Paramètres du traitement">
+          <p class="muted">Chargement des paramètres depuis OpenHEXA…</p>
+        </form>
+
+        <div id="formErrors" class="form-errors hidden" role="alert"></div>
+
+        <div class="actions">
+          <button id="launchBtn1" type="button" class="btn btn-primary" disabled>Lancer</button>
+          <button id="stopBtn1" type="button" class="btn btn-danger" disabled>Arrêter</button>
+        </div>
+
+        <div id="statusBox1" class="global-status">
+          <span class="status-badge status-never">Non exécuté</span>
+        </div>
+      </section>
+
+      <!-- Étape 2 : automatisation + suivi de l'orchestration (WEBAPP.md §1, stage 3) -->
+      <section id="step2" class="card">
+        <h2>Étape 2 — Automatiser et suivre la mise à jour du tableau de bord</h2>
+
+        <div id="step2Locked" class="locked-notice">
+          Cette étape sera disponible une fois l'étape 1 terminée avec succès.
+        </div>
+
+        <div id="step2Content" class="hidden">
+          <div class="automate-box">
+            <p class="automate-status">
+              Planification actuelle de l'orchestration :
+              <strong id="scheduleStatus">—</strong>
+            </p>
+            <p class="warning-note">
+              ⚠️ Important : n'activez l'automatisation que pendant les périodes actives de
+              campagne, et désactivez-la en dehors de ces périodes.
+            </p>
+            <p class="muted">Pour activer ou désactiver l'automatisation :</p>
+            <ol class="steps-list">
+              <li>Ouvrir la page du pipeline dans OpenHEXA (bouton ci-dessous).</li>
+              <li>Aller dans l'onglet « Scheduling and Notifications ».</li>
+              <li>Cliquer sur « Edit scheduling ».</li>
+              <li>Activer l'option « Enabled ».</li>
+              <li>
+                Renseigner la syntaxe cron, par exemple <code>0 * * * *</code> pour une exécution
+                toutes les heures
+                (<a href="https://crontab.guru/" target="_blank" rel="noopener"
+                  >voir la syntaxe cron</a
+                >
+                pour une autre fréquence).
+              </li>
+              <li>Cliquer sur « Save ».</li>
+              <li>
+                Pour désactiver l'automatisation : répéter l'étape 3, désactiver « Enabled », puis
+                cliquer sur « Save ».
+              </li>
+            </ol>
+            <a id="scheduleLink" class="btn btn-openhexa" href="#" target="_blank" rel="noopener"
+              >Ouvrir les paramètres du pipeline</a
+            >
+          </div>
+
+          <div class="actions">
+            <button id="launchBtn2" type="button" class="btn btn-primary">
+              Lancer l'orchestration
+            </button>
+            <button id="stopBtn2" type="button" class="btn btn-danger" disabled>Arrêter</button>
+          </div>
+
+          <div id="flowchart" class="flowchart" aria-label="Suivi des 6 pipelines de l'orchestration"></div>
+
+          <div id="globalStatus" class="global-status"></div>
+
+          <div class="actions">
+            <a
+              id="dashboardLink"
+              class="btn btn-powerbi"
+              href="https://app.powerbi.com/view?r=eyJrIjoiMGM5ZjNlOGQtZjU0NS00NDlmLWFjZjUtNmFlNTQwODFlZDYzIiwidCI6IjIxZmZhYjVkLWJlNzEtNGQ2ZS05YzRjLTFmYWZkYWUwNjdhOCIsImMiOjl9"
+              target="_blank"
+              rel="noopener"
+              >Ouvrir le tableau de bord</a
+            >
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

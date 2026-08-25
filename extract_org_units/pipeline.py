@@ -1,14 +1,11 @@
 from openhexa.sdk import current_run, pipeline
 import pandas as pd
-import numpy as np
 from shared_utils import (
     save_file,
     export_to_dataset,
 )
-from utils import (
-    IASOConnectionHandler,
-    pyramid_selector,
-)
+from iaso_client import IASOConnectionHandler
+from org_unit_cleaning import clean_iaso_org_unit_tree
 from config import (
     iaso_connector_slug,
     iaso_form_id,
@@ -62,61 +59,6 @@ def get_iaso_org_unit_tree() -> pd.DataFrame:
         return iaso_org_unit_tree_df
     except Exception as e:
         msg = f"Erreur lors de l'extraction des données de l'arbre des unités organisationnelles IASO: {str(e)}"
-        current_run.log_error(msg)
-        raise
-
-
-def clean_iaso_org_unit_tree(iaso_org_unit_tree_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Clean the org unit tree data by filtering out rejected entries and selecting relevant records.
-
-    Args:
-        iaso_org_unit_tree_df (pd.DataFrame): DataFrame containing the org unit tree data to be cleaned.
-
-    Returns:
-        pd.DataFrame: Cleaned DataFrame with relevant org unit tree data.
-    """
-    current_run.log_info(
-        "Nettoyage des données de l'arbre des unités organisationnelles IASO..."
-    )
-    try:
-        iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df[
-            iaso_org_unit_tree_df["Validé"] != "REJECTED"  # Keep Valid
-        ]
-        iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
-            iaso_org_unit_tree_df_clean["Source"].isin(
-                ["SNIS", "SNIS 2025"]
-            )  # keep SNIS only
-        ]
-        iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
-            iaso_org_unit_tree_df_clean["LVL_6_NAME"].str.contains(
-                "CSI", case=False, na=False
-            )
-        ]  # use pre-fix instead
-
-        iaso_org_unit_tree_df_clean["LVL_6_UID"] = iaso_org_unit_tree_df_clean.groupby(
-            "LVL_6_NAME"
-        )["LVL_6_UID"].transform("first")
-        iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean.groupby(
-            "LVL_6_UID", as_index=False
-        ).apply(pyramid_selector, include_groups=False)
-
-        iaso_org_unit_tree_df_clean = iaso_org_unit_tree_df_clean[
-            iaso_org_unit_tree_df_clean["LVL_2_NAME"] != "Niger"
-        ]  # delete 2 incoherent entries
-
-        iaso_org_unit_tree_df_clean["org_unit_id"] = iaso_org_unit_tree_df_clean[
-            "org_unit_id"
-        ].astype(np.int64)
-
-        current_run.log_info(
-            "Données de l'arbre des unités organisationnelles IASO nettoyées avec succès."
-        )
-
-        return iaso_org_unit_tree_df_clean
-
-    except Exception as e:
-        msg = f"Erreur lors du nettoyage des données de l'arbre des unités organisationnelles IASO: {str(e)}"
         current_run.log_error(msg)
         raise
 

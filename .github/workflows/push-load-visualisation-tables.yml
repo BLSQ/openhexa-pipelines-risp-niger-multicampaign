@@ -1,0 +1,28 @@
+name: Push pipeline on OpenHEXA
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "load_visualisation_tables/**"
+      - "shared/utils.py"
+      - "scripts/sync_shared_utils.py"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Sync shared_utils.py from canonical source (shared/utils.py)
+        run: python3 scripts/sync_shared_utils.py --check
+
+      - name: Push pipeline to OpenHEXA
+        uses: blsq/openhexa-push-pipeline-action@v1.0.0
+        with:
+          token: ${{ secrets.OH_TOKEN }}
+          workspace: "pev-niger-7cc1fb"
+          pipeline: "load-visualisation-tables"
