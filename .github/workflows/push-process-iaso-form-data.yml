@@ -35,7 +35,7 @@ jobs:
       - name: Push pipeline to OpenHEXA
         run: |
           openhexa pipelines push process_iaso_form_data \
-            -c process-iaso-form-data \
+            -c multi-campagne-traitement-des-donnees-du-formulaire-iaso \
             -n ${{ github.sha }} \
             -l "https://github.com/BLSQ/openhexa-pipelines-risp-niger-multicampaign/commit/${{ github.sha }}" \
             --yes

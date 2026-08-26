@@ -17,7 +17,6 @@ from db_utils import VISUALISATION_TABLE_NAMES, load_data_light, write_to_db
 
 
 @pipeline(
-    "load_visualisation_tables",
     name="multi-campagne - Envoi des tables de visualisation vers la base de données",
 )
 def load_visualisation_tables():

@@ -11,7 +11,6 @@ from org_unit_matching import align_to_clean_org_tree
 
 
 @pipeline(
-    "process_iaso_form_data",
     name="multi-campagne - Traitement des données du formulaire IASO",
 )
 def process_iaso_form_data():

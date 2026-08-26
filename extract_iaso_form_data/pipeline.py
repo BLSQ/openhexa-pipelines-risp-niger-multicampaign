@@ -18,7 +18,6 @@ from iaso_client import IASOConnectionHandler
 
 
 @pipeline(
-    "extract_iaso_form_data",
     name="multi-campagne - Extraction des données du formulaire IASO",
 )
 def extract_iaso_form_data():

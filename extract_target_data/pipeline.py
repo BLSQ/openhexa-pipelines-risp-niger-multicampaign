@@ -87,7 +87,6 @@ from utils import (
 
 
 @pipeline(
-    "extract_target_data",
     name="multi-campagne - 01 Import et traitement d'un fichier de cibles",
 )
 @parameter(

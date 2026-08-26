@@ -35,7 +35,7 @@ jobs:
       - name: Push pipeline to OpenHEXA
         run: |
           openhexa pipelines push orchestrate_pipelines_flow \
-            -c orchestrate-pipelines-flow \
+            -c multi-campagne-02-orchestrate-etl-pipelines \
             -n ${{ github.sha }} \
             -l "https://github.com/BLSQ/openhexa-pipelines-risp-niger-multicampaign/commit/${{ github.sha }}" \
             --yes

@@ -22,7 +22,6 @@ from spatial_units_table import create_dynamic_org_unit_table
 
 
 @pipeline(
-    "build_visualisation_tables",
     name="multi-campagne - Construction des tableaux pour la visualisation",
 )
 def build_visualisation_tables():

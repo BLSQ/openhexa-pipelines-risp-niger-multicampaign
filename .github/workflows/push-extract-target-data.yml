@@ -35,7 +35,7 @@ jobs:
       - name: Push pipeline to OpenHEXA
         run: |
           openhexa pipelines push extract_target_data \
-            -c extract-target-data \
+            -c multi-campagne-01-import-et-traitement-d-un-fichier-de-cibles \
             -n ${{ github.sha }} \
             -l "https://github.com/BLSQ/openhexa-pipelines-risp-niger-multicampaign/commit/${{ github.sha }}" \
             --yes

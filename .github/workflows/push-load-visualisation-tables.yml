@@ -35,7 +35,7 @@ jobs:
       - name: Push pipeline to OpenHEXA
         run: |
           openhexa pipelines push load_visualisation_tables \
-            -c load-visualisation-tables \
+            -c multi-campagne-envoi-des-tables-de-visualisation-vers-la-base-de-donnees \
             -n ${{ github.sha }} \
             -l "https://github.com/BLSQ/openhexa-pipelines-risp-niger-multicampaign/commit/${{ github.sha }}" \
             --yes

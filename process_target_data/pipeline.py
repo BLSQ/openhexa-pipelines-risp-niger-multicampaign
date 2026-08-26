@@ -35,7 +35,6 @@ EXPECTED_STRUCTURE_CATEGORY_COLS = [
 
 
 @pipeline(
-    "process_target_data",
     name="multi-campagne - Compilation des cibles et de la structure attendue",
 )
 def process_target_data():
