@@ -124,12 +124,13 @@ Pipelines, in rough data-flow order (see README.md diagram for the full picture)
   names from Excel/IASO) against the IASO org-unit tree to attach `org_unit_id`. Unmatched
   names are logged as warnings and dropped rather than silently mismatched — preserve this
   behavior when touching matching code.
-- **Deployment.** Each pipeline with a workflow file at `.github/workflows/push-<pipeline-name>.yml`
-  (repo root — see Repository layout above) auto-deploys to OpenHEXA workspace `pev-niger-7cc1fb`
-  on push to `main`, via `blsq/openhexa-push-pipeline-action`, using the `OH_TOKEN` repo secret.
-  Not every pipeline has this workflow yet (e.g. `build_visualisation_tables`,
-  `load_visualisation_tables`, `orchestrate_pipelines_flow`, `extract_iaso_form_data` are deployed
-  some other way or not yet wired to CI) — check before assuming a push auto-deploys.
+- **Deployment.** Every pipeline has a workflow file at `.github/workflows/push-<pipeline-name>.yml`
+  (repo root) that auto-deploys it to OpenHEXA workspace `pev-niger-7cc1fb` on push to `main`
+  (or manually via `workflow_dispatch`): `blsq/openhexa-cli-action` configures the OpenHEXA CLI
+  using the `OH_TOKEN` repo secret, then `openhexa pipelines push <folder> -c <code> --yes` does
+  the actual push. (An earlier version of these workflows used `blsq/openhexa-push-pipeline-action`
+  directly instead — switched away from after it started failing with "Input 'token' is required"
+  despite the secret being passed correctly.)
 - **Local debugging.** `.vscode/launch.json` in each pipeline attaches `debugpy` on
   `localhost:5678` with `remoteRoot: /home/hexa/pipeline`, matching how the OpenHEXA pipeline
   runner mounts code inside its container — debugging is done against a running remote/container

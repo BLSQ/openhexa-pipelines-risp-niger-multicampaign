@@ -1,10 +1,12 @@
-name: Push pipeline on OpenHEXA
+name: Push "extract org units" pipeline
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
     paths:
+      - ".github/workflows/push-extract-org-units.yml"
       - "extract_org_units/**"
       - "shared/utils.py"
       - "scripts/sync_shared_utils.py"
@@ -20,9 +22,20 @@ jobs:
       - name: Sync shared_utils.py from canonical source (shared/utils.py)
         run: python3 scripts/sync_shared_utils.py --check
 
-      - name: Push pipeline to OpenHEXA
-        uses: blsq/openhexa-push-pipeline-action@v1.0.0
+      - uses: actions/setup-python@v4
         with:
-          token: ${{ secrets.OH_TOKEN }}
+          python-version: "3.11"
+
+      - name: Configure OpenHEXA CLI
+        uses: blsq/openhexa-cli-action@v1
+        with:
           workspace: "pev-niger-7cc1fb"
-          pipeline: "extract-org-units"
+          token: ${{ secrets.OH_TOKEN }}
+
+      - name: Push pipeline to OpenHEXA
+        run: |
+          openhexa pipelines push extract_org_units \
+            -c extract-org-units \
+            -n ${{ github.sha }} \
+            -l "https://github.com/BLSQ/openhexa-pipelines-risp-niger-multicampaign/commit/${{ github.sha }}" \
+            --yes
