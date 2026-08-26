@@ -6,7 +6,6 @@ from pipeline_runner import launch_action
 
 
 @pipeline(
-    "orchestrate_pipelines_flow",
     name="multi-campagne - 02 - Orchestrate ETL pipelines",
 )
 def orchestrate_pipelines_flow():

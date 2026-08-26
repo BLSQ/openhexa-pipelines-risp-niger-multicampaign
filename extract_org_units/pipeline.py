@@ -14,7 +14,6 @@ from config import (
 
 
 @pipeline(
-    "extract_org_units",
     name="multi-campagne - Extraction des unités organisationnelles IASO",
 )
 def extract_org_units():
