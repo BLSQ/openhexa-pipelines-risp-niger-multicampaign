@@ -216,12 +216,11 @@ There's no single test runner for the whole repo — each pipeline is tested on 
 
 ## Deployment
 
-Each pipeline with a workflow file at `.github/workflows/push-<pipeline-name>.yml` (repo root)
-auto-deploys to its OpenHEXA workspace on push to `main`, via `blsq/openhexa-push-pipeline-action`,
-using the `OH_TOKEN` repo secret, and only when that pipeline's own folder (or `shared/utils.py`)
-actually changed. Not every pipeline is wired to CI yet — check `.github/workflows/` before
-assuming a push auto-deploys; pipelines without a workflow are pushed manually with
-`openhexa pipelines push <folder>`.
+Every pipeline has a workflow file at `.github/workflows/push-<pipeline-name>.yml` (repo root)
+that auto-deploys it to its OpenHEXA workspace on push to `main` (or manually via
+`workflow_dispatch`), and only when that pipeline's own folder (or `shared/utils.py`) actually
+changed: `blsq/openhexa-cli-action` configures the OpenHEXA CLI using the `OH_TOKEN` repo secret,
+then `openhexa pipelines push <folder> -c <code> --yes` does the push itself.
 
 ## Keeping shared code in sync
 

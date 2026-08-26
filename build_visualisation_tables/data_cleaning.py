@@ -113,8 +113,12 @@ def melt_campaign_columns(
                     "Cette campagne sera ignorée."
                 )
             continue
+        subset = source_df[id_vars + valid_cols]
+        category_cols = subset.select_dtypes(include="category").columns
+        if len(category_cols):
+            subset = subset.astype({c: object for c in category_cols})
         melted = pd.melt(
-            source_df[id_vars + valid_cols].fillna(0),
+            subset.fillna(0),
             id_vars=id_vars,
             value_vars=valid_cols,
             var_name=var_name,

@@ -142,14 +142,17 @@ def _drop_duplicates_low_memory(df: pd.DataFrame) -> pd.DataFrame:
 
 def _concat_and_dedupe(frames: list, category_columns: list) -> pd.DataFrame:
     """The shared tail of both compile paths below: align categories (if any were requested)
-    so the concat doesn't silently undo them, concatenate, and deduplicate with whichever
-    strategy is safe for the result's dtypes."""
+    so the concat doesn't silently undo them, concatenate, deduplicate with whichever strategy
+    is safe for the result's dtypes, and decategorize before handing back the result.
+    """
     if category_columns:
         present_cols = [
             c for c in category_columns if any(c in f.columns for f in frames)
         ]
         _align_categories(frames, present_cols)
         combined = _drop_duplicates_low_memory(pd.concat(frames, ignore_index=True))
+        for col in present_cols:
+            combined[col] = combined[col].astype(object)
     else:
         combined = pd.concat(frames, ignore_index=True).drop_duplicates()
     return combined.reset_index(drop=True)

@@ -1,10 +1,12 @@
-name: Push pipeline on OpenHEXA
+name: Push "process iaso form data" pipeline
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
     paths:
+      - ".github/workflows/push-process-iaso-form-data.yml"
       - "process_iaso_form_data/**"
       - "shared/utils.py"
       - "scripts/sync_shared_utils.py"
@@ -20,9 +22,20 @@ jobs:
       - name: Sync shared_utils.py from canonical source (shared/utils.py)
         run: python3 scripts/sync_shared_utils.py --check
 
-      - name: Push pipeline to OpenHEXA
-        uses: blsq/openhexa-push-pipeline-action@v1.0.0
+      - uses: actions/setup-python@v4
         with:
-          token: ${{ secrets.OH_TOKEN }}
+          python-version: "3.11"
+
+      - name: Configure OpenHEXA CLI
+        uses: blsq/openhexa-cli-action@v1
+        with:
           workspace: "pev-niger-7cc1fb"
-          pipeline: "process-iaso-form-data"
+          token: ${{ secrets.OH_TOKEN }}
+
+      - name: Push pipeline to OpenHEXA
+        run: |
+          openhexa pipelines push process_iaso_form_data \
+            -c process-iaso-form-data \
+            -n ${{ github.sha }} \
+            -l "https://github.com/BLSQ/openhexa-pipelines-risp-niger-multicampaign/commit/${{ github.sha }}" \
+            --yes
