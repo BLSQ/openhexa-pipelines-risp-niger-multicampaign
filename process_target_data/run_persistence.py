@@ -1,261 +1,278 @@
 """
-Compiling the per-run files extract_target_data has produced into one combined dataset.
+combined_target_data: compiling every per-run target file extract_target_data has produced into
+one combined dataset.
 
-Duplicate detection, superseded-slice removal, and the run-slug naming scheme belong to
-extract_target_data (see that pipeline's own run_persistence.py) - this pipeline never saves a
-per-run file itself, so it has no use for them.
+Every per-run file is classified against combined_target_data with two nested checks - see
+`file_is_new`:
+  1. identity check on (produit, year, round): unmatched -> the whole file is a new campaign
+     never configured before, append it.
+  2. content check on identity + cible/campaign_start_date/campaign_end_date: unmatched, but
+     identity known -> the campaign was modified (corrected target values or dates) - drop
+     combined_target_data's rows for that identity and replace them with the file's current
+     contents.
+  3. otherwise every row the file has is already reflected in combined_target_data - skip it.
+On top of that, `compile_combined_target_data` also prunes any (produit, year, round) combo
+present in combined_target_data whose per-run file no longer exists in the processed folder at
+all - see `_all_current_combos`. This is what lets deleting a per-run file (e.g. a campaign that
+was configured by mistake - wrong round number, wrong product) actually remove it from
+combined_target_data on the next run, rather than leaving it stranded forever with nothing left
+to trigger an overwrite.
+combined_target_data stays small (currently ~561K rows), so no category-dtype handling is
+needed here - a plain read/concat/dedup is cheap at this scale (contrast expected_structure.py,
+which does need it).
 
-Incremental, not from-scratch: re-reading and re-concatenating every per-run file ever produced
-(expected_data_structure alone can run to ~50M rows) got slower and more memory-hungry with
-every new campaign, and made this pipeline's one large write more exposed to transient
-infrastructure failures (a real "stale file handle" write error hit exactly this kind of large
-recompile - see shared_utils.save_file's own retry for the write side of that).
-
-A per-run file is read in full only when it's actually needed:
-  - it contains at least one (year, produit, round) combination not yet present in the existing
-    compiled output - checked via a cheap, columns-only read of just those three columns on
-    both the per-run file and the existing output, never the many other (often wide) columns
-    either one carries; or
-  - its own mtime is newer than the existing output's last write - catching
-    extract_target_data's overwrite mode replacing an already-present combination with fresher
-    data for the exact same key, which a key-only comparison alone can't tell apart from
-    "already up to date" (the key hasn't changed, only the values behind it have).
-Everything else is trusted as-is and never read at all, key columns included. If nothing
-qualifies, the read/concat/write is skipped entirely and the existing row count (straight from
-parquet metadata, not a data read) is returned.
-
-No separate manifest file to keep in sync: the existing compiled output's own mtime is the only
-reference point needed, and extract_target_data's own invariant - overwrite mode always replaces
-a combination via a new file, it never removes one without writing its replacement elsewhere -
-means there's nothing else that would need remembering across runs.
-
-When a full read of the existing compiled output (or a from-scratch build from every per-run
-file) IS unavoidable, category_columns lets the caller name the low-cardinality columns worth
-decoding as category dtype - the same technique build_visualisation_tables/data_cleaning.py
-already relies on for this exact file (EXPECTED_STRUCTURE_CATEGORY_COLS), duplicated here rather
-than imported per this repo's no-cross-pipeline-imports-at-runtime convention. A plain read (or
-concat, or drop_duplicates()) of the full, ~50M-row expected_data_structure with no such
-optimization materializes every string column as a full one-Python-str-per-row object array -
-large enough on its own to exhaust the pod's memory with no Python-level exception ever raised to
-explain why. A real production failure, silently killed mid-run with nothing but the last
-log_info line to go on, is what prompted _align_categories/_drop_duplicates_low_memory below.
+file_is_new reads each side in full and selects cols_to_check in pandas afterward, rather than
+passing columns= to pd.read_parquet: on this workspace's mounted storage, a column-projected
+read (pd.read_parquet(path, columns=[...])) was observed, repeatedly and reproducibly - including
+across a delete-and-recreate of the file in question - to return a schema that didn't match the
+same path's actual content (verified independently via pq.ParquetFile(path).schema_arrow and a
+full, unprojected pd.read_parquet(path), both of which were reliable throughout). Reading in full
+costs more I/O per file but was never observed to be wrong.
 """
 
 import glob
 import os
 
-import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 from openhexa.sdk import current_run
 
 from config import OUTPUTS_PATH
-from shared_utils import export_to_dataset, load_data, save_file
+from shared_utils import load_data, save_file
 
-COMBO_COLUMNS = ["year", "produit", "round"]
-
-
-def _output_path(output_name: str) -> str:
-    return os.path.join(OUTPUTS_PATH, f"{output_name}.parquet")
-
-
-def _existing_row_count(output_name: str) -> int:
-    """Row count straight from parquet metadata - never reads or materializes any actual row
-    data. Used only for the "nothing to do" fast path."""
-    return pq.ParquetFile(_output_path(output_name)).metadata.num_rows
+IDENTITY_COLS = ["produit", "year", "round"]
+TARGET_CONTENT_COLS = IDENTITY_COLS + [
+    "cible",
+    "campaign_start_date",
+    "campaign_end_date",
+]
+# campaign_start_date/campaign_end_date are part of the content check (not just cible) so that a
+# re-run correcting ONLY the campaign dates - target values unchanged - still gets classified as
+# an overwrite; expected_data_structure's period depends on these two columns, not on cible.
 
 
-def _read_keys_only(path: str) -> pd.DataFrame:
-    """Just the (year, produit, round) columns - cheap even on a many-million-row / many-column
-    file, since parquet is columnar and this never touches any other column."""
-    return pd.read_parquet(path, columns=COMBO_COLUMNS)
+def file_is_new(file_path: str, combined_output_path: str, cols_to_check: list) -> bool:
+    """Return True if a file in the per-run processed folder has a different combo
+    of key cols than the combined output, indicating that this file contains new data
+    to either append or overwrite in the combined output. False if the file's key-col combo
+    is already reflected in the combined output.
+
+    Reads each side in full, then selects cols_to_check - see the module docstring for why
+    this doesn't use pd.read_parquet's columns= projection.
+
+    If combined_output_path's own schema is missing one of cols_to_check, it structurally
+    cannot already reflect this file's content for that column - e.g. combined_target_data
+    written before campaign_start_date/campaign_end_date existed at all. Treating that as
+    "new" (rather than raising trying to select a column that isn't there) is what lets the
+    first post-migration file needing those columns actually get folded in and add them,
+    instead of every run failing on this check forever."""
+    combined_schema_cols = set(pq.ParquetFile(combined_output_path).schema_arrow.names)
+    if any(c not in combined_schema_cols for c in cols_to_check):
+        return True
+    combined_output_cols_check = pd.read_parquet(combined_output_path)[
+        cols_to_check
+    ].drop_duplicates()
+    file_cols_check = pd.read_parquet(file_path)[cols_to_check].drop_duplicates()
+    if (
+        not file_cols_check.merge(
+            combined_output_cols_check, how="left", indicator=True
+        )
+        .query('_merge == "left_only"')
+        .empty
+    ):
+        return True
+    return False
 
 
-def _combo_keys(df: pd.DataFrame) -> set:
-    """The distinct (year, produit, round) triples a dataframe covers - works whether `df` is a
-    full read or a keys-only read, since it selects COMBO_COLUMNS itself."""
-    return {
-        (int(y), str(p), str(r))
-        for y, p, r in df[COMBO_COLUMNS].drop_duplicates().itertuples(index=False)
-    }
+def _missing_columns(file_path: str, cols: list) -> list:
+    """Which of `cols` this parquet file's own schema doesn't have - a cheap metadata check,
+    no row data read."""
+    schema_cols = set(pq.ParquetFile(file_path).schema_arrow.names)
+    return [c for c in cols if c not in schema_cols]
 
 
-def _drop_combos(df: pd.DataFrame, combos: set) -> pd.DataFrame:
-    """Vectorized removal of every row whose (year, produit, round) is in `combos` - avoids a
-    row-wise Python-level .apply() over what can be a many-million-row dataframe."""
-    if not combos or df.empty:
-        return df
-    keys = df[COMBO_COLUMNS].copy()
-    keys["year"] = keys["year"].astype("int64")
-    keys["produit"] = keys["produit"].astype(str)
-    keys["round"] = keys["round"].astype(str)
-    existing_index = pd.MultiIndex.from_frame(keys)
-    touched_index = pd.MultiIndex.from_frame(
-        pd.DataFrame(sorted(combos), columns=COMBO_COLUMNS)
-    )
-    return df[~existing_index.isin(touched_index)].copy()
+def classify_files(files: list, output_path: str) -> tuple[list, list]:
+    """Buckets every per-run file into (new, overwrite) against output_path, using
+    file_is_new's two nested checks. A file in neither list needs no further processing -
+    everything it has is already reflected in output_path.
 
-
-def _align_categories(frames: list, cols: list) -> None:
-    """Give every frame in `frames` the same category dtype (union of the values actually seen
-    across ALL of them) for each column in `cols`, in place.
-
-    Ported from build_visualisation_tables/data_cleaning.py's align_categories_for_merge
-    (generalized here from two frames to any number - not imported, per this repo's
-    no-cross-pipeline-imports convention). pandas only keeps a concatenated/merged column as
-    category dtype in the result if every side is categorical with an IDENTICAL category set -
-    if any side is plain object dtype, or the sides' categories differ, the result silently
-    falls back to full object-dtype strings, reintroducing the exact multi-GB-per-column blowup
-    category_columns exists to avoid. Building categories from the union (not just one side's)
-    avoids turning a legitimate value into NaN if the frames' vocabularies don't match exactly.
-    """
-    for col in cols:
-        present = [f for f in frames if col in f.columns]
-        if not present:
-            continue
-        categories = pd.unique(np.concatenate([pd.unique(f[col]) for f in present]))
-        cat_dtype = pd.CategoricalDtype(categories=categories)
-        for f in present:
-            f[col] = f[col].astype(cat_dtype)
-
-
-def _drop_duplicates_low_memory(df: pd.DataFrame) -> pd.DataFrame:
-    """Same result as df.drop_duplicates(), for a frame with several category columns at a
-    many-million-row scale where plain .drop_duplicates() was measured elsewhere in this
-    codebase (build_visualisation_tables/data_cleaning.py's drop_duplicates_low_memory, ported
-    here rather than imported) to transiently spike memory to several times the frame's own
-    size. Hashing each categorical column's integer codes instead of the column itself avoids
-    that - datetime/numeric columns' duplicate check is unchanged."""
-    keys = pd.DataFrame(
-        {
-            col: (
-                df[col].cat.codes
-                if isinstance(df[col].dtype, pd.CategoricalDtype)
-                else df[col].to_numpy()
-            )
-            for col in df.columns
-        },
-        index=df.index,
-    )
-    return df.loc[~keys.duplicated()]
-
-
-def _concat_and_dedupe(frames: list, category_columns: list) -> pd.DataFrame:
-    """The shared tail of both compile paths below: align categories (if any were requested)
-    so the concat doesn't silently undo them, concatenate, deduplicate with whichever strategy
-    is safe for the result's dtypes, and decategorize before handing back the result.
-    """
-    if category_columns:
-        present_cols = [
-            c for c in category_columns if any(c in f.columns for f in frames)
-        ]
-        _align_categories(frames, present_cols)
-        combined = _drop_duplicates_low_memory(pd.concat(frames, ignore_index=True))
-        for col in present_cols:
-            combined[col] = combined[col].astype(object)
-    else:
-        combined = pd.concat(frames, ignore_index=True).drop_duplicates()
-    return combined.reset_index(drop=True)
-
-
-def _read_full_frames(files: list, category_columns: list = None) -> tuple[list, set]:
-    """Reads every file in `files` in full, returning (frames, union of their combo keys) -
-    skips and warns on any that can't be read rather than failing the whole run. Each frame gets
-    category_columns decoded as category dtype right after reading (a cheap in-memory downcast -
-    these per-run files are individually much smaller than the compiled output, so the read
-    itself isn't the risk here; keeping this dtype from the start is what lets the later
-    concat/dedup against a similarly-decoded existing frame stay categorical instead of falling
-    back to object dtype)."""
-    frames = []
-    touched_combos = set()
+    A file missing one of TARGET_CONTENT_COLS gets its own clear warning rather than the
+    generic "unreadable" one below - and is skipped unconditionally, checked before the
+    identity check rather than only in its "overwrite" branch: that's not a corrupt file,
+    it's one saved by a version of extract_target_data that predates choix_campagne/
+    campaign_start_date/campaign_end_date. A file like this can just as easily be a genuinely
+    NEW campaign as a modified one - and appending a new-but-columnless file straight into
+    combined_target_data would leave those columns NaN for its rows, which
+    generate_expected_data_structure's day-by-day period explosion cannot handle (NaN has no
+    day count). Silently treating either case as unreadable would also drop a real content
+    change (e.g. a date correction) with no actionable signal that anything needs redoing."""
+    new_files, overwrite_files = [], []
     for f in files:
         try:
-            frame = pd.read_parquet(f)
+            missing = _missing_columns(f, TARGET_CONTENT_COLS)
+            if missing:
+                current_run.log_warning(
+                    f"'{os.path.basename(f)}' ignoré pour la détection de modification : "
+                    f"colonne(s) manquante(s) {missing}. Ce fichier a probablement été "
+                    "produit par une version antérieure d'extract_target_data, avant "
+                    "l'ajout de choix_campagne/campaign_start_date/campaign_end_date. Si "
+                    "cette campagne a été modifiée depuis (dates ou cibles corrigées), "
+                    "relancez extract_target_data pour cette campagne (avec l'option "
+                    "d'écrasement activée) pour régénérer ce fichier avec les colonnes "
+                    "attendues, puis relancez ce pipeline."
+                )
+                continue
+            if file_is_new(f, output_path, IDENTITY_COLS):
+                new_files.append(f)
+            elif file_is_new(f, output_path, TARGET_CONTENT_COLS):
+                overwrite_files.append(f)
+            # else: every row this file has is already reflected in output_path - ignore it.
         except Exception as e:
             current_run.log_warning(
                 f"Fichier illisible, ignoré : {os.path.basename(f)} ({e})."
             )
-            continue
-        if category_columns:
-            for col in category_columns:
-                if col in frame.columns:
-                    frame[col] = frame[col].astype("category")
-        frames.append(frame)
-        touched_combos |= _combo_keys(frame)
-    return frames, touched_combos
+    return new_files, overwrite_files
 
 
-def _full_compile(files: list, output_name: str, category_columns: list = None) -> int:
-    """Read every file in full and (re)write output_name from scratch - used when there's no
-    existing compiled output to be incremental against at all."""
-    frames, _ = _read_full_frames(files, category_columns)
-    combined = _concat_and_dedupe(frames, category_columns)
-    save_file(combined, output_name)
-    # export_to_dataset(combined, OUTPUTS_PATH, output_name, include_csv=False)
-    return len(combined)
+def output_path(output_name: str) -> str:
+    return os.path.join(OUTPUTS_PATH, f"{output_name}.parquet")
 
 
-def compile_processed_files(
-    folder: str, output_name: str, description: str, category_columns: list = None
-) -> int:
+def _combo_keys(df: pd.DataFrame) -> set:
+    """The distinct (produit, year, round) triples a dataframe covers."""
+    return {
+        (str(p), int(y), str(r))
+        for p, y, r in df[IDENTITY_COLS].drop_duplicates().itertuples(index=False)
+    }
+
+
+def _drop_combos(df: pd.DataFrame, combos: set) -> pd.DataFrame:
+    """Vectorized removal of every row whose (produit, year, round) is in `combos` - avoids a
+    row-wise Python-level .apply() over what can be a many-row dataframe."""
+    if not combos or df.empty:
+        return df
+    keys = df[IDENTITY_COLS].copy()
+    keys["produit"] = keys["produit"].astype(str)
+    keys["year"] = keys["year"].astype("int64")
+    keys["round"] = keys["round"].astype(str)
+    existing_index = pd.MultiIndex.from_frame(keys)
+    touched_index = pd.MultiIndex.from_frame(
+        pd.DataFrame(sorted(combos), columns=IDENTITY_COLS)
+    )
+    return df[~existing_index.isin(touched_index)]
+
+
+def _read_full_frames(files: list) -> list:
+    """Reads every file in `files` in full - skips and warns on any that can't be read rather
+    than failing the whole run."""
+    frames = []
+    for f in files:
+        try:
+            frames.append(pd.read_parquet(f))
+        except Exception as e:
+            current_run.log_warning(
+                f"Fichier illisible, ignoré : {os.path.basename(f)} ({e})."
+            )
+    return frames
+
+
+def _all_current_combos(files: list) -> set | None:
+    """The union of (produit, year, round) combos covered by every per-run file that currently
+    exists in the processed folder - including old-format files missing TARGET_CONTENT_COLS,
+    which classify_files skips for new/overwrite classification but which are still legitimate
+    campaigns, just not yet migrated. Anything in combined_target_data that ISN'T in this set
+    has no file backing it anymore - see compile_combined_target_data's pruning step.
+
+    Returns None, instead of a possibly-incomplete set, if any file fails to read - a combo
+    missing only because its file happened to fail to read this run must never be mistaken for
+    a combo whose file was actually deleted, or pruning would delete data that's still there."""
+    combos = set()
+    for f in files:
+        try:
+            combos |= _combo_keys(pd.read_parquet(f))
+        except Exception as e:
+            current_run.log_warning(
+                f"Fichier illisible, ignoré lors de la vérification des combinaisons "
+                f"obsolètes : {os.path.basename(f)} ({e}). Suppression des combinaisons "
+                "obsolètes désactivée pour cette exécution par précaution."
+            )
+            return None
+    return combos
+
+
+def compile_combined_target_data(
+    folder: str, output_name: str, description: str
+) -> tuple[int, bool]:
     """
-    Update `output_name` from every processed file in `folder`, incrementally, and return its
-    resulting row count (the only thing pipeline.py's own logging needs - the full dataframe is
-    never handed back, so nothing here forces holding it in memory a moment longer than the
-    write itself requires).
+    Update `output_name` from every processed file in `folder` and return
+    (resulting row count, whether anything actually changed) - the second value is what lets
+    process_target_data skip rebuilding expected_data_structure on a no-op run.
 
-    See the module docstring for exactly which per-run files get a full read, and what
-    category_columns is for.
+    Besides folding in new/overwritten files (see classify_files), this also prunes any
+    (produit, year, round) combo already in `output_name` whose per-run file has since been
+    deleted from `folder` - e.g. a campaign configured by mistake (wrong round, wrong product)
+    that was cleaned up at the source. Deleting the file is the whole action needed; this just
+    reconciles the compiled output with the processed folder's actual current content on the
+    next run.
     """
     files = sorted(glob.glob(os.path.join(folder, "*.parquet")))
     if not files:
         raise FileNotFoundError(f"Aucun fichier {description} trouvé dans {folder}.")
 
-    output_path = _output_path(output_name)
-    if not os.path.exists(output_path):
+    path = output_path(output_name)
+    if not os.path.exists(path):
         current_run.log_info(
             f"Compilation initiale de '{output_name}' à partir de {len(files)} fichier(s) "
             f"{description}..."
         )
-        return _full_compile(files, output_name, category_columns)
-
-    existing_mtime = os.path.getmtime(output_path)
-    try:
-        existing_keys = _combo_keys(_read_keys_only(output_path))
-    except Exception as e:
-        current_run.log_warning(
-            f"'{output_name}' existant illisible, recompilation complète ({e})."
+        frames = _read_full_frames(files)
+        combined = (
+            pd.concat(frames, ignore_index=True)
+            .drop_duplicates()
+            .reset_index(drop=True)
         )
-        return _full_compile(files, output_name, category_columns)
+        save_file(combined, output_name)
+        return len(combined), True
 
-    candidates = []
-    for f in files:
-        try:
-            file_keys = _combo_keys(_read_keys_only(f))
-        except Exception as e:
-            current_run.log_warning(
-                f"Fichier {description} illisible, ignoré : {os.path.basename(f)} ({e})."
-            )
-            continue
-        if not file_keys <= existing_keys or os.path.getmtime(f) > existing_mtime:
-            candidates.append(f)
+    new_files, overwrite_files = classify_files(files, path)
+    existing = load_data(output_name)
+    current_combos = _all_current_combos(files)
+    orphaned_combos = (
+        set() if current_combos is None else _combo_keys(existing) - current_combos
+    )
 
-    if not candidates:
+    if not new_files and not overwrite_files and not orphaned_combos:
         current_run.log_info(
             f"'{output_name}' déjà à jour : aucun des {len(files)} fichier(s) {description} "
-            "ne contient de donnée nouvelle ou modifiée."
+            "ne contient de donnée nouvelle ou modifiée, et aucune combinaison obsolète à "
+            "supprimer."
         )
-        return _existing_row_count(output_name)
+        return len(existing), False
+
+    if orphaned_combos:
+        current_run.log_warning(
+            f"{len(orphaned_combos)} combinaison(s) produit/année/round présentes dans "
+            f"'{output_name}' n'ont plus de fichier correspondant dans {folder} et sont "
+            f"supprimées : {sorted(orphaned_combos)}."
+        )
 
     current_run.log_info(
-        f"Mise à jour incrémentale de '{output_name}' : {len(candidates)} fichier(s) "
-        f"{description} nouveau(x) ou modifié(s) sur {len(files)}."
+        f"Mise à jour de '{output_name}' : {len(new_files)} fichier(s) {description} "
+        f"nouveau(x), {len(overwrite_files)} modifié(s), {len(orphaned_combos)} combinaison(s) "
+        f"obsolète(s) supprimée(s), sur {len(files)} fichier(s)."
     )
-    existing = load_data(output_name, categories=category_columns)
-    new_frames, touched_combos = _read_full_frames(candidates, category_columns)
+    new_frames = _read_full_frames(new_files + overwrite_files)
+    touched_combos = orphaned_combos.copy()
+    for frame in new_frames:
+        touched_combos |= _combo_keys(frame)
+
     kept = _drop_combos(existing, touched_combos)
-    combined = _concat_and_dedupe([kept] + new_frames, category_columns)
+    del existing
+    combined = (
+        pd.concat([kept] + new_frames, ignore_index=True)
+        .drop_duplicates()
+        .reset_index(drop=True)
+    )
 
     save_file(combined, output_name)
-    # export_to_dataset(combined, OUTPUTS_PATH, output_name, include_csv=False)
-    return len(combined)
+    return len(combined), True

@@ -1,14 +1,10 @@
 """
-Updates combined_target_data.parquet and expected_data_structure.parquet from every per-run
-file extract_target_data has produced so far, under "historical targets processed" and
-"expected data structure processed".
+Updates combined_target_data.parquet from every per-run target file extract_target_data has
+produced so far (under "historical targets processed"), then builds expected_data_structure.parquet
+whole from combined_target_data (see docs/ARCHITECTURE.md for the full design).
 
-Incremental, not a from-scratch recompile every time (see run_persistence.compile_processed_files
-for the actual mechanics): only per-run files containing a combination not yet reflected in the
-combined output, or that changed since the combined output was last written, are read and merged
-in; a run with nothing new to add skips the read/write entirely. This pipeline is kept separate
-from extract_target_data (the manual, per-file step) and runs automatically instead, since
-deciding what's new/changed against the combined output is its own concern, distinct from
+This pipeline is kept separate from extract_target_data (the manual, per-file step) and runs
+automatically instead, since deciding what's new/changed is its own concern, distinct from
 importing one file. No parameters - it always updates from whatever per-run files currently
 exist.
 
@@ -18,40 +14,36 @@ expect combined_target_data / expected_data_structure to already reflect every e
 so far. extract_target_data remains the only manual step in this whole flow.
 """
 
+import os
+
 from openhexa.sdk import current_run, pipeline
 
-from config import EXPECTED_STRUCTURE_PROCESSED_PATH, PROCESSED_TARGETS_PATH
-from run_persistence import compile_processed_files
-
-EXPECTED_STRUCTURE_CATEGORY_COLS = [
-    "round",
-    "age",
-    "sexe",
-    "produit",
-    "vaccination_status",
-    "site",
-    "choix_campagne",
-]
+from config import PROCESSED_TARGETS_PATH
+from expected_structure import generate_and_save_expected_data_structure
+from run_persistence import compile_combined_target_data, output_path
 
 
 @pipeline(
     name="multi-campagne - Compilation des cibles et de la structure attendue",
 )
 def process_target_data():
-    """Compile every per-run target / expected-structure file extract_target_data
-    has produced into the two combined datasets downstream pipelines read."""
-    target_row_count = compile_processed_files(
+    """Compile every per-run target file into combined_target_data, then build
+    expected_data_structure from it whole - skipped entirely when combined_target_data
+    didn't change and expected_data_structure already exists."""
+    target_row_count, changed = compile_combined_target_data(
         PROCESSED_TARGETS_PATH, "combined_target_data", "de cibles traité(s)"
     )
-    expected_row_count = compile_processed_files(
-        EXPECTED_STRUCTURE_PROCESSED_PATH,
-        "expected_data_structure",
-        "de structure attendue traité(s)",
-        category_columns=EXPECTED_STRUCTURE_CATEGORY_COLS,
-    )
     current_run.log_info(f"combined_target_data compilé: {target_row_count} ligne(s).")
+
+    if not changed and os.path.exists(output_path("expected_data_structure")):
+        current_run.log_info(
+            "expected_data_structure inchangé: combined_target_data n'a pas changé."
+        )
+        return
+
+    expected_row_count = generate_and_save_expected_data_structure()
     current_run.log_info(
-        f"expected_data_structure compilé: {expected_row_count} ligne(s)."
+        f"expected_data_structure généré: {expected_row_count} ligne(s)."
     )
 
 
