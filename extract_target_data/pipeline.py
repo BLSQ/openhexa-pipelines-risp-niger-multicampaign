@@ -1,12 +1,21 @@
 """
-Vaccination target-data + expected-data-structure EXTRACTION pipeline (Niger, multi-campagne).
+Vaccination target-data EXTRACTION pipeline (Niger, multi-campagne).
 
 The manual entry point of the target-data flow: processes ONE uploaded spreadsheet and saves
-this run's own target rows + expected-structure rows as per-run files, under "historical targets
-processed" and "expected data structure processed". It does not compile
-combined_target_data.parquet / expected_data_structure.parquet itself - process_target_data does
-that automatically, as the first step of orchestrate_pipelines_flow's chain, from every per-run
-file produced here.
+this run's own target rows as a per-run file, under "historical targets processed". It does not
+compile combined_target_data.parquet itself - process_target_data does that automatically, as
+the first step of orchestrate_pipelines_flow's chain, from every per-run file produced here.
+
+expected_data_structure has no data of its own - every row is a deterministic function of
+combined_target_data plus static config and each campaign's period - so process_target_data
+builds it whole from combined_target_data, and this pipeline saves no per-run
+expected-data-structure file at all. What this pipeline owns is resolving the campaign period:
+historical lookup first, then the campaign_start_date/campaign_end_date parameters below - a
+genuinely run-time-dependent decision, since process_target_data has no parameters and runs
+unattended. This pipeline persists just the resolved boundary dates (not their day-by-day
+explosion) as two extra columns on its own target rows, alongside choix_campagne, so
+process_target_data can build expected_data_structure from combined_target_data without needing
+these run-time parameters.
 
 Driven by these parameters:
 
@@ -21,17 +30,15 @@ Driven by these parameters:
     campaign_end_date    : optional. Only required if this run covers a (year, round,
                             produit) combination not already in
                             expected_structure.HISTORICAL_CAMPAIGNS_CONFIG - see
-                            expected_structure.build_campaign_period_df.
+                            expected_structure.resolve_campaign_period_bounds.
     overwrite_existing   : replace already-processed data for the same combination
                             instead of aborting.
 
 The generic engine (target_import) auto-identifies the file's structure, extracts
 the base age brackets, builds the requested products, stamps the year and rounds,
-then the unchanged org-unit matching stage attaches org_unit_id and region. The
-expected-data-structure module (expected_structure.py) then builds the matching
-combinatorial "expected" rows (site/status/sex/period) from this SAME run's
-matched data - absorbed from create_expected_data_structure_for_historical_campaigns
-and configure_new_campaign per the v2 migration plan.
+then the unchanged org-unit matching stage attaches org_unit_id and region.
+attach_campaign_metadata then stamps choix_campagne and the resolved campaign period
+boundary dates onto this run's matched rows before they're saved.
 
 NOTE on the pre-run duplicate/overlap checks below (check_for_existing_slices,
 check_for_date_overlap): both read the last COMPILED combined_target_data.parquet /
@@ -40,11 +47,10 @@ recompiled since a previous extraction, a genuinely overlapping combination from
 extraction won't be caught by these checks yet (the compiled file they read is stale). This is
 an accepted design tradeoff, documented here rather than left implicit.
 
-Per-run output columns (saved into "historical targets processed" / "expected data structure
-processed", compiled by process_target_data):
-    LVL_3_NAME, cible, age, year, org_unit_id, round, produit, LVL_6_NAME, LVL_2_NAME
-    org_unit_id, LVL_3_NAME, LVL_6_NAME, sexe, year, produit, round, age, site,
-    vaccination_status, choix_campagne, period, order_day
+Per-run output columns (saved into "historical targets processed", compiled by
+process_target_data into combined_target_data):
+    LVL_3_NAME, cible, age, year, org_unit_id, round, produit, LVL_6_NAME, LVL_2_NAME,
+    choix_campagne, campaign_start_date, campaign_end_date
 """
 
 import os
@@ -55,16 +61,10 @@ from openhexa.sdk import File, current_run, parameter, pipeline
 
 from config import (
     TARGETS_INPUT_PATH,
-    EXPECTED_STRUCTURE_PROCESSED_PATH,
     PROCESSED_TARGETS_PATH,
 )
 from expected_structure import (
-    build_age_round_year_df,
-    build_campaign_period_df,
-    build_sex_df,
-    build_site_df,
-    build_status_df,
-    combine_expected_structure,
+    resolve_campaign_period_bounds,
     check_for_date_overlap,
     HISTORICAL_CAMPAIGNS_CONFIG,
 )
@@ -194,9 +194,11 @@ def extract_target_data(
     campaign_end_date: str = None,
     overwrite_existing: bool = False,
 ):
-    """Import, reshape, match and save a single target-data spreadsheet, together
-    with the matching expected-data-structure rows for the same campaign/run - as
-    per-run files for process_target_data to compile later."""
+    """Import, reshape, match and save a single target-data spreadsheet as a per-run
+    file for process_target_data to compile later - together with this run's
+    resolved campaign metadata (choix_campagne, campaign period bounds), so
+    process_target_data can build expected_data_structure from combined_target_data
+    without needing these run-time parameters."""
     campaign_name_internal, products = CAMPAIGN_CHOICES[campaign_name]
 
     check_year(int(year))
@@ -225,8 +227,8 @@ def extract_target_data(
         tidy, iaso_org_unit_tree_df, iaso_org_unit_tree_df_clean
     )
 
-    # 4. Expected-data-structure for this same run
-    expected_slice = build_expected_structure_for_run(
+    # 4. Stamp this run's campaign metadata (choix_campagne + period bounds) onto matched.
+    matched = attach_campaign_metadata(
         matched,
         products,
         int(year),
@@ -236,15 +238,8 @@ def extract_target_data(
         campaign_end_date,
     )
 
-    # 5. Save this run's output in the per-run-file folders
-    persist(
-        matched,
-        expected_slice,
-        int(year),
-        list(products),
-        list(rounds),
-        overwrite_existing,
-    )
+    # 5. Save this run's output in the per-run-file folder
+    persist(matched, int(year), list(products), list(rounds), overwrite_existing)
 
 
 def import_or_fail(file_path, products: list, year: int, rounds: list) -> pd.DataFrame:
@@ -296,7 +291,7 @@ def match_and_clean_org_units(
     )
 
 
-def build_expected_structure_for_run(
+def attach_campaign_metadata(
     matched: pd.DataFrame,
     products: list,
     year: int,
@@ -305,12 +300,13 @@ def build_expected_structure_for_run(
     campaign_start_date: str,
     campaign_end_date: str,
 ) -> pd.DataFrame:
-    """The product/site/status/sex/age/period combinatorial rows for this run."""
-    site_df = build_site_df(products)
-    status_df = build_status_df(products)
-    sex_df = build_sex_df()
-    age_round_year_df = build_age_round_year_df(matched)
-    period_df = build_campaign_period_df(
+    """Stamp choix_campagne (constant for this whole run) and, per (produit, round),
+    the resolved campaign_start_date/campaign_end_date onto this run's matched target
+    rows, so process_target_data can build expected_data_structure from these
+    persisted columns on combined_target_data."""
+    matched = matched.copy()
+    matched["choix_campagne"] = campaign_name_internal
+    bounds = resolve_campaign_period_bounds(
         year,
         rounds,
         products,
@@ -319,40 +315,34 @@ def build_expected_structure_for_run(
         campaign_end_date,
         HISTORICAL_CAMPAIGNS_CONFIG,
     )
-    return combine_expected_structure(
-        matched, site_df, status_df, sex_df, age_round_year_df, period_df
-    )
+    return matched.merge(bounds, on=["produit", "round"], how="left")
 
 
 def persist(
     matched: pd.DataFrame,
-    expected_slice: pd.DataFrame,
     year: int,
     products: list,
     rounds: list,
     overwrite_existing: bool,
 ) -> None:
-    """Save this run's per-run files, cleaning up any superseded slice first if
-    overwrite mode is on."""
+    """Save this run's per-run target file, cleaning up any superseded slice first
+    if overwrite mode is on."""
     if overwrite_existing:
         combos = run_combinations(year, products, rounds)
-        for folder in (PROCESSED_TARGETS_PATH, EXPECTED_STRUCTURE_PROCESSED_PATH):
-            overlaps = find_overlapping_slices(combos, folder)
-            if overlaps:
-                remove_slices_from_processed_files(overlaps)
+        overlaps = find_overlapping_slices(combos, PROCESSED_TARGETS_PATH)
+        if overlaps:
+            remove_slices_from_processed_files(overlaps)
 
     name = run_slug(year, products, rounds)
     save_file(matched, name, folder=PROCESSED_TARGETS_PATH)
-    save_file(expected_slice, name, folder=EXPECTED_STRUCTURE_PROCESSED_PATH)
     current_run.log_info(
-        f"Fichier de cibles enregistré: {len(matched)} ligne(s) produite(s), "
-        f"{len(expected_slice)} ligne(s) de structure attendue produite(s)."
+        f"Fichier de cibles enregistré: {len(matched)} ligne(s) produite(s)."
     )
     current_run.log_info(
-        "Ces données seront intégrées à combined_target_data / "
-        "expected_data_structure lors de la prochaine exécution du pipeline "
-        "process_target_data (automatique, premier maillon de "
-        "orchestrate_pipelines_flow)."
+        "Ces données seront intégrées à combined_target_data, et "
+        "expected_data_structure régénéré à partir de celui-ci, lors de la "
+        "prochaine exécution du pipeline process_target_data (automatique, "
+        "premier maillon de orchestrate_pipelines_flow)."
     )
 
 

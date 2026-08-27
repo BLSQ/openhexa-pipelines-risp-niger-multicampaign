@@ -1,7 +1,8 @@
 """
-Workspace paths only. This pipeline only reads the per-run files extract_target_data has
-already produced and compiles them - it has no structure-detection, org-unit-matching, or
-expected-structure logic of its own, so it needs none of the config those carry.
+Workspace paths only. This pipeline reads the per-run target files extract_target_data has
+already produced and compiles them into combined_target_data, then builds expected_data_structure
+whole from combined_target_data itself - so it needs no per-run expected-structure folder path at
+all, and none of extract_target_data's structure-detection or org-unit-matching config.
 """
 
 import os
@@ -12,6 +13,3 @@ WORKSPACE_PATH = workspace.files_path
 PROJECT_FOLDER = "multi-campagne"
 OUTPUTS_PATH = os.path.join(WORKSPACE_PATH, PROJECT_FOLDER, "outputs")
 PROCESSED_TARGETS_PATH = os.path.join(OUTPUTS_PATH, "historical targets processed")
-EXPECTED_STRUCTURE_PROCESSED_PATH = os.path.join(
-    OUTPUTS_PATH, "expected data structure processed"
-)

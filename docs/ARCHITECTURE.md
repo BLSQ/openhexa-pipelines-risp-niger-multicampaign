@@ -345,6 +345,8 @@ All fourteen must be reproduced by v2:
 | D5 | Reference campaign for output equivalence | vaccin polio / 2026 / round 3 |
 | D6 | Tables produced by `build_visualisation_tables` | Fourteen tables, see §8 |
 | D7 | Branch vs separate repo | (a) Branch `v2-architecture` in the existing repo |
+| D8 | `process_target_data` compile-logic redesign (v3) | Two-tier per-file classification via `file_is_new`, replacing the mtime/manifest design — see §15 |
+| D9 | `expected_data_structure` sourcing | Derived (regenerated whole from `combined_target_data` every changed run), not incrementally merged — see §16 |
 
 Superseded questions, resolved by the fate mapping in §2 and recorded there: the fate of
 `configure_new_campaign`, `generate_targets_templates` and `process_target_data` (v1); whether
@@ -609,4 +611,220 @@ move.
 - Breaking up functions longer than ~50 lines (§7/§8 acceptance criterion 5) — a distinct, still-open
   item; this section's moves do not shorten any function, they relocate it as-is.
 - `population_analysis/` — excluded per §14's scope note above.
+
+---
+
+## 15. `process_target_data`: two-tier file classification (v3 compile logic)
+
+`process_target_data` is the small, automated, no-parameter pipeline that compiles every
+per-run file `extract_target_data` has produced (under `historical targets processed` /
+`expected data structure processed`) into the two combined datasets downstream pipelines read:
+`combined_target_data.parquet` and `expected_data_structure.parquet`. This section is D8 (§10).
+
+**Supersedes:** an mtime + manifest based incremental compile (a separate `run_persistence.py`,
+now retired). That design tracked (per-run filename → mtime) to decide which files needed
+re-reading against the combined output. It worked, but needed several correctness/memory
+follow-up fixes as edge cases surfaced in production (a `SettingWithCopyWarning`-driven `.copy()`
+that transiently doubled memory, an `LVL_2_NAME`/`LVL_3_NAME`/`LVL_6_NAME` categorization gap, a
+null-category `CategoricalDtype` crash on `LVL_6_NAME`) and was judged more complex than the
+problem needs — mtime is a proxy for "did this file's content change", not the thing itself.
+
+**v3:** classify every per-run file directly against the combined output's own data, using two
+nested checks on cheap, columns-only reads — no mtime, no manifest.
+
+### 15.1 The two-tier check
+
+For a per-run file `f` and its corresponding combined output:
+
+1. **Identity check** — does `f`'s `(produit, year, round)` combination already exist in the
+   combined output? via `file_is_new(f, combined_output_path, ["produit", "year", "round"])`.
+   - `file_is_new` → **True** (at least one row's combo isn't in the combined output) → this is
+     a campaign never configured before → bucket **new**.
+2. **Content check** (only run if the identity check said "already known") — does `f`, together
+   with one extra value column, still fully match the combined output? via
+   `file_is_new(f, combined_output_path, ["produit", "year", "round", value_col])`, where
+   `value_col` is `cible` for `combined_target_data` and `period` for `expected_data_structure`.
+   - `file_is_new` → **True** → the campaign's identity is known but its data changed (corrected
+     dates, or corrected target values) → bucket **overwrite**.
+   - `file_is_new` → **False** → every row `f` has is already reflected in the combined output
+     → bucket **unchanged** — `f` is never read past these two checks.
+
+| Bucket | Meaning | Action |
+|---|---|---|
+| new | combo never seen before | append `f`'s full contents |
+| overwrite | combo known, but a value changed | drop the combined output's existing rows for that `(produit, year, round)`, append `f`'s current contents |
+| unchanged | nothing new | skip — `f` is never read beyond the two checks above |
+
+`file_is_new(file_path, combined_output_path, cols_to_check)` reads only `cols_to_check` from
+both sides (parquet is columnar, so this never touches any other column, on either the per-run
+file or the combined output), deduplicates each, and left-merges the file's side against the
+combined output's side on every `cols_to_check` column: any resulting `left_only` row means the
+file carries a combination the combined output doesn't have.
+
+### 15.2 Compile step
+
+If every file in the folder is `unchanged`, the whole read/write is skipped. Otherwise: read the
+combined output once in full, drop rows matching every touched file's `(produit, year, round)` —
+harmless no-op for a `new` file's combo, since by construction it isn't present yet — read every
+`new`/`overwrite` file in full, concatenate, and write back.
+
+### 15.3 Memory-handling, kept from the prior design
+
+`expected_data_structure` can run to ~50M rows; a plain read/concat with no precautions has, in
+production, exhausted the pod's memory with no Python exception raised to explain why. These
+techniques solve that distinct problem, independent of *how* files get classified, so this
+redesign keeps them:
+
+- Decode the low-cardinality-ish string columns (`round`, `age`, `sexe`, `produit`,
+  `vaccination_status`, `site`, `choix_campagne`, `LVL_2_NAME`, `LVL_3_NAME`, `LVL_6_NAME`) as
+  category dtype on read (`shared_utils.load_data`'s `categories=`) — a plain read materializes a
+  full one-Python-str-per-row object array per column instead.
+- Never call `.copy()` on the boolean-masked "drop these rows" result — it's already an
+  independent object; an extra copy doubles memory for no reason.
+- Align category dtypes on the full frames *before* filtering rows out of them, not after —
+  mutating a filtered slice's columns raises a `SettingWithCopyWarning` that's a false positive
+  here, and silencing it by copying the slice first defeats the point above.
+- Drop nulls from a derived category list before building the `CategoricalDtype` — `LVL_6_NAME`
+  is legitimately null on district-level rows, and pandas rejects a categories list containing
+  one.
+
+### 15.4 Known limitation
+
+`combined_target_data`'s content check ignores `org_unit_id`: `cible` (the target value) varies
+per org unit within one `(produit, year, round)` combo, so a file that reassigns the same *set*
+of target values across different org units within an already-known combo would be classified
+`unchanged`. Accepted as the simplicity/precision trade-off this design makes; `period` doesn't
+have this issue, since every row of one `expected_data_structure` combo shares the same campaign
+period.
+
+### 15.5 File layout
+
+Everything above lives in `process_target_data/pipeline.py`; the separate `run_persistence.py`
+this pipeline previously had is retired.
+
+### 15.6 Measured result and the next problem it exposed
+
+Implementing §15.1–15.5 and testing it against the real, production-scale
+`expected_data_structure.parquet` (58,379,864 rows) confirmed the classification logic itself is
+correct (verified: new/overwrite/unchanged buckets, stale-row replacement, idempotent re-runs, no
+warnings) - but also measured **22.5GB peak RSS** for a single incremental run, via
+`/usr/bin/time -v`, not an estimate. Every §15.3 technique was in place for that measurement; the
+residual cost is structural, not something file-classification touches: merging `new`/`overwrite`
+file content into the existing ~58M-row file needs the old file, the filtered survivor, and the
+freshly concatenated result all resident at or near full size at once - no smarter *choice of which
+files to read* changes that. This motivated §16.
+
+---
+
+## 16. Deriving `expected_data_structure` from `combined_target_data` instead of merging per-run fragments
+
+**Problem this solves:** §15.6's 22.5GB peak is inherent to *incrementally merging* a ~50M-row
+file, regardless of how the files feeding that merge were chosen. `expected_data_structure` has
+no data of its own, though - every row is a deterministic function of `combined_target_data` (the
+target rows) plus static, campaign-invariant config (`SEX_TYPE`/`PRODUCT_STATUS`/`SITE_TYPE`) and
+each campaign's period. Treating it as something to incrementally merge was the actual mistake;
+treating it as a *derived view*, rebuilt whole each run from a small source, removes the need to
+ever hold the old ~50M-row file and a new one at once.
+
+### 16.1 Responsibility change
+
+| | Before | After |
+|---|---|---|
+| `extract_target_data` | Builds and saves this run's own expected-structure rows as a per-run file (`expected_structure.py`'s `build_site_df`/`build_status_df`/`build_sex_df`/`build_age_round_year_df`/`build_campaign_period_df`/`combine_expected_structure`) | Saves only the per-run **target** file - no more per-run expected-structure file, no more `EXPECTED_STRUCTURE_PROCESSED_PATH` folder |
+| `process_target_data` | Compiles per-run expected-structure files into `expected_data_structure.parquet` incrementally (§15, now retired for this output) | Fully **regenerates** `expected_data_structure.parquet` from `combined_target_data.parquet` every run it actually runs (skipped when `combined_target_data` itself didn't change - see §16.4) |
+
+`combined_target_data`'s own compile keeps the §15 two-tier classification unchanged - that part
+of the redesign stays exactly as built. Only `expected_data_structure`'s side changes.
+
+### 16.2 What `combined_target_data` needs to carry that it doesn't today
+
+`expected_structure.py`'s cross-join needs `sexe`/`site`/`vaccination_status` (static, campaign-
+invariant - a pure function of `produit`) and `period`/`order_day` (NOT static - resolved per run,
+today, from either `HISTORICAL_CAMPAIGNS_CONFIG` or the `campaign_start_date`/`campaign_end_date`
+parameters). `process_target_data` has no parameters and runs unattended, so period resolution
+that depends on run-time input **cannot move there** - only the *day-by-day explosion* of an
+already-resolved date range can. `extract_target_data` must therefore keep resolving the period
+(unchanged logic: historical lookup first, then the two date parameters, with the same
+single-round restriction when dates must be supplied) but stop exploding it into day rows itself -
+instead it persists two new columns onto its own per-run target rows:
+
+- `choix_campagne` - constant for the whole run (`campaign_name_internal`).
+- `campaign_start_date`, `campaign_end_date` - the resolved boundary dates, one pair per
+  `(produit, round)` this run covers (a run can mix combos with different resolved windows, e.g.
+  some from the historical lookup and one newly dated).
+
+`combined_target_data`'s schema grows by these three columns; every existing consumer that reads
+it by name is unaffected (extra columns, nothing removed or renamed).
+
+### 16.3 Extract-side changes (`extract_target_data`)
+
+- `expected_structure.py`: replace `build_campaign_period_df` (resolves dates **and** explodes
+  them into day rows) with `resolve_campaign_period_bounds`, which resolves the same
+  `(produit, round) → (start, end)` pairs using the **same** historical-lookup-first logic and the
+  **same** validation helpers (`_missing_combo_hints`, `_validate_new_period_request`, both
+  unchanged) but returns one row per `(produit, round)` with `campaign_start_date`/
+  `campaign_end_date` columns - no `date_range`, no `order_day`, no per-day frame. `_make_period_
+  frame`/the day-exploding half of `_resolve_from_historical_lookup` are deleted along with
+  `build_site_df`, `build_status_df`, `build_sex_df`, `build_age_round_year_df`,
+  `combine_expected_structure`, and the `SEX_TYPE`/`PRODUCT_STATUS`/`SITE_TYPE` config block -
+  all move to `process_target_data` (§16.4), since their only consumer moves there.
+- `expected_structure.py` keeps: `HISTORICAL_CAMPAIGNS_CONFIG` (period resolution needs it here,
+  at run time), `resolve_campaign_period_bounds` and its validation helpers, and the entire
+  date-overlap-checking block (`check_for_date_overlap` and its helpers) **unchanged** - it reads
+  `expected_data_structure.parquet`'s `(produit, year, round, period)` columns the same way as
+  before, and that file still has that exact shape every time `process_target_data` regenerates
+  it, so nothing here needs to know the regeneration strategy changed.
+- `pipeline.py`: new `attach_campaign_metadata(matched, products, year, rounds,
+  campaign_name_internal, campaign_start_date, campaign_end_date)` - stamps `choix_campagne`
+  (constant) and merges `resolve_campaign_period_bounds`'s per-`(produit, round)` bounds onto
+  `matched` - replaces the `build_expected_structure_for_run` call. `persist()` saves only
+  `matched` (now carrying the 3 new columns) to `PROCESSED_TARGETS_PATH`; the
+  `EXPECTED_STRUCTURE_PROCESSED_PATH` save, and its overwrite-mode cleanup loop iteration for that
+  folder, are removed.
+- `config.py`: drop `EXPECTED_STRUCTURE_PROCESSED_PATH` (no longer written here at all).
+
+### 16.4 Process-side changes (`process_target_data`)
+
+New, `expected_structure.py`-derived module content (ported, not imported, per this repo's
+no-cross-pipeline-imports convention) added to `process_target_data/pipeline.py`:
+
+- `SEX_TYPE`/`PRODUCT_STATUS`/`SITE_TYPE` config block (moved verbatim).
+- `build_site_df`/`build_status_df`/`build_sex_df` (moved verbatim - pure functions of a
+  `products` list, indifferent to which pipeline calls them).
+- A new `_explode_period_bounds(period_bounds_df)`: vectorized day-by-day expansion (`index.
+  repeat` + `groupby(...).cumcount()`, not a per-row Python loop) of the small, deduplicated
+  `(produit, year, round, campaign_start_date, campaign_end_date)` frame read straight off
+  `combined_target_data` - replaces `_make_period_frame`'s per-run version. This frame is tiny
+  (one row per distinct campaign, not per target row), so the expansion itself is cheap regardless
+  of `combined_target_data`'s size.
+- `regenerate_expected_data_structure(...)`: reads `combined_target_data` in full (561K rows today
+  - no `category_columns` needed at that scale), takes its distinct
+  `(org_unit_id, LVL_2_NAME, LVL_3_NAME, LVL_6_NAME, age, produit, year, round)` rows (selecting
+  only the org-unit columns actually present, same district-vs-CSI-level guard
+  `combine_expected_structure` already has), and cross-joins with `sex_df` / `site_df` (on
+  `produit`) / `status_df` (on `produit`) / the exploded period frame (on
+  `produit, year, round`) - the exact same merge sequence and hard-fail-on-unmatched behavior
+  `combine_expected_structure` already has (ported, not reinvented). The category columns
+  (§15.3's list) are cast on the **final** result before writing - no `_align_categories` needed
+  (there is only ever one freshly-built frame now, never two independently-sourced large frames to
+  reconcile), and `.drop_duplicates()` is skipped: unlike the old per-run-concatenation design, a
+  single from-scratch cross-join of duplicate-free inputs (`site_df`/`status_df` are built from
+  sets; the exploded period frame is one row per campaign-day) cannot itself produce duplicate
+  rows.
+- Runs the *entire* regeneration, and the write, only when `combined_target_data`'s own compile
+  (§15) actually changed something this run - `compile_combined_target_data` (the §15 function,
+  renamed for clarity now that it's the only output still using that logic) returns whether it did
+  anything, and `expected_data_structure` regeneration is skipped otherwise. A no-op automated run
+  (the common case, since this pipeline runs first in every orchestration) does no more work than
+  before.
+- `config.py`: drop `EXPECTED_STRUCTURE_PROCESSED_PATH` (no per-run expected-structure files
+  exist to compile from anymore).
+
+### 16.5 What this removes
+
+The entire §15 two-tier classification (`classify_files`, `file_is_new`, the `new`/`overwrite`/
+`unchanged` buckets, the load-existing-file-and-merge path) now applies **only** to
+`combined_target_data`. `expected_data_structure` has no classification, no per-run-file folder,
+and no incremental-merge code path at all - just a deterministic rebuild from a small source, or
+nothing, once per run.
 - Any change to `pipeline.py`'s own orchestration functions' *bodies* — only their imports change.
